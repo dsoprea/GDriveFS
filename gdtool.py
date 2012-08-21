@@ -33,6 +33,8 @@ logging.basicConfig(
 
 app_name = 'GDriveFS Tool'
 
+change_monitor_thread = None
+
 class AuthorizationError(Exception):
     pass
 
@@ -58,13 +60,15 @@ class Conf(object):
     auth_temp_path          = '/var/cache/gdfs'
     auth_cache_filename     = 'credcache'
     auth_secrets_filepath   = '/etc/gdfs/client_secrets.json'
+    change_check_interval_s = .5
 
     @staticmethod
     def get(key):
         try:
             return Conf.__dict__[key]
         except:
-            logging.exception("Could not retrieve config value with key [%s]." % (key))
+            logging.exception("Could not retrieve config value with key "
+                              "[%s]." % (key))
             raise
 
     @staticmethod
@@ -85,7 +89,8 @@ class _OauthAuthorize(object):
             try:
                 os.makedirs(temp_path)
             except:
-                logging.exception("Could not create temporary path [%s]." % (temp_path))
+                logging.exception("Could not create temporary path [%s]." % 
+                                  (temp_path))
                 raise
 
         self.cache_filepath = ("%s/%s" % (temp_path, cache_filename))
@@ -95,9 +100,10 @@ class _OauthAuthorize(object):
         self.flow.redirect_uri = OOB_CALLBACK_URN
 
     def __get_scopes(self):
-        return 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file'
+        scopes = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file"
                #'https://www.googleapis.com/auth/userinfo.email '
                #'https://www.googleapis.com/auth/userinfo.profile')
+        return scopes
 
     def step1_get_auth_url(self):
         return self.flow.step1_get_authorize_url()
@@ -122,7 +128,8 @@ class _OauthAuthorize(object):
         try:
             self.__update_cache(self.credentials)
         except:
-            logging.exception("Could not update cache. We've nullified the in-memory credentials.")
+            logging.exception("Could not update cache. We've nullified the "
+                              "in-memory credentials.")
             raise
             
         logging.info("Credentials have been refreshed.")
@@ -172,7 +179,8 @@ class _OauthAuthorize(object):
         such as refreshing when we expire.
         """
         if(datetime.today() >= self.credentials.token_expiry):
-            logging.info("Credentials have expired. Attempting to refresh them.")
+            logging.info("Credentials have expired. Attempting to refresh "
+                         "them.")
             
             self.__refresh_credentials()
             return self.credentials
@@ -250,8 +258,11 @@ class _FileCache(object):
     filepath_index      = { }
     filepath_index_r    = { }
 
+    locker = threading.Lock()
+    latest_change_id = None
+
     def cleanup_byid(self, id):
-        with threading.Lock():
+        with self.locker:
             try:
                 del self.cleanup_index[id]
 
@@ -280,7 +291,8 @@ class _FileCache(object):
             try:
                 del self.entry_cache[id]
 
-#                logging.debug("Removing primary entry-cache item for ID [%s]." % (id))
+#                logging.debug("Removing primary entry-cache item for ID [%s]." 
+#                               % (id))
             except:
                 pass
 
@@ -290,7 +302,7 @@ class _FileCache(object):
 
         self.cleanup_byid(entry_id)
 
-        with threading.Lock():
+        with self.locker:
             # Store the entry.
 
             # TODO: We translate the file-name information coming back into 
@@ -358,7 +370,7 @@ class _FileCache(object):
             return elected_variation
 
     def get_entry_byfilepath(self, filepath):
-        with threading.Lock():
+        with self.locker:
             try:
                 entry_id = self.filepath_index[filepath]
                 entry = self.entry_cache[entry_id]
@@ -368,12 +380,90 @@ class _FileCache(object):
             return entry
 
     def get_entry_byid(self, id):
-        with threading.Lock():
+        with self.locker:
             if id in self.entry_cache:
                 return entry_cache[id]
 
             else:
                 return None
+
+    def get_latest_change_id(self):
+        return self.latest_change_id
+
+    def apply_changes(self, changes):
+        # Sort by change-ID (integer) in ascending order.
+
+        logging.debug("Sorting changes to be applied.")
+
+        sorted_changes = sorted(changes.items(), key=lambda t: t[0])
+        updates = 0
+
+        with self.locker:
+            for change_id, change in sorted_changes:
+                logging.debug("Applying change with ID (%d)." % (change_id))
+
+                # If we've already processed updates, skip everything we've already 
+                # processed.
+                if self.latest_change_id != None and self.latest_change_id >= change_id:
+                    logging.debug("The current change-ID (%d) is less than the"
+                                  " last recorded change-ID (%d)." % 
+                                  (change_id, self.latest_change_id))
+                    continue
+
+                (entry_id, was_deleted, entry) = change
+
+                # Determine if we're already up-to-date.
+
+                if entry_id in self.entry_cache:
+                    logging.debug("We received a change item for entry-ID [%s]"
+                                  " in our cache." % (entry_id))
+
+                    local_entry = self.entry_cache['entry_id']
+
+                    local_mtime = local_entry[u'modifiedDate']
+                    date_obj = dateutil.parser.parse(local_mtime)
+                    local_mtime_epoch = time.mktime(date_obj.timetuple())
+
+                    remote_mtime = entry[u'modifiedDate']
+                    date_obj = dateutil.parser.parse(remote_mtime)
+                    remote_mtime_epoch = time.mktime(date_obj.timetuple())
+
+                    # The local version is newer or equal-to this change.
+                    if remote_mtime_epoch <= local_mtime_epoch:
+                        logging.info("Change will be ignored because its mtime"
+                                     " is [%s] and the one we have is [%s]." % 
+                                     (remote_mtime, local_mtime))
+                        continue
+
+                # If we're here, our data for this file is old or non-existent.
+
+                updates += 1
+
+                if was_deleted:
+                    logging.info("File [%s] will be deleted." % (entry_id))
+
+                    try:
+                        self.cleanup_byid(entry_id)
+                    except:
+                        logging.exception("Could not cleanup deleted file with"
+                                          " ID [%s]." % (entry_id))
+                        raise
+
+                else:
+                    logging.info("File [%s] will be inserted/updated." % (entry_id))
+
+                    try:
+                        self.register_entry(None, None, entry)
+                    except:
+                        logging.exception("Could not register changed file with ID [%s].  WAS_DELETED= (%s)" % (entry_id, was_deleted))
+                        raise
+        
+                logging.info("Update successful.")
+
+                # Update our tracker for which changes have been applied.
+                self.latest_change_id = change_id
+
+            logging.info("(%d) updates were performed." % (updates))
 
 def get_cache():
     if get_cache.file_cache == None:
@@ -387,6 +477,11 @@ get_cache.file_cache = None
 # beginning of the cleanup_index are constantly pruned.
 
 class _GdriveManager(object):
+    """Handles all basic communication with Google Drive. All methods should
+    try to invoke only one call, or make sure they handle authentication 
+    refreshing when necessary.
+    """
+
     authorize   = None
     credentials = None
     client      = None
@@ -418,7 +513,8 @@ class _GdriveManager(object):
         try:
             self.credentials.authorize(http)
         except:
-            logging.exception("Could not get authorized HTTP client for Google Drive client.")
+            logging.exception("Could not get authorized HTTP client for Google"
+                              " Drive client.")
             raise
     
         logging.info("Building authorized client.")
@@ -438,48 +534,98 @@ class _GdriveManager(object):
 # TODO: Do a look-up, here.
         raise Exception("no entry_index for entry with ID [%s]." % (id))
 
+    def list_changes(self, page_token=None):
+        """Get a list of the most recent changes from GD. This only returns one
+        page at a time.
+        """
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (list_files).")
+            raise
+
+        try:
+            response = client.changes().list(pageToken=page_token).execute()
+        except:
+            logging.exception("Problem while listing changes.")
+            raise
+
+        largest_change_id   = response[u'largestChangeId']
+        items               = response[u'items']
+
+        if u'nextPageToken' in response:
+            next_page_token = response[u'nextPageToken']
+        else:
+            next_page_token = None
+
+        changes = { }
+        for item in items:
+            change_id   = item[u'id']
+            entry_id    = item[u'fileId']
+            was_deleted = item[u'deleted']
+
+            if was_deleted:
+                entry = None
+            else:
+                entry = item[u'file']
+
+            changes[int(change_id)] = (entry_id, was_deleted, entry)
+
+        return (largest_change_id, next_page_token, changes)
+
     def list_files(self, query=None, parentId=None):
         
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google Drive client (list_files).")
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (list_files).")
             raise
 
         try:
-            files = client.files().list(q=query).execute()["items"]
+            response = client.files().list(q=query).execute()
+
+            print("Files-List etag: [%s]" % (response[u'etag']))
+
+            files = response["items"]
             final_list = []
             for entry in files:
                 try:
                     # Register the file in our internal cache. The filename might
                     # be modified to ensure uniqueness, so if you have to use a 
                     # filename, use the one that was returned.
-                    final_filename = self.file_cache.register_entry(None, None, entry)
+                    final_filename = self.file_cache.register_entry(None, None, 
+                                                                    entry)
                     final_list.append((entry, final_filename))
                 except (FilenameQuantityError) as e:
-                    logging.exception("We were told to exclude file [%s] from the "
-                                      "listing." % (str(e)))
+                    logging.exception("We were told to exclude file [%s] from "
+                                      "the listing." % (str(e)))
                 except:
-                    logging.exception("There was an entry-registration problem.")
+                    logging.exception("There was an entry-registration "
+                                      "problem.")
                     raise
         except:
-            logging.exception("Problem while listing.")
+            logging.exception("Problem while listing files.")
             raise
 
         return final_list
 
-    def get_file_info(self, file_id):
+    def get_file_info(self, entry_id):
         
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google Drive client (get_file_info).")
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (get_file_info).")
             raise
 
         try:
-            file_info = client.files().get(fileId=file_id).execute()
+            file_info = client.files().get(fileId=entry_id).execute()
         except:
-            logging.exception("Could not get the file with ID [%s]." % (file_id))
+            logging.exception("Could not get the file with ID [%s]." % 
+                              (entry_id))
             raise
             
         return file_info
@@ -504,15 +650,15 @@ class _GoogleProxy(object):
         try:
             method = getattr(self.gdrive_wrapper, action)
         except (AttributeError):
-            logging.exception("Action [%s] can not be proxied to Drive. Action "
-                              "is not valid." % (action))
+            logging.exception("Action [%s] can not be proxied to Drive. "
+                              "Action is not valid." % (action))
             raise
 
         def proxied_method(auto_refresh = True, **kwargs):
-            # Now, try to invoke the mechanism. If we succeed, return immediately.
-            # If we get an authorization-fault (a resolvable authorization 
-            # problem), fall through and attempt to fix it. Allow any other error
-            # to bubble up.
+            # Now, try to invoke the mechanism. If we succeed, return 
+            # immediately. If we get an authorization-fault (a resolvable 
+            # authorization problem), fall through and attempt to fix it. Allow 
+            # any other error to bubble up.
             
             logging.debug("Attempting to invoke method for action [%s]." % 
                           (action))
@@ -522,13 +668,13 @@ class _GoogleProxy(object):
             except (AuthorizationFaultError):
                 if not auto_refresh:
                     logging.exception("There was an authorization fault under "
-                                      "proxied action [%s], and we were told to "
-                                      "NOT auto-refresh." % (action))
+                                      "proxied action [%s], and we were told "
+                                      "to NOT auto-refresh." % (action))
                     raise
             except:
-                logging.exception("There was an unhandled exception during the "
-                                  "execution of the Drive logic for action [%s]." %
-                                  (action))
+                logging.exception("There was an unhandled exception during the"
+                                  " execution of the Drive logic for action "
+                                  "[%s]." % (action))
                 raise
                 
             # We had a resolvable authorization problem.
@@ -546,16 +692,16 @@ class _GoogleProxy(object):
 
             # Re-attempt the action.
 
-            logging.info("Refresh seemed successful. Reattempting action [%s]." % 
-                         (action))
+            logging.info("Refresh seemed successful. Reattempting action "
+                         "[%s]." % (action))
             
             try:
                 return method(**kwargs)
             except:
-                logging.exception("There was an unhandled exception during the "
-                                  "execution of the Drive logic for action [%s], "
-                                  "and refreshing either didn't help it or wasn't "
-                                  "sufficient." % (action))
+                logging.exception("There was an unhandled exception during "
+                                  "the execution of the Drive logic for action"
+                                  " [%s], and refreshing either didn't help it"
+                                  " or wasn't sufficient." % (action))
                 raise
         
         return proxied_method
@@ -565,7 +711,8 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
         try:
             drive_proxy.gp = _GoogleProxy()
         except (Exception) as e:
-            logging.exception("There was an exception while creating the proxy singleton.")
+            logging.exception("There was an exception while creating the proxy"
+                              " singleton.")
             raise
 
     try:    
@@ -576,6 +723,111 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
         raise
     
 drive_proxy.gp = None
+
+def apply_changes():
+    """Go and get a list of recent changes, and then apply them. This is a 
+    separate mechanism because it is too complex an action to put into 
+    _GdriveManager, and it can't be put into _FileCache because it would create 
+    a cyclical relationship with _GdriveManager."""
+
+    # Get cache object.
+
+    try:
+        file_cache = get_cache()
+    except:
+        logging.exception("Could not acquire cache.")
+        raise
+
+    # Get latest change-ID to use as a marker.
+
+    try:
+        local_latest_change_id = file_cache.get_latest_change_id(self)
+    except:
+        logging.exception("Could not get latest change-ID.")
+        raise
+
+    # Move through the changes.
+
+    page_token = None
+    page_num = 0;
+    all_changes = []
+    while(1):
+        logging.debug("Retrieving first page of changes using page-token [%s]." 
+                      % (page_token))
+
+        # Get page.
+
+        try:
+            change_tuple = drive_proxy('list_changes', page_token=page_token)
+            (largest_change_id, next_page_token, changes) = change_tuple
+        except:
+            logging.exception("Could not get changes for page_token [%s] on "
+                              "page (%d)." % (page_token, page_num))
+            raise
+
+        logging.info("We have retrieved (%d) recent changes." % (len(changes)))
+
+        # Determine whether we're getting changes added since last time. This 
+        # is only really relevant just the first time, as the same value is
+        # returned in all subsequent pages.
+
+        if local_latest_change_id != None and largest_change_id <= local_latest_change_id:
+            if largest_change_id < local_latest_change_id:
+                logging.warning("For some reason, the remote change-ID (%d) is"
+                                " -less- than our local change-ID (%d)." % 
+                                (largest_change_id, local_largest_change_id))
+                return
+
+        # If we're here, this is either the first time, or there have actually 
+        # been changes. Collect all of the change information.
+
+        for change_id, change in changes.iteritems():
+            all_changes[change_id] = change
+
+        if next_page_token == None:
+            break
+
+        page_num += 1 
+
+    # We now have a list of all changes.
+
+    if not changes:
+        logging.info("No changes were reported.")
+
+    else:
+        logging.info("We will now apply (%d) changes." % (len(changes)))
+
+        try:
+            file_cache.apply_changes(changes)
+        except:
+            logging.exception("An error occured while applying changes.");
+            raise
+
+        logging.info("Changes were applied successfully.")
+
+class ChangeMonitor(threading.Thread):
+    def __init__(self):
+        super(self.__class__, self).__init__();
+        self.stop_event = threading.Event();
+
+    def run(self):
+        while(1):
+            if self.stop_event.isSet():
+                logging.info("ChangeMonitor is terminating.");
+                break;
+        
+            try:
+                new_random = random.randint(1, 10);
+                q.put(new_random, False);
+                log_me("Child put (%d)." % (new_random), True);
+
+            except Full:
+                log_me("Can not add new item. Full.");
+            
+            time.sleep(Conf.get('change_check_interval_s'));
+
+#change_monitor_thread = ChangeMonitor()
+#change_monitor_thread.start()
 
 ## TODO: Add documentation annotations. Complete comments.
 ## TODO: Rename properties to be private
@@ -597,8 +849,11 @@ def main():
     parser = ArgumentParser(prog=app_name)
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('-u', '--url', help='Get an authorization URL.', action='store_true')
-    group.add_argument('-a', '--auth', metavar=('authcode'), help='Register an authorization-code from Google Drive.')
+    group.add_argument('-u', '--url', help='Get an authorization URL.', 
+                       action='store_true')
+    group.add_argument('-a', '--auth', metavar=('authcode'), 
+                       help='Register an authorization-code from Google '
+                       'Drive.')
 
     args = parser.parse_args()
 
@@ -610,7 +865,9 @@ def main():
             logging.exception("Could not produce auth-URL.")
             sys.exit()
 
-        print("To authorize %s to use your Google Drive account, visit the following URL to produce an authorization code:\n\n%s\n" % (app_name, url))
+        print("To authorize %s to use your Google Drive account, visit the "
+              "following URL to produce an authorization code:\n\n%s\n" % 
+              (app_name, url))
 
     if args.auth:
         authorize = get_auth()

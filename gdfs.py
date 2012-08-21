@@ -30,11 +30,6 @@ if not hasattr(fuse, '__version__'):
 
 fuse.fuse_python_api = (0, 2)
 
-# The path of the example file, relative to the mount directory. First 
-# character is a slash.
-hello_path = '/hello'
-hello_str = 'Hello World!\n'
-
 class GDriveStat(fuse.Stat):
     def __init__(self):
         self.st_mode = 0
@@ -90,15 +85,41 @@ class GDriveFS(Fuse):
             raise
 
         filenames = ['.','..']
-        #filenames.extend((entry_tuple[1] for entry_typle in files))
-        #filenames.extend([entry_tuple[1] for entry_typle in files])
         for entry_tuple in files:
             filenames.append(entry_tuple[1])
 
         for filename in filenames:
             yield fuse.Direntry(filename)
 
+#    def fsinit(*args): 
+#        import syslog
+#        syslog.openlog('myfs') 
+#        syslog.syslog("INIT") 
+#        syslog.closelog() 
+#
+#    def destroy(self, path):
+#        with open('/tmp/destroy', 'w') as f:
+#            f.write("Content.")
+#
+#        import syslog
+#        syslog.openlog('myfs2') 
+#        syslog.syslog("DESTROY (2)") 
+#        syslog.closelog()
+
+def dump_changes(overview):
+    (largest_change_id, next_page_token, changes) = overview
+
+    for change_id, change in changes.iteritems():
+        (file_id, was_deleted, entry) = change
+        print("%s> %s" % (change_id, entry[u'title']))
+
+#    print(changes)
+
 def main():
+    change_overview = drive_proxy('list_changes')
+    dump_changes(change_overview)
+#    drive_proxy('list_files')
+    return
     usage="""GDriveFS Fuser\n\n""" + Fuse.fusage
     server = GDriveFS(version="%prog " + fuse.__version__,
                       usage=usage,
