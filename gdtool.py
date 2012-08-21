@@ -858,9 +858,8 @@ def main():
               (app_name, url))
 
     if args.auth:
-        authorize = get_auth()
-
         try:
+            authorize = get_auth()
             authorize.step2_doexchange(args.auth)
 
         except:
