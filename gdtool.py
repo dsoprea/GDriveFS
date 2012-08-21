@@ -25,37 +25,21 @@ import sys
 import collections
 import threading
 
+from errors import AuthorizationError, AuthorizationFailureError
+from errors import AuthorizationFaultError, MustIgnoreFileError
+from errors import FilenameQuantityError
+
 logging.basicConfig(
         level       = logging.DEBUG, 
         format      = '%(asctime)s  %(levelname)s %(message)s',
-        filename    = '/tmp/gdrivefs.log'
+        filename    = '/var/log/gdrivefs.log'
     )
 
 app_name = 'GDriveFS Tool'
-
 change_monitor_thread = None
 
-class AuthorizationError(Exception):
-    pass
-
-class AuthorizationFailureError(AuthorizationError):
-    """There was a general authorization failure."""
-    pass
-        
-class AuthorizationFaultError(AuthorizationError):
-    """Our authorization is not available or has expired."""
-    pass
-
-class MustIgnoreFileError(Exception):
-    """An error requiring us to ignore the file."""
-    pass
-
-class FilenameQuantityError(MustIgnoreFileError):
-    """Too many filenames share the same name in a single directory."""
-    pass
-
 class Conf(object):
-    """Manages track of changeable parameters."""
+    """Manages options."""
 
     auth_temp_path          = '/var/cache/gdfs'
     auth_cache_filename     = 'credcache'
@@ -76,6 +60,8 @@ class Conf(object):
         setattr(Conf, key, value)
 
 class _OauthAuthorize(object):
+    """Manages authorization process."""
+
     flow            = None
     credentials     = None
     cache_filepath  = None
@@ -251,6 +237,8 @@ def get_auth():
 get_auth.instance = None
 
 class _FileCache(object):
+    """An in-memory buffer of the files that we're aware of."""
+
     entry_cache         = { }
     cleanup_index       = collections.OrderedDict()
     name_index          = { }
@@ -634,7 +622,7 @@ class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
     automatically refresh our authorization credentials when the need arises. 
     Nothing inside the Google Drive wrapper class should call this. In general, 
-    only more external logic should invoke us.
+    only external logic should invoke us.
     """
     
     authorize       = None
@@ -806,6 +794,8 @@ def apply_changes():
         logging.info("Changes were applied successfully.")
 
 class ChangeMonitor(threading.Thread):
+    """The change-management thread."""
+
     def __init__(self):
         super(self.__class__, self).__init__();
         self.stop_event = threading.Event();

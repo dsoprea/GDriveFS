@@ -1,6 +1,9 @@
 #!/usr/bin/python
 
-from gdtool import AuthorizationError, AuthorizationFailureError, AuthorizationFaultError
+from errors import AuthorizationError, AuthorizationFailureError
+from errors import AuthorizationFaultError, MustIgnoreFileError
+from errors import FilenameQuantityError
+
 from gdtool import drive_proxy, get_auth
 from gdtool import get_cache
 
@@ -16,21 +19,22 @@ import time
 from fuse import Fuse
 from argparse import ArgumentParser
 
-logging.basicConfig(
-        level       = logging.DEBUG, 
-        format      = '%(asctime)s  %(levelname)s %(message)s',
-        filename    = '/tmp/gdrivefs.log'
-    )
-
-app_name = 'GDriveFS'
-
 if not hasattr(fuse, '__version__'):
     raise RuntimeError, \
         "Your fuse-py doesn't know of fuse.__version__, probably it's too old."
 
 fuse.fuse_python_api = (0, 2)
 
+logging.basicConfig(
+        level       = logging.DEBUG, 
+        format      = '%(asctime)s  %(levelname)s %(message)s',
+        filename    = '/var/log/gdrivefs.log'
+    )
+
+app_name = 'GDriveFS Tool'
+
 class GDriveStat(fuse.Stat):
+    """A skeleton stat() structure."""
     def __init__(self):
         self.st_mode = 0
         self.st_ino = 0
@@ -44,6 +48,8 @@ class GDriveStat(fuse.Stat):
         self.st_ctime = 0
 
 class GDriveFS(Fuse):
+    """The main filesystem class."""
+
     def getattr(self, path):
         """Return a stat structure."""
 
