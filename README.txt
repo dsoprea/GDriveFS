@@ -9,7 +9,7 @@ involved.
 
 Design goals:
 
-> Limited, but configurable, caching.
+> Limited caching.
 > Cleanup thread to manage cleanup of aged cache items.
 > Continual monitoring of changes to fiel-structure via "changes" functionality 
   of API.
