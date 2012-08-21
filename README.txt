@@ -11,10 +11,8 @@ Design goals:
 
 > Limited caching.
 > Cleanup thread to manage cleanup of aged cache items.
-> Continual monitoring of changes to fiel-structure via "changes" functionality 
-  of API.
-> Complete stat() implementation (or as much as allowed by API, which should be 
-  close to complete).
+> Thread for monitoring changes via "changes" functionality of API.
+> Complete stat() implementation.
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive. This is a moronic choice. Our implementation is built against 
