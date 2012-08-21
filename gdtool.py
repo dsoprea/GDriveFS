@@ -136,7 +136,7 @@ class _OauthAuthorize(object):
 
         # If we're here, we have serialized credentials information.
 
-        logging.info("Raw credentials retrieved from cache.");
+        logging.info("Raw credentials retrieved from cache.")
         
         try:
             credentials = pickle.loads(credentials_serialized)
@@ -737,7 +737,7 @@ def apply_changes():
     # Move through the changes.
 
     page_token = None
-    page_num = 0;
+    page_num = 0
     all_changes = []
     while(1):
         logging.debug("Retrieving first page of changes using page-token [%s]." 
@@ -788,7 +788,7 @@ def apply_changes():
         try:
             file_cache.apply_changes(changes)
         except:
-            logging.exception("An error occured while applying changes.");
+            logging.exception("An error occured while applying changes.")
             raise
 
         logging.info("Changes were applied successfully.")
@@ -797,24 +797,24 @@ class ChangeMonitor(threading.Thread):
     """The change-management thread."""
 
     def __init__(self):
-        super(self.__class__, self).__init__();
-        self.stop_event = threading.Event();
+        super(self.__class__, self).__init__()
+        self.stop_event = threading.Event()
 
     def run(self):
         while(1):
             if self.stop_event.isSet():
-                logging.info("ChangeMonitor is terminating.");
-                break;
+                logging.info("ChangeMonitor is terminating.")
+                break
         
             try:
-                new_random = random.randint(1, 10);
-                q.put(new_random, False);
-                log_me("Child put (%d)." % (new_random), True);
+                new_random = random.randint(1, 10)
+                q.put(new_random, False)
+                log_me("Child put (%d)." % (new_random), True)
 
             except Full:
-                log_me("Can not add new item. Full.");
+                log_me("Can not add new item. Full.")
             
-            time.sleep(Conf.get('change_check_interval_s'));
+            time.sleep(Conf.get('change_check_interval_s'))
 
 #change_monitor_thread = ChangeMonitor()
 #change_monitor_thread.start()
