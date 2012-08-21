@@ -3,6 +3,9 @@ GDriveFS
 
 An innovative FUSE wrapper for Google Drive.
 
+**This project is under active development**. It is currently incomplete, and is 
+only sufficient to the outsider as a working example of the concepts involved.
+
 Design goals:
 
 > Limited, but configurable, caching.
@@ -19,4 +22,3 @@ authorization URL once, plug-in the auth-code, and be done with it.
 
 
 Dustin Oprea
-
