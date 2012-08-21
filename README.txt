@@ -3,8 +3,9 @@ GDriveFS
 
 An innovative FUSE wrapper for Google Drive.
 
-**This project is under active development**. It is currently incomplete, and is 
-only sufficient to the outsider as a working example of the concepts involved.
+**This project is under active development**. It is currently incomplete. To 
+the outsider, it is only sufficient as a working example of the concepts 
+involved.
 
 Design goals:
 
