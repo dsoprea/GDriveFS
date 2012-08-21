@@ -575,9 +575,7 @@ class _GdriveManager(object):
         try:
             response = client.files().list(q=query).execute()
 
-            print("Files-List etag: [%s]" % (response[u'etag']))
-
-            files = response["items"]
+            files = response[u"items"]
             final_list = []
             for entry in files:
                 try:
