@@ -35,6 +35,7 @@ app_name = 'GDriveFS Tool'
 
 class GDriveStat(fuse.Stat):
     """A skeleton stat() structure."""
+
     def __init__(self):
         self.st_mode = 0
         self.st_ino = 0
@@ -51,7 +52,7 @@ class GDriveFS(Fuse):
     """The main filesystem class."""
 
     def getattr(self, path):
-        """Return a stat structure."""
+        """Return a stat() structure."""
 
         st = GDriveStat()
 
@@ -69,8 +70,8 @@ class GDriveFS(Fuse):
             st.st_mode = stat.S_IFREG | 0444
             st.st_nlink = 1
 
-            if 'quotaBytesUsed' in entry:
-                st.st_size = int(entry['quotaBytesUsed'])
+            if u'quotaBytesUsed' in entry:
+                st.st_size = int(entry[u'quotaBytesUsed'])
             else:
                 st.st_size = 0
             
