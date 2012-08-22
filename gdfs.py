@@ -1,35 +1,22 @@
 #!/usr/bin/python
 
-from errors import AuthorizationError, AuthorizationFailureError
-from errors import AuthorizationFaultError, MustIgnoreFileError
-from errors import FilenameQuantityError
-
-from gdtool import drive_proxy, get_auth
-from gdtool import get_cache
+from gdtool import drive_proxy, get_auth, get_cache
 
 import fuse
-import os
 import stat
-import errno
-import sys
 import logging
 import dateutil.parser
-import time
+import getpass
+import os
 
-from fuse import Fuse
-from argparse import ArgumentParser
+from time       import mktime
+from argparse   import ArgumentParser
 
 if not hasattr(fuse, '__version__'):
     raise RuntimeError, \
         "Your fuse-py doesn't know of fuse.__version__, probably it's too old."
 
 fuse.fuse_python_api = (0, 2)
-
-logging.basicConfig(
-        level       = logging.DEBUG, 
-        format      = '%(asctime)s  %(levelname)s %(message)s',
-        filename    = '/var/log/gdrivefs.log'
-    )
 
 app_name = 'GDriveFS Tool'
 
@@ -48,24 +35,37 @@ class GDriveStat(fuse.Stat):
         self.st_mtime = 0
         self.st_ctime = 0
 
-class GDriveFS(Fuse):
+class GDriveFS(fuse.Fuse):
     """The main filesystem class."""
 
     def getattr(self, path):
         """Return a stat() structure."""
 
+        logging.info("Stat() on [%s]." % (path))
+
+        is_folder = False
+        if path == '/':
+            is_folder = True
+
+        else:
+# TODO: We need to access the wrapper instead of the cache so that it can get the information if it's not cached.
+            try:
+                entry = get_cache().get_entry_by_filepath(path)
+            except:
+                logging.exception("Could not find entry in cache for path [%s]." % (path))
+                raise
+
+            is_folder = (entry[u'mimeType'] == "application/vnd.google-apps.folder")
+
         st = GDriveStat()
 
-        if path == '/':
+        if is_folder:
             st.st_mode = stat.S_IFDIR | 0755
             st.st_nlink = 2
 
-        else:#elif path == hello_path:
-            entry = get_cache().get_entry_byfilepath(path)
-# TODO: We need to access the wrapper instead of the cache so that it can get the information if it's not cached.
-
+        else:
             date_obj = dateutil.parser.parse(entry[u'modifiedDate'])
-            mtime_epoch = time.mktime(date_obj.timetuple())
+            mtime_epoch = mktime(date_obj.timetuple())
 
             st.st_mode = stat.S_IFREG | 0444
             st.st_nlink = 1
@@ -85,15 +85,36 @@ class GDriveFS(Fuse):
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
 
+        logging.info("ReadDir(%s) invoked." % (path))
+# TODO: Return -ENOENT if not found?
         try:
             files = drive_proxy('list_files')
         except:
             logging.exception("Could not get list of files.")
             raise
 
+        try:
+            file_cache = get_cache()
+        except:
+            logging.exception("Could not acquire cache.")
+            raise
+
+        try:
+            children = file_cache.get_children_by_path(path)
+        except:
+            logging.exception("There was an exception when retrieving children"
+                              " for path [%s]." % (path))
+            children = []
+
+        try:
+            filepaths = file_cache.get_filepaths_for_entries(children)
+        except:
+            logging.exception("There was a problem producing the list of file-paths.")
+            filepaths = { }
+
         filenames = ['.','..']
-        for entry_tuple in files:
-            filenames.append(entry_tuple[1])
+        for filepath in filepaths.itervalues():
+            filenames.append(os.path.basename(filepath))
 
         for filename in filenames:
             yield fuse.Direntry(filename)
@@ -123,11 +144,12 @@ def dump_changes(overview):
 #    print(changes)
 
 def main():
-    change_overview = drive_proxy('list_changes')
-    dump_changes(change_overview)
-#    drive_proxy('list_files')
-    return
-    usage="""GDriveFS Fuser\n\n""" + Fuse.fusage
+    #change_overview = drive_proxy('list_changes')
+    #dump_changes(change_overview)
+    #files = drive_proxy('list_files')
+
+    #return
+    usage="""GDriveFS Fuser\n\n""" + fuse.Fuse.fusage
     server = GDriveFS(version="%prog " + fuse.__version__,
                       usage=usage,
                       dash_s_do='setsingle')
