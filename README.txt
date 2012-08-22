@@ -13,6 +13,7 @@ Design goals:
 > Cleanup thread to manage cleanup of aged cache items.
 > Thread for monitoring changes via "changes" functionality of API.
 > Complete stat() implementation.
+> Seamlessly work-around duplicate-file allowances in Google Drive.
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive. This is a moronic choice. Our implementation is built against 
