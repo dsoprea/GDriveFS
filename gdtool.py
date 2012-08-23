@@ -6,15 +6,17 @@ from oauth2client.client    import OOB_CALLBACK_URN
 
 from datetime       import datetime
 from argparse       import ArgumentParser
-from pickle         import loads, dumps
 from httplib2       import Http
 from sys            import exit, getfilesystemencoding
 from collections    import OrderedDict
 from threading      import Thread, Event, Lock
+from mimetypes      import guess_extension
 
 import logging
 import os
 import getpass
+import pickle
+import json
 
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
@@ -40,10 +42,12 @@ change_monitor_thread = None
 class Conf(object):
     """Manages options."""
 
-    auth_temp_path          = '/var/cache/gdfs'
-    auth_cache_filename     = 'credcache'
-    auth_secrets_filepath   = '/etc/gdfs/client_secrets.json'
-    change_check_interval_s = .5
+    auth_temp_path                  = '/var/cache/gdfs'
+    auth_cache_filename             = 'credcache'
+    auth_secrets_filepath           = '/etc/gdfs/client_secrets.json'
+    gd_to_normal_mapping_filepath   = '/etc/gdfs/mime_mapping.json'
+    extension_mapping_filepath      = '/etc/gdfs/extension_mapping.json'
+    change_check_interval_s         = .5
 
     @staticmethod
     def get(key):
@@ -138,7 +142,7 @@ class _OauthAuthorize(object):
         logging.info("Raw credentials retrieved from cache.")
         
         try:
-            credentials = loads(credentials_serialized)
+            credentials = pickle.loads(credentials_serialized)
         except:
             # We couldn't decode the credentials. Kill the cache.
             self.__clear_cache()
@@ -190,7 +194,7 @@ class _OauthAuthorize(object):
         credentials_serialized = None
         
         try:
-            credentials_serialized = dumps(credentials)
+            credentials_serialized = pickle.dumps(credentials)
         except:
             logging.exception("Could not serialize credentials.")
             raise
@@ -234,6 +238,146 @@ def get_auth():
     return get_auth.instance
 
 get_auth.instance = None
+
+class Drive_Utility(object):
+    """General utility functions loosely related to GD."""
+
+    # Default mime-types for GD mime-types.
+    gd_to_normal_mime_mappings = {
+            'application/vnd.google-apps.document':     'text/plain',
+            'application/vnd.google-apps.spreadsheet':  'application/vnd.ms-excel',
+            'application/vnd.google-apps.presentation': 'application/vnd.ms-powerpoint',
+            'application/vnd.google-apps.drawing':      'application/pdf',
+            'application/vnd.google-apps.audio':        'audio/mpeg',
+            'application/vnd.google-apps.photo':        'image/png',
+            'application/vnd.google-apps.video':        'video/x-flv'
+        }
+
+    # Default extensions for mime-types.
+    default_extensions = { 
+            'text/plain':                       'txt',
+            'application/vnd.ms-excel':         'xls',
+            'application/vnd.ms-powerpoint':    'ppt',
+            'application/pdf':                  'pdf',
+            'audio/mpeg':                       'mp3',
+            'image/png':                        'png',
+            'video/x-flv':                      'flv'
+        }
+
+    mimetype_folder = u"application/vnd.google-apps.folder"
+
+    def __init__(self):
+        self.__load_mappings()
+
+    @staticmethod
+    def get_instance():
+        try:
+            return Drive_Utility.instance
+        except:
+            Drive_Utility.instance = Drive_Utility()
+            return Drive_Utility.instance
+
+    def __load_mappings(self):
+        # Allow someone to override our default mappings of the GD types.
+
+        gd_to_normal_mapping_filepath = \
+            Conf.get('gd_to_normal_mapping_filepath')
+
+        try:
+            with open(gd_to_normal_mapping_filepath, 'r') as f:
+                self.gd_to_normal_mime_mappings.extend(json.load(f))
+        except:
+            logging.info("No mime-mapping was found.")
+
+        # Allow someone to set file-extensions for mime-types, and not rely on 
+        # Python's educated guesses.
+
+        extension_mapping_filepath = Conf.get('extension_mapping_filepath')
+
+        try:
+            with open(extension_mapping_filepath, 'r') as f:
+                self.default_extensions.extend(json.load(f))
+        except:
+            logging.info("No extension-mapping was found.")
+
+    def is_folder(self, entry):
+        return (entry[u'mimeType'] == self.mimetype_folder)
+
+    def get_extension(self, entry):
+        """Return the filename extension that should be associated with this 
+        file.
+        """
+
+        # A front-line defense against receiving the wrong kind of data.
+        if u'id' not in entry:
+            raise Exception("Entry is not a dictionary with a key named "
+                            "'id'.")
+
+        logging.debug("Deriving extension for extension with ID [%s]." % 
+                      (entry[u'id']))
+
+        if self.is_folder(entry):
+            message = ("Could not derive extension for folder.  ENTRY_ID= "
+                       "[%s]" % (entry[u'id']))
+            
+            logging.error(message)
+            raise Exception(message)
+
+        # Since we're loading from files and also juggling mime-types coming 
+        # from Google, we're just going to normalize all of the character-sets 
+        # to ASCII. This is reasonable since they're supposed to be standards-
+        # based, anyway.
+        mime_type = entry[u'mimeType'].encode('ASCII')
+
+        normal_mime_type = None
+
+        # If there's a standard type on the entry, there won't be a list of
+        # export options.
+        if u'exportLinks' not in entry or not entry[u'exportLinks']:
+            normal_mime_type = mime_type
+
+        # If we have a local mapping of the mime-type on the entry to another 
+        # mime-type, only use it if that mime-type is listed among the export-
+        # types.
+        elif mime_type in self.gd_to_normal_mime_mappings:
+            normal_mime_type_candidate = self.gd_to_normal_mime_mappings[mime_type]
+            if normal_mime_type_candidate in entry[u'exportLinks']:
+                normal_mime_type = normal_mime_type_candidate
+
+        # If we still haven't been able to normalize the mime-type, use the 
+        # first export-link
+        if normal_mime_type == None:
+            normal_mime_type = None
+
+            # If there is one or more mime-type-specific download links.
+            for temp_mime_type in entry[u'exportLinks'].iterkeys():
+                normal_mime_type = temp_mime_type
+                break
+
+        logging.debug("GD MIME [%s] normalized to [%s]." % (mime_type, 
+                                                           normal_mime_type))
+
+        # We have an actionable mime-type for the entry, now.
+
+        if normal_mime_type in self.default_extensions:
+            file_extension = self.default_extensions[normal_mime_type]
+            logging.debug("We had a mapping for mime-type [%s] to extension "
+                          "[%s]." % (normal_mime_type, file_extension))
+
+        else:
+            try:
+                file_extension = guess_extension(normal_mime_type)
+            except:
+                logging.exception("Could not attempt to derive a file-extension "
+                                  "for mime-type [%s]." % (normal_mime_type))
+                raise
+
+            file_extension = file_extension[1:]
+
+            logging.debug("Guessed extension [%s] for mime-type [%s]." % 
+                          (file_extension, normal_mime_type))
+
+        return file_extension
 
 class _FileCache(object):
     """An in-memory buffer of the files that we're aware of."""
@@ -522,10 +666,27 @@ class _FileCache(object):
                 return path_cache[entry_id]
 
             parent_path = get_path(linked_entry[1], depth + 1)
-            path = self._translate_filename_charset("%s/%s" % (parent_path, 
-                                                    entry[u'title']))
+            path = ("%s/%s" % (parent_path, entry[u'title']))
 
+            # If it's not a folder, try to find an extension to attach to it.
+
+            utility = Drive_Utility.get_instance()
+
+            if not utility.is_folder(entry):
+                try:
+                    extension = utility.get_extension(entry)
+                except:
+                    logging.exception("Could not attempt to derive an extension "
+                                      "for entry with ID [%s] and mime-type "
+                                      "[%s]." % (entry_id, entry[u'mimeType']))
+                    raise
+
+                if extension != None:
+                    path = ("%s.%s" % (path, extension))
+
+            path = self._translate_filename_charset(path)
             path_cache[entry_id] = path
+
             return path
 
         # Produce a dictionary of entry-IDs and unique file-paths.
@@ -647,7 +808,6 @@ class _GdriveManager(object):
 
     conf_service_name       = 'drive'
     conf_service_version    = 'v2'
-    conf_mimetype_folder    = ["application/vnd.google-apps.folder"]
     
     def __init__(self):
         self.file_cache = get_cache()

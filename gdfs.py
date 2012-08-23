@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from gdtool import drive_proxy, get_auth, get_cache
+from gdtool import drive_proxy, get_auth, get_cache, Drive_Utility
 
 import fuse
 import stat
@@ -55,7 +55,7 @@ class GDriveFS(fuse.Fuse):
                 logging.exception("Could not find entry in cache for path [%s]." % (path))
                 raise
 
-            is_folder = (entry[u'mimeType'] == "application/vnd.google-apps.folder")
+            is_folder = Drive_Utility.get_instance().is_folder(entry)
 
         st = GDriveStat()
 
