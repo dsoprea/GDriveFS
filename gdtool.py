@@ -252,7 +252,7 @@ class _FileCache(object):
 
     locker = Lock()
     latest_change_id = None
-    local_characteristics = getfilesystemencoding()
+    local_character_set = getfilesystemencoding()
 
     def get_cached_entries(self):
         return self.entry_cache
@@ -489,7 +489,7 @@ class _FileCache(object):
     def _translate_filename_charset(self, original_filename):
         """Make sure we're in the right character set."""
         
-        return original_filename.encode(self.local_characteristics)
+        return original_filename.encode(self.local_character_set)
 
     def _build_heirarchy(self, entry_list_raw):
         """Build a heirarchical model of the filesystem."""
@@ -522,8 +522,8 @@ class _FileCache(object):
                 return path_cache[entry_id]
 
             parent_path = get_path(linked_entry[1], depth + 1)
-            translated_filename = self._translate_filename_charset(entry[u'title'])
-            path = ("%s/%s" % (parent_path, translated_filename))
+            path = self._translate_filename_charset("%s/%s" % (parent_path, 
+                                                    entry[u'title']))
 
             path_cache[entry_id] = path
             return path
@@ -544,7 +544,7 @@ class _FileCache(object):
                     break
 
                 i += 1
-                current_variation = ("%s (%d)" % (path, i))
+                current_variation = self._translate_filename_charset("%s (%d)" % (path, i))
             
             if elected_variation == None:
                 logging.error("There were too many duplicates of filename [%s]."
@@ -562,7 +562,7 @@ class _FileCache(object):
             entries = [ ]
             for linked_entry in self.root_entries:
                 entry_id = linked_entry[0][u'id']
-                entries.append(self.entry_ll[entry_id][0])
+                entries.append(entry_id)
 
             return entries
 
@@ -574,12 +574,12 @@ class _FileCache(object):
 
         else:
             entry_id = self.paths_by_name[path]
-            return self.entry_ll[entry_id][2]
+            return [child[0][u'id'] for child in self.entry_ll[entry_id][2]]
 
     def get_filepaths_for_entries(self, entry_id_list):
+
         filepaths = { }
-        for entry in entry_id_list:
-            entry_id = entry[u'id']
+        for entry_id in entry_id_list:
             filepaths[entry_id] = self.filepath_index_r[entry_id]
 
         return filepaths

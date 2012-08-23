@@ -85,10 +85,22 @@ class GDriveFS(fuse.Fuse):
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
 
-        logging.info("ReadDir(%s) invoked." % (path))
+        logging.info("ReadDir(%s,%d) invoked." % (path, offset))
+
+        # We expect "offset" to always be (0).
+        if offset != 0:
+            logging.warning("readdir() has been invoked for path [%s] and non-"
+                            "zero offset (%d). This is not allowed." % 
+                            (path, offset))
+
 # TODO: Return -ENOENT if not found?
+# TODO: Once we start working on the cache, make sure we don't make this call, 
+#       constantly.
+
+        logging.debug("Listing files.")
+
         try:
-            files = drive_proxy('list_files')
+            drive_proxy('list_files')
         except:
             logging.exception("Could not get list of files.")
             raise
@@ -99,12 +111,16 @@ class GDriveFS(fuse.Fuse):
             logging.exception("Could not acquire cache.")
             raise
 
+        logging.debug("Retrieving children for path [%s]." % (path))
+
         try:
             children = file_cache.get_children_by_path(path)
         except:
+            children = []
             logging.exception("There was an exception when retrieving children"
                               " for path [%s]." % (path))
-            children = []
+
+        #logging.debug("Rendering paths for (%d) children." % (len(children)))
 
         try:
             filepaths = file_cache.get_filepaths_for_entries(children)
