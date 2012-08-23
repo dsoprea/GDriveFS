@@ -14,6 +14,8 @@ Design goals:
 > Thread for monitoring changes via "changes" functionality of API.
 > Complete stat() implementation.
 > Seamlessly work around duplicate-file allowances in Google Drive.
+> Seamlessly manage file-type versatility in Google Drive (files do not retain 
+  a particular mime-type under GD).
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive. This is a moronic choice. Our implementation is built against 
