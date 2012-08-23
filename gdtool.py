@@ -242,7 +242,7 @@ get_auth.instance = None
 class Drive_Utility(object):
     """General utility functions loosely related to GD."""
 
-    # Default mime-types for GD mime-types.
+    # Mime-types to translate to, if they appear within the "exportLinks" list.
     gd_to_normal_mime_mappings = {
             'application/vnd.google-apps.document':     'text/plain',
             'application/vnd.google-apps.spreadsheet':  'application/vnd.ms-excel',
