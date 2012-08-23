@@ -8,7 +8,7 @@ from datetime       import datetime
 from argparse       import ArgumentParser
 from pickle         import loads, dumps
 from httplib2       import Http
-from sys            import exit
+from sys            import exit, getfilesystemencoding
 from collections    import OrderedDict
 from threading      import Thread, Event, Lock
 
@@ -252,6 +252,7 @@ class _FileCache(object):
 
     locker = Lock()
     latest_change_id = None
+    local_characteristics = getfilesystemencoding()
 
     def get_cached_entries(self):
         return self.entry_cache
@@ -297,10 +298,6 @@ class _FileCache(object):
 
         with self.locker:
             # Store the entry.
-
-            # TODO: We translate the file-name information coming back into 
-            # ASCII. We're not sure how this affects other locales, but it 
-            # won't work in ours if we don't.
 
             # Keep a forward and reverse index for the file-paths so that we 
             # can allow look-up and clean-up based on IDs while also allowing 
@@ -489,9 +486,10 @@ class _FileCache(object):
 
         return (root_entries, entry_ll)
 
-# TODO: We now deal completely in Unicode, but we don't seem to be allowed to return it to FUSE.
     def _translate_filename_charset(self, original_filename):
-        return original_filename.encode('ascii')
+        """Make sure we're in the right character set."""
+        
+        return original_filename.encode(self.local_characteristics)
 
     def _build_heirarchy(self, entry_list_raw):
         """Build a heirarchical model of the filesystem."""
