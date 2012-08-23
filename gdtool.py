@@ -244,24 +244,24 @@ class Drive_Utility(object):
 
     # Mime-types to translate to, if they appear within the "exportLinks" list.
     gd_to_normal_mime_mappings = {
-            'application/vnd.google-apps.document':     'text/plain',
-            'application/vnd.google-apps.spreadsheet':  'application/vnd.ms-excel',
-            'application/vnd.google-apps.presentation': 'application/vnd.ms-powerpoint',
-            'application/vnd.google-apps.drawing':      'application/pdf',
-            'application/vnd.google-apps.audio':        'audio/mpeg',
-            'application/vnd.google-apps.photo':        'image/png',
-            'application/vnd.google-apps.video':        'video/x-flv'
+            u'application/vnd.google-apps.document':        u'text/plain',
+            u'application/vnd.google-apps.spreadsheet':     u'application/vnd.ms-excel',
+            u'application/vnd.google-apps.presentation':    u'application/vnd.ms-powerpoint',
+            u'application/vnd.google-apps.drawing':         u'application/pdf',
+            u'application/vnd.google-apps.audio':           u'audio/mpeg',
+            u'application/vnd.google-apps.photo':           u'image/png',
+            u'application/vnd.google-apps.video':           u'video/x-flv'
         }
 
     # Default extensions for mime-types.
     default_extensions = { 
-            'text/plain':                       'txt',
-            'application/vnd.ms-excel':         'xls',
-            'application/vnd.ms-powerpoint':    'ppt',
-            'application/pdf':                  'pdf',
-            'audio/mpeg':                       'mp3',
-            'image/png':                        'png',
-            'video/x-flv':                      'flv'
+            u'text/plain':                      u'txt',
+            u'application/vnd.ms-excel':        u'xls',
+            u'application/vnd.ms-powerpoint':   u'ppt',
+            u'application/pdf':                 u'pdf',
+            u'audio/mpeg':                      u'mp3',
+            u'image/png':                       u'png',
+            u'video/x-flv':                     u'flv'
         }
 
     mimetype_folder = u"application/vnd.google-apps.folder"
@@ -327,8 +327,7 @@ class Drive_Utility(object):
         # from Google, we're just going to normalize all of the character-sets 
         # to ASCII. This is reasonable since they're supposed to be standards-
         # based, anyway.
-        mime_type = entry[u'mimeType'].encode('ASCII')
-
+        mime_type = entry[u'mimeType']
         normal_mime_type = None
 
         # If there's a standard type on the entry, there won't be a list of
