@@ -262,7 +262,7 @@ class _GdriveManager(object):
 # TODO: Do a look-up, here.
         raise Exception("no entry_index for entry with ID [%s]." % (id))
 
-    def get_about(self):
+    def get_about_info(self):
         """Return the 'about' information for the drive."""
 
         try:
@@ -321,7 +321,28 @@ class _GdriveManager(object):
 
         return (largest_change_id, next_page_token, changes)
 
-    def list_files(self, query=None, parentId=None):
+    def get_children_under_parent_id(self, parent_id, query=None):
+
+        logging.info("Getting client for child-listing.")
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (list_files_by_parent_id).")
+            raise
+
+        logging.info("Listing entries under parent with ID [%s]." % (parent_id))
+
+        try:
+            response = client.children().list(q=query,folderId=parent_id).execute()
+        except:
+            logging.exception("Problem while listing files.")
+            raise
+
+        return [ entry[u'id'] for entry in response[u'items'] ]
+
+    def list_files(self, query=None):
         
         try:
             client = self.get_client()

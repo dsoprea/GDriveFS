@@ -3,8 +3,246 @@ import logging
 from sys            import getfilesystemencoding
 from collections    import OrderedDict
 from threading      import Lock
+from datetime       import datetime
 
 from utility import get_utility
+
+class CacheFault(Exception):
+    pass
+
+class _CacheRegistry(object):
+    cache = { }
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def get_instance(resource_name):
+    
+        logging.debug("CacheRegistry(%s)" % (resource_name))
+
+        try:
+            _CacheRegistry.instance;
+        except:
+            try:
+                _CacheRegistry.instance = _CacheRegistry()
+            except:
+                logger.exception("Could not manufacture singleton "
+                                 "CacheRegistry instance.")
+                raise
+
+        if resource_name not in _CacheRegistry.instance.cache:
+            _CacheRegistry.instance.cache[resource_name] = { }
+
+        return _CacheRegistry.instance
+
+    def set(self, resource_name, key, value):
+
+        logging.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, type(value)))
+
+        try:
+            old_tuple = self.cache[resource_name][key]
+        except:
+            old_tuple = None
+
+        self.cache[resource_name][key] = (value, datetime.now())
+
+        return old_tuple
+
+    def remove(self, resource_name, key, cleanup_trigger=None):
+
+        logging.debug("CacheRegistry.remove(%s,%s,%s)" % (resource_name, key, 
+                      type(cleanup_trigger)))
+
+        try:
+            old_tuple = self.cache[resource_name][key]
+        except:
+            raise
+
+        self.__cleanup_entry(resource_name, key, True, 
+                             cleanup_trigger=cleanup_trigger)
+
+        return old_tuple[0]
+
+    def get(self, resource_name, key, max_age, cleanup_trigger=None):
+        
+        logging.debug("CacheRegistry.get(%s,%s,%s,%s)" % (resource_name, key, 
+                      max_age, cleanup_trigger))
+
+        try:
+            (value, timestamp) = self.cache[resource_name][key]
+        except:
+            raise CacheFault("NonExist")
+
+        if max_age != None and (datetime.now() - timestamp).seconds > max_age:
+            self.__cleanup_entry(resource_name, key, False, 
+                                 cleanup_trigger=cleanup_trigger)
+            raise CacheFault("Stale")
+
+        return value
+
+    def exists(self, resource_name, key, max_age, cleanup_trigger=None):
+
+        logging.debug("CacheRegistry.exists(%s,%s,%s,%s)" % (resource_name, key, 
+                      max_age, cleanup_trigger))
+        
+        try:
+            (value, timestamp) = self.cache[resource_name][key]
+        except:
+            return False
+
+        if max_age != None and (datetime.now() - timestamp).seconds > max_age:
+            self.__cleanup_entry(resource_name, key, False, 
+                                 cleanup_trigger=cleanup_trigger)
+            return False
+
+        return True
+
+    def __cleanup_entry(self, resource_name, key, force, cleanup_trigger=None):
+
+        logging.debug("Doing clean-up for resource_name [%s] and key [%s]." % 
+                      (resource_name, key))
+
+        try:
+            del self.cache[resource_name][key]
+        except:
+            logging.exception("Could not clean-up entry with resource_name "
+                              "[%s] and key [%s]." % (resource_name, key))
+            raise
+
+        if cleanup_trigger != None:
+            logging.debug("Running clean-up trigger for resource_name [%s] and"
+                          " key [%s]." % (resource_name, key))
+
+            try:
+                cleanup_trigger(resource_name, key, force)
+            except:
+                logging.exception("Cleanup-trigger failed.")
+                raise
+
+class _CacheAgent(object):
+    registry        = None
+    resource_name   = None
+    max_age         = None
+
+    fault_handler   = None
+    cleanup_trigger = None
+
+    def __init__(self, resource_name, max_age, fault_handler=None, cleanup_trigger=None):
+        logging.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
+                                                   type(fault_handler), 
+                                                   cleanup_trigger))
+
+        self.registry = _CacheRegistry.get_instance(resource_name)
+        self.resource_name = resource_name
+        self.max_age = max_age
+
+        self.fault_handler = fault_handler
+        self.cleanup_trigger = cleanup_trigger
+
+        instance = _CacheRegistry.instance
+
+    def set(self, key, value):
+        logging.debug("CacheAgent.set(%s,%s)" % (key, type(value)))
+
+        return self.registry.set(self.resource_name, key, value)
+
+    def remove(self, key):
+        logging.debug("CacheAgent.remove(%s)" % (key))
+
+        return self.registry.remove(self.resource_name, key, cleanup_trigger=self.cleanup_trigger)
+
+    def get(self, key):
+        logging.debug("CacheAgent.get(%s)" % (key))
+
+        try:
+            result = self.registry.get(self.resource_name, key, 
+                                       max_age=self.max_age, 
+                                       cleanup_trigger=self.cleanup_trigger)
+        except (CacheFault):
+            if self.fault_handler == None:
+                raise
+
+            try:
+                result = self.fault_handler(self.resource_name, key)
+            except:
+                logging.exception("There was an exception in the fault-"
+                                  "handler, handling for key [%s].", key)
+                raise
+
+            if result == None:
+                raise
+
+        return result
+
+    def exists(self, key):
+        logging.debug("CacheAgent.exists(%s)" % (key))
+
+        return self.registry.exists(self.resource_name, key, 
+                                    max_age=self.max_age,
+                                    cleanup_trigger=self.cleanup_trigger)
+
+    def __getitem__(self, key):
+        return self.get(key)
+
+    def __setitem__(self, key, value):
+        return self.set(key, value)
+
+    def __delitem__(self, key):
+        return self.remove(key)
+
+class CacheClient(object):
+    
+    cache = None
+
+    def __init__(self):
+        child_type = self.__class__.__bases__[0].__name__
+        max_age = self.get_max_cache_age_seconds()
+        
+        logging.debug("CacheClient(%s,%s)" % (child_type, max_age))
+
+        self.cache = _CacheAgent(child_type, max_age, 
+                                 fault_handler=self.fault_handler, 
+                                 cleanup_trigger=self.cleanup_trigger)
+
+        self.init()
+
+    def fault_handler(self, resource_name, key):
+        pass
+
+    def cleanup_trigger(self, resource_name, key, force):
+        pass
+
+    def init(self):
+        pass
+
+    def get_max_cache_age_seconds(self):
+        raise NotImplementedError("get_max_cache_age() must be implemented in "
+                                  "the CacheClient child.")
+
+    @classmethod
+    def get_instance(cls):
+        """A helper method to dispense a singleton of whomever is inheriting "
+        from us.
+        """
+
+        try:
+            CacheClient.instance
+        except:
+            CacheClient.instance = cls()
+
+        return CacheClient.instance
+
+class EntryCache(CacheClient):
+
+    def fault_handler(self, resource_name, key):
+        pass
+
+    def cleanup_trigger(self, resource_name, key, force):
+        pass
+
+    def get_max_cache_age_seconds(self):
+        return None
 
 class _FileCache(object):
     """An in-memory buffer of the files that we're aware of."""
@@ -64,6 +302,19 @@ class _FileCache(object):
         """
 
         entry_id = entry[u'id']
+
+        # TODO: Register in our granular entry cache. We don't do anything with
+        #       this right now, and the current class/method will probably go 
+        #       away.
+
+        cache = EntryCache.get_instance().cache
+
+        try:
+            cache[entry_id] = entry
+        except:
+            logging.exception("Could not set entry with ID [%s] in entry-"
+                              "cache." % (entry_id))
+            raise
 
         self.cleanup_by_id(entry_id)
 

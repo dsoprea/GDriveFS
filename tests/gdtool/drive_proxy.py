@@ -20,9 +20,22 @@ class GetDriveTestCase(TestCase):
 
 #        print(files)
 
+    def test_list_files_by_parent_id(self):
+
+        from gdrivefs.gdtool import drive_proxy
+        drive_proxy('list_files')
+
+        parent_id = '0AJFt2OXeDBqSUk9PVA'
+
+        entries = drive_proxy('get_children_under_parent_id', parent_id=parent_id)
+
+        print(entries)
+
     def test_get_about(self):
 
-        response = drive_proxy('get_about')
+        return
+
+        response = drive_proxy('get_about_info')
 
 #        print(response[u'rootFolderId'])
         import pprint
