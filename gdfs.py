@@ -1,7 +1,5 @@
 #!/usr/bin/python
 
-from gdtool import drive_proxy, get_auth, get_cache, Drive_Utility
-
 import fuse
 import stat
 import logging
@@ -12,6 +10,10 @@ import os
 from time       import mktime
 from argparse   import ArgumentParser
 
+from gdtool import drive_proxy, get_auth
+from utility import get_utility
+from cache import get_cache
+
 if not hasattr(fuse, '__version__'):
     raise RuntimeError, \
         "Your fuse-py doesn't know of fuse.__version__, probably it's too old."
@@ -20,7 +22,7 @@ fuse.fuse_python_api = (0, 2)
 
 app_name = 'GDriveFS Tool'
 
-class GDriveStat(fuse.Stat):
+class _GDriveStat(fuse.Stat):
     """A skeleton stat() structure."""
 
     def __init__(self):
@@ -35,13 +37,15 @@ class GDriveStat(fuse.Stat):
         self.st_mtime = 0
         self.st_ctime = 0
 
-class GDriveFS(fuse.Fuse):
+class _GDriveFS(fuse.Fuse):
     """The main filesystem class."""
 
     def getattr(self, path):
         """Return a stat() structure."""
 
         logging.info("Stat() on [%s]." % (path))
+
+# TODO: !! If the listed directory is '/', it will be enumerated first, and then all of the entries stat()'d. If it's a subdirectory, first the token will be stat()'d, -then- its entries are enumerated. We need to pull the listing here, is not already loaded. SEE NEXT COMMENT.
 
         is_folder = False
         if path == '/':
@@ -55,9 +59,9 @@ class GDriveFS(fuse.Fuse):
                 logging.exception("Could not find entry in cache for path [%s]." % (path))
                 raise
 
-            is_folder = Drive_Utility.get_instance().is_folder(entry)
+            is_folder = get_utility().is_folder(entry)
 
-        st = GDriveStat()
+        st = _GDriveStat()
 
         if is_folder:
             st.st_mode = stat.S_IFDIR | 0755
@@ -120,7 +124,8 @@ class GDriveFS(fuse.Fuse):
             logging.exception("There was an exception when retrieving children"
                               " for path [%s]." % (path))
 
-        #logging.debug("Rendering paths for (%d) children." % (len(children)))
+        id_list_string = ', '.join(children)
+        logging.debug("Rendering paths for children: %s" % (id_list_string))
 
         try:
             filepaths = file_cache.get_filepaths_for_entries(children)
@@ -166,7 +171,7 @@ def main():
 
     #return
     usage="""GDriveFS Fuser\n\n""" + fuse.Fuse.fusage
-    server = GDriveFS(version="%prog " + fuse.__version__,
+    server = _GDriveFS(version="%prog " + fuse.__version__,
                       usage=usage,
                       dash_s_do='setsingle')
 

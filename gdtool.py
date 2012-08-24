@@ -7,60 +7,22 @@ from oauth2client.client    import OOB_CALLBACK_URN
 from datetime       import datetime
 from argparse       import ArgumentParser
 from httplib2       import Http
-from sys            import exit, getfilesystemencoding
-from collections    import OrderedDict
-from threading      import Thread, Event, Lock
-from mimetypes      import guess_extension
+from sys            import exit
+from threading      import Thread, Event
 
 import logging
 import os
-import getpass
 import pickle
 import json
 
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
 from errors import FilenameQuantityError
-
-current_user = getpass.getuser()
-
-if current_user == 'root':
-    log_filepath = '/var/log/gdrivefs.log'
-
-else:
-    log_filepath = 'gdrivefs.log'
-
-logging.basicConfig(
-        level       = logging.DEBUG, 
-        format      = '%(asctime)s  %(levelname)s %(message)s',
-        filename    = log_filepath
-    )
+from cache import get_cache
+from conf import Conf
 
 app_name = 'GDriveFS Tool'
 change_monitor_thread = None
-
-class Conf(object):
-    """Manages options."""
-
-    auth_temp_path                  = '/var/cache/gdfs'
-    auth_cache_filename             = 'credcache'
-    auth_secrets_filepath           = '/etc/gdfs/client_secrets.json'
-    gd_to_normal_mapping_filepath   = '/etc/gdfs/mime_mapping.json'
-    extension_mapping_filepath      = '/etc/gdfs/extension_mapping.json'
-    change_check_interval_s         = .5
-
-    @staticmethod
-    def get(key):
-        try:
-            return Conf.__dict__[key]
-        except:
-            logging.exception("Could not retrieve config value with key "
-                              "[%s]." % (key))
-            raise Exception
-
-    @staticmethod
-    def set(key, value):
-        setattr(Conf, key, value)
 
 class _OauthAuthorize(object):
     """Manages authorization process."""
@@ -233,566 +195,15 @@ class _OauthAuthorize(object):
         
 def get_auth():
     if get_auth.instance == None:
-        get_auth.instance = _OauthAuthorize()
+        try:
+            get_auth.instance = _OauthAuthorize()
+        except:
+            logging.exception("Could not manufacture OauthAuthorize instance.")
+            raise
     
     return get_auth.instance
 
 get_auth.instance = None
-
-class Drive_Utility(object):
-    """General utility functions loosely related to GD."""
-
-    # Mime-types to translate to, if they appear within the "exportLinks" list.
-    gd_to_normal_mime_mappings = {
-            u'application/vnd.google-apps.document':        u'text/plain',
-            u'application/vnd.google-apps.spreadsheet':     u'application/vnd.ms-excel',
-            u'application/vnd.google-apps.presentation':    u'application/vnd.ms-powerpoint',
-            u'application/vnd.google-apps.drawing':         u'application/pdf',
-            u'application/vnd.google-apps.audio':           u'audio/mpeg',
-            u'application/vnd.google-apps.photo':           u'image/png',
-            u'application/vnd.google-apps.video':           u'video/x-flv'
-        }
-
-    # Default extensions for mime-types.
-    default_extensions = { 
-            u'text/plain':                      u'txt',
-            u'application/vnd.ms-excel':        u'xls',
-            u'application/vnd.ms-powerpoint':   u'ppt',
-            u'application/pdf':                 u'pdf',
-            u'audio/mpeg':                      u'mp3',
-            u'image/png':                       u'png',
-            u'video/x-flv':                     u'flv'
-        }
-
-    mimetype_folder = u"application/vnd.google-apps.folder"
-
-    def __init__(self):
-        self.__load_mappings()
-
-    @staticmethod
-    def get_instance():
-        try:
-            return Drive_Utility.instance
-        except:
-            Drive_Utility.instance = Drive_Utility()
-            return Drive_Utility.instance
-
-    def __load_mappings(self):
-        # Allow someone to override our default mappings of the GD types.
-
-        gd_to_normal_mapping_filepath = \
-            Conf.get('gd_to_normal_mapping_filepath')
-
-        try:
-            with open(gd_to_normal_mapping_filepath, 'r') as f:
-                self.gd_to_normal_mime_mappings.extend(json.load(f))
-        except:
-            logging.info("No mime-mapping was found.")
-
-        # Allow someone to set file-extensions for mime-types, and not rely on 
-        # Python's educated guesses.
-
-        extension_mapping_filepath = Conf.get('extension_mapping_filepath')
-
-        try:
-            with open(extension_mapping_filepath, 'r') as f:
-                self.default_extensions.extend(json.load(f))
-        except:
-            logging.info("No extension-mapping was found.")
-
-    def is_folder(self, entry):
-        return (entry[u'mimeType'] == self.mimetype_folder)
-
-    def get_extension(self, entry):
-        """Return the filename extension that should be associated with this 
-        file.
-        """
-
-        # A front-line defense against receiving the wrong kind of data.
-        if u'id' not in entry:
-            raise Exception("Entry is not a dictionary with a key named "
-                            "'id'.")
-
-        logging.debug("Deriving extension for extension with ID [%s]." % 
-                      (entry[u'id']))
-
-        if self.is_folder(entry):
-            message = ("Could not derive extension for folder.  ENTRY_ID= "
-                       "[%s]" % (entry[u'id']))
-            
-            logging.error(message)
-            raise Exception(message)
-
-        # Since we're loading from files and also juggling mime-types coming 
-        # from Google, we're just going to normalize all of the character-sets 
-        # to ASCII. This is reasonable since they're supposed to be standards-
-        # based, anyway.
-        mime_type = entry[u'mimeType']
-        normal_mime_type = None
-
-        # If there's a standard type on the entry, there won't be a list of
-        # export options.
-        if u'exportLinks' not in entry or not entry[u'exportLinks']:
-            normal_mime_type = mime_type
-
-        # If we have a local mapping of the mime-type on the entry to another 
-        # mime-type, only use it if that mime-type is listed among the export-
-        # types.
-        elif mime_type in self.gd_to_normal_mime_mappings:
-            normal_mime_type_candidate = self.gd_to_normal_mime_mappings[mime_type]
-            if normal_mime_type_candidate in entry[u'exportLinks']:
-                normal_mime_type = normal_mime_type_candidate
-
-        # If we still haven't been able to normalize the mime-type, use the 
-        # first export-link
-        if normal_mime_type == None:
-            normal_mime_type = None
-
-            # If there is one or more mime-type-specific download links.
-            for temp_mime_type in entry[u'exportLinks'].iterkeys():
-                normal_mime_type = temp_mime_type
-                break
-
-        logging.debug("GD MIME [%s] normalized to [%s]." % (mime_type, 
-                                                           normal_mime_type))
-
-        # We have an actionable mime-type for the entry, now.
-
-        if normal_mime_type in self.default_extensions:
-            file_extension = self.default_extensions[normal_mime_type]
-            logging.debug("We had a mapping for mime-type [%s] to extension "
-                          "[%s]." % (normal_mime_type, file_extension))
-
-        else:
-            try:
-                file_extension = guess_extension(normal_mime_type)
-            except:
-                logging.exception("Could not attempt to derive a file-extension "
-                                  "for mime-type [%s]." % (normal_mime_type))
-                raise
-
-            file_extension = file_extension[1:]
-
-            logging.debug("Guessed extension [%s] for mime-type [%s]." % 
-                          (file_extension, normal_mime_type))
-
-        return file_extension
-
-class _FileCache(object):
-    """An in-memory buffer of the files that we're aware of."""
-
-    entry_cache         = { }
-    cleanup_index       = OrderedDict()
-#    name_index          = { }
-#    name_index_r        = { }
-    filepath_index      = { }
-    filepath_index_r    = { }
-# TODO: The following includes duplicates of the above.
-    paths           = { }
-    paths_by_name   = { }
-    root_entries    = [ ]
-    entry_ll        = { }
-
-    locker = Lock()
-    latest_change_id = None
-    local_character_set = getfilesystemencoding()
-
-    def get_cached_entries(self):
-        return self.entry_cache
-
-    def cleanup_by_id(self, id):
-        with self.locker:
-            try:
-                del self.cleanup_index[id]
-
-            except:
-                pass
-
-#            try:
-#                parent_id = self.name_index_r[id]
-#                del self.name_index_r[id]
-#                del self.name_index[parent_id][id]
-#
-#            except:
-#                pass
-
-            try:
-                filepath = self.filepath_index_r[id]
-                del self.filepath_index_r[id]
-                del self.filepath_index[filepath]
-
-            except:
-                pass
-
-            try:
-                del self.entry_cache[id]
-
-            except:
-                pass
-
-    def register_entry(self, parent_id, entry, filepath):
-        """Register file in the cache. We assume that the file-path is unique 
-        (no duplicates).
-        """
-
-        entry_id = entry[u'id']
-
-        self.cleanup_by_id(entry_id)
-
-        with self.locker:
-            # Store the entry.
-
-            # Keep a forward and reverse index for the file-paths so that we 
-            # can allow look-up and clean-up based on IDs while also allowing 
-            # us to efficiently manage naming duplicity.
-
-            if filepath in self.filepath_index:
-                raise Exception("File-path [%s] is already recorded in the "
-                                "cache with a different ID [%s]." % (filepath, 
-                                                                    entry_id))
-
-            self.filepath_index[filepath] = entry_id
-            self.filepath_index_r[entry_id] = filepath
-
-            # An ordered-dict to keep track of the tracked files by add order.
-            self.entry_cache[entry_id] = entry
-#            logging.info("ParentID: %s" % (parent_id))
-#            # A hash for the heirarchical structure.
-#            if parent_id not in self.name_index:
-#                self.name_index[parent_id] = { entry_id: entry }
-#
-#            else:
-#                self.name_index[parent_id][entry_id] = entry
-#
-#            self.name_index_r[entry_id] = parent_id
-
-            # Delete it from the clean-up index.
-
-            try:
-                del self.cleanup_index[entry_id]
-            except:
-                pass
-
-            # Now, add it to the end of the clean-up index.
-            self.cleanup_index[entry_id] = entry
-
-    def get_entry_by_filepath(self, filepath):
-        logging.info("Retrieving entry for file-path [%s]." % (filepath))
-
-        with self.locker:
-            try:
-                entry_id = self.filepath_index[filepath]
-                entry = self.entry_cache[entry_id]
-            except:
-                return None
-
-            return entry
-
-    def get_entry_by_id(self, id):
-        with self.locker:
-            if id in self.entry_cache:
-                return entry_cache[id]
-
-            else:
-                return None
-
-    def get_latest_change_id(self):
-        return self.latest_change_id
-
-    def apply_changes(self, changes):
-        # Sort by change-ID (integer) in ascending order.
-
-        logging.debug("Sorting changes to be applied.")
-
-        sorted_changes = sorted(changes.items(), key=lambda t: t[0])
-        updates = 0
-
-        with self.locker:
-            for change_id, change in sorted_changes:
-                logging.debug("Applying change with ID (%d)." % (change_id))
-
-                # If we've already processed updates, skip everything we've already 
-                # processed.
-                if self.latest_change_id != None and \
-                        self.latest_change_id >= change_id:
-                    logging.debug("The current change-ID (%d) is less than the"
-                                  " last recorded change-ID (%d)." % 
-                                  (change_id, self.latest_change_id))
-                    continue
-
-                (entry_id, was_deleted, entry) = change
-
-                # Determine if we're already up-to-date.
-
-                if entry_id in self.entry_cache:
-                    logging.debug("We received a change item for entry-ID [%s]"
-                                  " in our cache." % (entry_id))
-
-                    local_entry = self.entry_cache['entry_id']
-
-                    local_mtime = local_entry[u'modifiedDate']
-                    date_obj = dateutil.parser.parse(local_mtime)
-                    local_mtime_epoch = time.mktime(date_obj.timetuple())
-
-                    remote_mtime = entry[u'modifiedDate']
-                    date_obj = dateutil.parser.parse(remote_mtime)
-                    remote_mtime_epoch = time.mktime(date_obj.timetuple())
-
-                    # The local version is newer or equal-to this change.
-                    if remote_mtime_epoch <= local_mtime_epoch:
-                        logging.info("Change will be ignored because its mtime"
-                                     " is [%s] and the one we have is [%s]." % 
-                                     (remote_mtime, local_mtime))
-                        continue
-
-                # If we're here, our data for this file is old or non-existent.
-
-                updates += 1
-
-                if was_deleted:
-                    logging.info("File [%s] will be deleted." % (entry_id))
-
-                    try:
-                        self.cleanup_by_id(entry_id)
-                    except:
-                        logging.exception("Could not cleanup deleted file with"
-                                          " ID [%s]." % (entry_id))
-                        raise
-
-                else:
-                    logging.info("File [%s] will be inserted/updated." % 
-                                 (entry_id))
-
-#                    try:
-#                        self.register_entry(None, None, entry)
-#                    except:
-#                        logging.exception("Could not register changed file "
-#                                          "with ID [%s].  WAS_DELETED= (%s)" % 
-#                                          (entry_id, was_deleted))
-#                        raise
-        
-                logging.info("Update successful.")
-
-                # Update our tracker for which changes have been applied.
-                self.latest_change_id = change_id
-
-            logging.info("(%d) updates were performed." % (updates))
-
-    def _is_invisible(self, entry):
-        labels = entry[u'labels']
-        if labels[u'hidden'] or labels[u'trashed']:
-            return True
-
-        return False
-
-    def _build_ll(self, entry_list):
-        """Build a linked list of directory-entries. We need it to determine 
-        the heirarchy, as well as to calculate the full pathnames of the 
-        constituents.
-        """
-
-        filtered_list = [ ]
-        entry_ll = { }
-        for entry in entry_list:
-            # At this point, we'll filter any files that we want to hide.
-            if self._is_invisible(entry):
-                continue
-
-            filtered_list.append(entry)
-
-            entry_id = entry[u'id']
-            entry_ll[entry_id] = [entry, None, []]
-
-        root_entries = [ ]
-        for entry in filtered_list:
-            entry_id = entry[u'id']
-            entry_record = entry_ll[entry_id]
-
-            in_root = False
-            for parent in entry[u'parents']:
-                parent_id = parent[u'id']
-
-                if parent[u'isRoot']:
-                    in_root = True
-
-                # If we're not in the root, link to the parent, and vice-versa. 
-                # Only do this if the parent has a record, which won't happen 
-                # if we've filtered it (above).
-                elif parent_id in entry_ll:
-                    parent_record = entry_ll[parent_id]
-
-                    entry_record[1] = parent_record
-                    parent_record[2].append(entry_record)
-
-            if in_root:
-                root_entries.append(entry_record)
-
-        return (root_entries, entry_ll)
-
-    def _translate_filename_charset(self, original_filename):
-        """Make sure we're in the right character set."""
-        
-        return original_filename.encode(self.local_character_set)
-
-    def _build_heirarchy(self, entry_list_raw):
-        """Build a heirarchical model of the filesystem."""
-
-        logging.info("Building file heirarchies.")
-
-        # Build a list of relations (as a linked-list).
-
-        try:
-            (root_entries, entry_ll) = self._build_ll(entry_list_raw)
-        except:
-            logging.exception("Could not build heirarchy from files.")
-            raise
-
-        path_cache = { }
-        def get_path(linked_entry, depth = 1):
-            """A recursive path-name finder."""
-
-            if depth > 8:
-                raise Exception("Could not calculate paths for folder heirarchy"
-                                " that's too deep.")
-
-            if not linked_entry:
-                return ''
-
-            entry = linked_entry[0]
-            entry_id = entry[u'id']
-
-            if entry_id in path_cache:
-                return path_cache[entry_id]
-
-            parent_path = get_path(linked_entry[1], depth + 1)
-            path = ("%s/%s" % (parent_path, entry[u'title']))
-
-            # If it's not a folder, try to find an extension to attach to it.
-
-            utility = Drive_Utility.get_instance()
-
-            if not utility.is_folder(entry):
-                try:
-                    extension = utility.get_extension(entry)
-                except:
-                    logging.exception("Could not attempt to derive an extension "
-                                      "for entry with ID [%s] and mime-type "
-                                      "[%s]." % (entry_id, entry[u'mimeType']))
-                    raise
-
-                if extension != None:
-                    path = ("%s.%s" % (path, extension))
-
-            path = self._translate_filename_charset(path)
-            path_cache[entry_id] = path
-
-            return path
-
-        # Produce a dictionary of entry-IDs and unique file-paths.
-
-        paths = { }
-        paths_by_name = { }
-        for entry_id, linked_entry in entry_ll.iteritems():
-            path = get_path(linked_entry)
-            
-            current_variation = path
-            elected_variation = None
-            i = 1
-            while i < 256:
-                if current_variation not in paths_by_name:
-                    elected_variation = current_variation
-                    break
-
-                i += 1
-                current_variation = self._translate_filename_charset("%s (%d)" % (path, i))
-            
-            if elected_variation == None:
-                logging.error("There were too many duplicates of filename [%s]."
-                              " We will have to hide all excess entries." % 
-                              (base))
-                continue
-
-            paths[entry_id] = elected_variation
-            paths_by_name[elected_variation] = entry_id
-
-        return (paths, paths_by_name, root_entries, entry_ll)
-
-    def get_children_by_path(self, path):
-        if path == '/':
-            entries = [ ]
-            for linked_entry in self.root_entries:
-                entry_id = linked_entry[0][u'id']
-                entries.append(entry_id)
-
-            return entries
-
-        elif path not in self.paths_by_name:
-            message = "Path [%s] not found in cache."
-
-            logging.error(message)
-            raise Exception(message)
-
-        else:
-            entry_id = self.paths_by_name[path]
-            return [child[0][u'id'] for child in self.entry_ll[entry_id][2]]
-
-    def get_filepaths_for_entries(self, entry_id_list):
-
-        filepaths = { }
-        for entry_id in entry_id_list:
-            filepaths[entry_id] = self.filepath_index_r[entry_id]
-
-        return filepaths
-
-    def init_heirarchy(self, entry_list_raw):
-
-        logging.info("Initializing file heirarchies.")
-
-        try:
-            heirarchy = self._build_heirarchy(entry_list_raw)
-        except:
-            logging.exception("Could not build heirarchy.")
-            raise
-
-        (paths, paths_by_name, root_entries, entry_ll) = heirarchy
-
-        self.paths          = paths
-        self.paths_by_name  = paths_by_name
-        self.root_entries   = root_entries
-        self.entry_ll       = entry_ll
-
-        logging.info("Registering entries in cache.")
-
-        for entry_id, linked_entry in self.entry_ll.iteritems():
-            entry = linked_entry[0]
-            parent = linked_entry[1]
-
-            if parent:
-                parent_id = parent[0][u'id']
-            else:
-                parent_id = None
-
-            try:
-                self.register_entry(parent_id, entry, self.paths[entry_id])
-            except:
-                logging.exception("Could not register entry with ID [%s] with "
-                                  "the cache." % (entry_id))
-                raise
-
-        logging.info("All entries registered.")
-
-        return self.paths
-
-def get_cache():
-    if get_cache.file_cache == None:
-        get_cache.file_cache = _FileCache()
-
-    return get_cache.file_cache
-
-get_cache.file_cache = None
-
-# TODO: Start a cache clean-up thread to make sure that all old items at the 
-# beginning of the cleanup_index are constantly pruned.
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -850,6 +261,24 @@ class _GdriveManager(object):
             return entry_info
 # TODO: Do a look-up, here.
         raise Exception("no entry_index for entry with ID [%s]." % (id))
+
+    def get_about(self):
+        """Return the 'about' information for the drive."""
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (get_about).")
+            raise
+
+        try:
+            response = client.about().get().execute()
+        except:
+            logging.exception("Problem while getting 'about' information.")
+            raise
+        
+        return response
 
     def list_changes(self, page_token=None):
         """Get a list of the most recent changes from GD. This only returns one
@@ -1132,32 +561,6 @@ def apply_changes():
             raise
 
         logging.info("Changes were applied successfully.")
-
-class ChangeMonitor(Thread):
-    """The change-management thread."""
-
-    def __init__(self):
-        super(self.__class__, self).__init__()
-        self.stop_event = Event()
-
-    def run(self):
-        while(1):
-            if self.stop_event.isSet():
-                logging.info("ChangeMonitor is terminating.")
-                break
-        
-            try:
-                new_random = random.randint(1, 10)
-                q.put(new_random, False)
-                log_me("Child put (%d)." % (new_random), True)
-
-            except Full:
-                log_me("Can not add new item. Full.")
-            
-            time.sleep(Conf.get('change_check_interval_s'))
-
-#change_monitor_thread = ChangeMonitor()
-#change_monitor_thread.start()
 
 ## TODO: Add documentation annotations. Complete comments.
 ## TODO: Rename properties to be private
