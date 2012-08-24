@@ -11,6 +11,8 @@ class CacheFault(Exception):
     pass
 
 class _CacheRegistry(object):
+    """The main cache container."""
+
     cache = { }
 
     def __init__(self):
@@ -121,6 +123,8 @@ class _CacheRegistry(object):
                 raise
 
 class _CacheAgent(object):
+    """A particular namespace within the cache."""
+
     registry        = None
     resource_name   = None
     max_age         = None
@@ -192,7 +196,10 @@ class _CacheAgent(object):
         return self.remove(key)
 
 class CacheClient(object):
-    
+    """Meant to be inherited by a class. Is used to configure a particular 
+    namespace within the cache.
+    """
+
     cache = None
 
     def __init__(self):
@@ -234,6 +241,7 @@ class CacheClient(object):
         return CacheClient.instance
 
 class EntryCache(CacheClient):
+    """Manages our knowledge of file entries."""
 
     def fault_handler(self, resource_name, key):
         pass
