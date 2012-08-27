@@ -10,9 +10,8 @@ import os
 from time       import mktime
 from argparse   import ArgumentParser
 
-from gdtool import drive_proxy, get_auth
 from utility import get_utility
-from cache import get_cache
+from gdrivefs.cache import PathRelations
 
 if not hasattr(fuse, '__version__'):
     raise RuntimeError, \
@@ -45,21 +44,16 @@ class _GDriveFS(fuse.Fuse):
 
         logging.info("Stat() on [%s]." % (path))
 
-# TODO: !! If the listed directory is '/', it will be enumerated first, and then all of the entries stat()'d. If it's a subdirectory, first the token will be stat()'d, -then- its entries are enumerated. We need to pull the listing here, is not already loaded. SEE NEXT COMMENT.
+        path_relations = PathRelations.get_instance()
 
-        is_folder = False
-        if path == '/':
-            is_folder = True
-
-        else:
-# TODO: We need to access the wrapper instead of the cache so that it can get the information if it's not cached.
-            try:
-                entry = get_cache().get_entry_by_filepath(path)
-            except:
-                logging.exception("Could not find entry in cache for path [%s]." % (path))
-                raise
-
-            is_folder = get_utility().is_folder(entry)
+        try:
+            entry_clause = path_relations.get_clause_from_path(path)
+        except:
+            logger.exception("Could not get clause from path [%s]." % (path))
+            return -errno.ENOENT
+        logging.info("Got clause.")
+        is_folder = get_utility().is_directory(entry_clause[0])
+        entry = entry_clause[0]
 
         st = _GDriveStat()
 
@@ -68,17 +62,12 @@ class _GDriveFS(fuse.Fuse):
             st.st_nlink = 2
 
         else:
-            date_obj = dateutil.parser.parse(entry[u'modifiedDate'])
-            mtime_epoch = mktime(date_obj.timetuple())
-
             st.st_mode = stat.S_IFREG | 0444
             st.st_nlink = 1
+            st.st_size = int(entry.quota_bytes_used)
 
-            if u'quotaBytesUsed' in entry:
-                st.st_size = int(entry[u'quotaBytesUsed'])
-            else:
-                st.st_size = 0
-            
+            date_obj = dateutil.parser.parse(entry.modified_date)
+            mtime_epoch = mktime(date_obj.timetuple())
             st.st_mtime = mtime_epoch
 
 #        else:
@@ -101,44 +90,28 @@ class _GDriveFS(fuse.Fuse):
 # TODO: Once we start working on the cache, make sure we don't make this call, 
 #       constantly.
 
+        path_relations = PathRelations.get_instance()
+
         logging.debug("Listing files.")
 
         try:
-            drive_proxy('list_files')
+            entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get list of files.")
+            logger.exception("Could not get clause from path [%s]." % (path))
             raise
 
         try:
-            file_cache = get_cache()
+            filenames = path_relations.get_child_filenames_from_entry_id \
+                            (entry_clause[3])
         except:
-            logging.exception("Could not acquire cache.")
+            logger.exception("Could not render list of filenames under path "
+                             "[%s]." % (path))
             raise
 
-        logging.debug("Retrieving children for path [%s]." % (path))
-
-        try:
-            children = file_cache.get_children_by_path(path)
-        except:
-            children = []
-            logging.exception("There was an exception when retrieving children"
-                              " for path [%s]." % (path))
-
-        id_list_string = ', '.join(children)
-        logging.debug("Rendering paths for children: %s" % (id_list_string))
-
-        try:
-            filepaths = file_cache.get_filepaths_for_entries(children)
-        except:
-            logging.exception("There was a problem producing the list of file-paths.")
-            filepaths = { }
-
-        filenames = ['.','..']
-        for filepath in filepaths.itervalues():
-            filenames.append(os.path.basename(filepath))
-
+        filenames[0:0] = ['.','..']
+        logging.info(filenames)
         for filename in filenames:
-            yield fuse.Direntry(filename)
+            yield fuse.Direntry(get_utility().translate_filename_charset(filename))
 
 #    def fsinit(*args): 
 #        import syslog

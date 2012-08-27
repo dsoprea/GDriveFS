@@ -2,6 +2,7 @@ import json
 import logging
 
 from mimetypes import guess_extension
+from sys       import getfilesystemencoding
 
 from conf import Conf
 
@@ -30,7 +31,8 @@ class _DriveUtility(object):
             u'video/x-flv':                     u'flv'
         }
 
-    mimetype_folder = u"application/vnd.google-apps.folder"
+    mimetype_directory = u'application/vnd.google-apps.folder'
+    local_character_set = getfilesystemencoding()
 
     def __init__(self):
         self.__load_mappings()
@@ -58,8 +60,8 @@ class _DriveUtility(object):
         except:
             logging.info("No extension-mapping was found.")
 
-    def is_folder(self, entry):
-        return (entry[u'mimeType'] == self.mimetype_folder)
+    def is_directory(self, entry):
+        return (entry.mime_type == self.mimetype_directory)
 
     def get_extension(self, entry):
         """Return the filename extension that should be associated with this 
@@ -136,15 +138,27 @@ class _DriveUtility(object):
 
         return file_extension
 
+    def translate_filename_charset(self, original_filename):
+        """Convert the given filename to the correct character set."""
+        
+        return original_filename.encode(self.local_character_set)
+
+    def is_invisible(self, entry):
+        labels = entry[u'labels']
+        if labels[u'hidden'] or labels[u'trashed']:
+            return True
+
+        return False
+
 def get_utility():
-    if get_utility.instance == None:
+    if get_utility.__instance == None:
         try:
-            get_utility.instance = _DriveUtility()
+            get_utility.__instance = _DriveUtility()
         except:
             logging.exception("Could not manufacture DriveUtility instance.")
             raise
 
-    return get_utility.instance
+    return get_utility.__instance
 
-get_utility.instance = None
+get_utility.__instance = None
 

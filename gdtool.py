@@ -18,8 +18,8 @@ import json
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
 from errors import FilenameQuantityError
-from cache import get_cache
 from conf import Conf
+from utility import get_utility
 
 app_name = 'GDriveFS Tool'
 change_monitor_thread = None
@@ -194,16 +194,125 @@ class _OauthAuthorize(object):
         self.credentials = credentials
         
 def get_auth():
-    if get_auth.instance == None:
+    if get_auth.__instance == None:
         try:
-            get_auth.instance = _OauthAuthorize()
+            get_auth.__instance = _OauthAuthorize()
         except:
             logging.exception("Could not manufacture OauthAuthorize instance.")
             raise
     
-    return get_auth.instance
+    return get_auth.__instance
 
-get_auth.instance = None
+get_auth.__instance = None
+
+class NormalEntry(object):
+
+    def __init__(self, gd_resource_type, raw_data):
+        # LESSONLEARNED: We had these set as properties, but CPython was 
+        #                reusing the reference between objects.
+        self.info = { }
+        self.parents = [ ]
+
+        try:
+            self.info['mime_type']                  = raw_data[u'mimeType']
+            self.info['labels']                     = raw_data[u'labels']
+            self.info['id']                         = raw_data[u'id']
+            self.info['title']                      = raw_data[u'title']
+            self.info['last_modifying_user_name']   = raw_data[u'lastModifyingUserName']
+            self.info['writers_can_share']          = raw_data[u'writersCanShare']
+            self.info['owner_names']                = raw_data[u'ownerNames']
+            self.info['editable']                   = raw_data[u'editable']
+            self.info['user_permission']            = raw_data[u'userPermission']
+            self.info['modified_date']              = raw_data[u'modifiedDate']
+            self.info['created_date']               = raw_data[u'createdDate']
+
+            self.info['export_links']           = raw_data[u'exportLinks'] if u'exportLinks' in raw_data else { }
+            self.info['link']                   = raw_data[u'embedLink'] if u'embedLink' in raw_data else None
+            self.info['modified_by_me_date']    = raw_data[u'modifiedByMeDate'] if u'modifiedByMeDate' in raw_data else None
+            self.info['last_viewed_by_me_date'] = raw_data[u'lastViewedByMeDate'] if u'lastViewedByMeDate' in raw_data else None
+            self.info['quota_bytes_used']       = int(raw_data[u'quotaBytesUsed']) if u'quotaBytesUsed' in raw_data else 0
+
+            # This is encoded for displaying locally.
+            self.info['title_fs'] = get_utility().translate_filename_charset(raw_data[u'title'])
+
+            for parent in raw_data[u'parents']:
+                self.parents.append(parent[u'id'])
+
+        except (KeyError) as e:
+            logging.exception("Could not normalize entry on raw key [%s]. Does not exist in source." % (str(e)))
+            raise
+
+    def __getattr__(self, key):
+        if key not in self.info:
+            return None
+
+        return self.info[key]
+
+    def __str__(self):
+        return ("<Normalized entry object with ID [%s]: %s>" % (self.info['id']))
+
+class LiveReader(object):
+    """A base object for data that can be retrieved on demand."""
+
+    data = None
+
+    def __getitem__(self, key):
+        try:
+            return self.data[key]
+        except:
+            pass
+
+        child_name = self.__class__.__name__
+
+        try:
+            self.data = self.get_data(key)
+        except:
+            logging.exception("Could not retrieve data for live-updater wrapping [%s]." % (child_name))
+            raise
+
+        try:
+            return self.data[key]
+        except:
+            logging.exception("We just updated live-updater wrapping [%s], but"
+                              " we must've not been able to find entry [%s]." % 
+                              (child_name, key))
+            raise
+
+    def get_data(self, key):
+        raise NotImplementedError("get_data() method must be implemented in the LiveReader child.")
+
+    @classmethod
+    def get_instance(cls):
+        """A helper method to dispense a singleton of whomever is inheriting "
+        from us.
+        """
+
+        class_name = cls.__name__
+
+        try:
+            LiveReader.__instances
+        except:
+            LiveReader.__instances = { }
+
+        try:
+            return LiveReader.__instances[class_name]
+        except:
+            LiveReader.__instances[class_name] = cls()
+            return LiveReader.__instances[class_name]
+
+class AccountInfo(LiveReader):
+    """Encapsulates our account info."""
+
+    def get_data(self, key):
+        try:
+            return drive_proxy('get_about_info')
+        except:
+            logging.exception("get_about_info() call failed.")
+            raise
+
+    @property
+    def root_id(self):
+        return self[u'rootFolderId']
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -214,13 +323,11 @@ class _GdriveManager(object):
     authorize   = None
     credentials = None
     client      = None
-    file_cache  = None
 
     conf_service_name       = 'drive'
     conf_service_version    = 'v2'
     
     def __init__(self):
-        self.file_cache = get_cache()
         self.authorize = get_auth()
 
         self.check_authorization()
@@ -253,14 +360,6 @@ class _GdriveManager(object):
 
         self.client = client
         return self.client
-
-    def get_entry_info(self, id, allow_cached = True):
-        entry_info = self.file_cache.get_entry(self, id)
-
-        if entry_info != None:
-            return entry_info
-# TODO: Do a look-up, here.
-        raise Exception("no entry_index for entry with ID [%s]." % (id))
 
     def get_about_info(self):
         """Return the 'about' information for the drive."""
@@ -321,6 +420,27 @@ class _GdriveManager(object):
 
         return (largest_change_id, next_page_token, changes)
 
+    def get_parents_over_child_id(self, child_id, max_results=None):
+        
+        logging.info("Getting client for parent-listing.")
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (get_parents_over_child_id).")
+            raise
+
+        logging.info("Listing entries over child with ID [%s]." % (child_id))
+
+        try:
+            response = client.parents().list(fileId=child_id).execute()
+        except:
+            logging.exception("Problem while listing files.")
+            raise
+
+        return [ entry[u'id'] for entry in response[u'items'] ]
+
     def get_children_under_parent_id(self, parent_id, query=None):
 
         logging.info("Getting client for child-listing.")
@@ -342,71 +462,46 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
-    def list_files(self, query=None):
+    def get_entries(self, entry_ids):
+
+        retrieved = { }
+        for entry_id in entry_ids:
+            try:
+                entry = drive_proxy('get_entry', entry_id=entry_id)
+            except:
+                logging.exception("Could not retrieve entry with ID [%s]." % 
+                                  (entry_id))
+                raise
+
+            retrieved[entry_id] = entry
+
+        logging.debug("(%d) entries were retrieved." % (len(retrieved)))
+
+        return retrieved
+
+    def get_entry(self, entry_id):
         
         try:
             client = self.get_client()
         except:
             logging.exception("There was an error while acquiring the Google "
-                              "Drive client (list_files).")
+                              "Drive client (get_entry).")
             raise
 
         try:
-            response = client.files().list(q=query).execute()
-        except:
-            logging.exception("Problem while listing files.")
-            raise
-
-        logging.info("File listing received. Sorting.")
-
-        entry_list_raw = response[u"items"]
-
-        try:
-            final_list = self.file_cache.init_heirarchy(entry_list_raw)
-        except:
-            logging.exception("Could not initialize the heirarchical representation.")
-            raise
-
-#        try:
-#            final_list = []
-#            for entry in entry_list_raw:
-#                try:
-#                    # Register the file in our internal cache. The filename might
-#                    # be modified to ensure uniqueness, so if you have to use a 
-#                    # filename, use the one that was returned.
-#                    final_filename = self.file_cache.register_entry(None, None, 
-#                                                                    entry)
-#                    final_list.append((entry, final_filename))
-#                except (FilenameQuantityError) as e:
-#                    logging.exception("We were told to exclude file [%s] from "
-#                                      "the listing." % (str(e)))
-#                except:
-#                    logging.exception("There was an entry-registration "
-#                                      "problem.")
-#                    raise
-#        except:
-#            logging.exception("Could not register listed files in cache.")
-#            raise
-#
-        return final_list
-
-    def get_file_info(self, entry_id):
-        
-        try:
-            client = self.get_client()
-        except:
-            logging.exception("There was an error while acquiring the Google "
-                              "Drive client (get_file_info).")
-            raise
-
-        try:
-            file_info = client.files().get(fileId=entry_id).execute()
+            entry_raw = client.files().get(fileId=entry_id).execute()
         except:
             logging.exception("Could not get the file with ID [%s]." % 
                               (entry_id))
             raise
-            
-        return file_info
+
+        try:
+            entry = NormalEntry('direct_read', entry_raw)
+        except:
+            logging.exception("Could not normalize raw-data for entry with ID [%s]." % (entry_id))
+            raise
+
+        return entry
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
@@ -502,87 +597,6 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
     
 drive_proxy.gp = None
 
-def apply_changes():
-    """Go and get a list of recent changes, and then apply them. This is a 
-    separate mechanism because it is too complex an action to put into 
-    _GdriveManager, and it can't be put into _FileCache because it would create 
-    a cyclical relationship with _GdriveManager."""
-
-    # Get cache object.
-
-    try:
-        file_cache = get_cache()
-    except:
-        logging.exception("Could not acquire cache.")
-        raise
-
-    # Get latest change-ID to use as a marker.
-
-    try:
-        local_latest_change_id = file_cache.get_latest_change_id(self)
-    except:
-        logging.exception("Could not get latest change-ID.")
-        raise
-
-    # Move through the changes.
-
-    page_token = None
-    page_num = 0
-    all_changes = []
-    while(1):
-        logging.debug("Retrieving first page of changes using page-token [%s]." 
-                      % (page_token))
-
-        # Get page.
-
-        try:
-            change_tuple = drive_proxy('list_changes', page_token=page_token)
-            (largest_change_id, next_page_token, changes) = change_tuple
-        except:
-            logging.exception("Could not get changes for page_token [%s] on "
-                              "page (%d)." % (page_token, page_num))
-            raise
-
-        logging.info("We have retrieved (%d) recent changes." % (len(changes)))
-
-        # Determine whether we're getting changes added since last time. This 
-        # is only really relevant just the first time, as the same value is
-        # returned in all subsequent pages.
-
-        if local_latest_change_id != None and largest_change_id <= local_latest_change_id:
-            if largest_change_id < local_latest_change_id:
-                logging.warning("For some reason, the remote change-ID (%d) is"
-                                " -less- than our local change-ID (%d)." % 
-                                (largest_change_id, local_largest_change_id))
-                return
-
-        # If we're here, this is either the first time, or there have actually 
-        # been changes. Collect all of the change information.
-
-        for change_id, change in changes.iteritems():
-            all_changes[change_id] = change
-
-        if next_page_token == None:
-            break
-
-        page_num += 1 
-
-    # We now have a list of all changes.
-
-    if not changes:
-        logging.info("No changes were reported.")
-
-    else:
-        logging.info("We will now apply (%d) changes." % (len(changes)))
-
-        try:
-            file_cache.apply_changes(changes)
-        except:
-            logging.exception("An error occured while applying changes.")
-            raise
-
-        logging.info("Changes were applied successfully.")
-
 ## TODO: Add documentation annotations. Complete comments.
 ## TODO: Rename properties to be private
 
@@ -601,7 +615,7 @@ def apply_changes():
 
 def main():
     parser = ArgumentParser(prog=app_name)
-
+    
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-u', '--url', help='Get an authorization URL.', 
                        action='store_true')

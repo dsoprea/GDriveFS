@@ -1,11 +1,13 @@
 import logging
 
-from sys            import getfilesystemencoding
 from collections    import OrderedDict
 from threading      import Lock
 from datetime       import datetime
+from collections    import deque
 
 from utility import get_utility
+from gdtool import drive_proxy, NormalEntry, AccountInfo
+from conf import Conf
 
 class CacheFault(Exception):
     pass
@@ -24,19 +26,19 @@ class _CacheRegistry(object):
         logging.debug("CacheRegistry(%s)" % (resource_name))
 
         try:
-            _CacheRegistry.instance;
+            _CacheRegistry.__instance;
         except:
             try:
-                _CacheRegistry.instance = _CacheRegistry()
+                _CacheRegistry.__instance = _CacheRegistry()
             except:
                 logger.exception("Could not manufacture singleton "
                                  "CacheRegistry instance.")
                 raise
 
-        if resource_name not in _CacheRegistry.instance.cache:
-            _CacheRegistry.instance.cache[resource_name] = { }
+        if resource_name not in _CacheRegistry.__instance.cache:
+            _CacheRegistry.__instance.cache[resource_name] = { }
 
-        return _CacheRegistry.instance
+        return _CacheRegistry.__instance
 
     def set(self, resource_name, key, value):
 
@@ -68,8 +70,12 @@ class _CacheRegistry(object):
 
     def get(self, resource_name, key, max_age, cleanup_trigger=None):
         
+        trigger_given_phrase = ('None' 
+                                if cleanup_trigger == None 
+                                else '<given>')
+
         logging.debug("CacheRegistry.get(%s,%s,%s,%s)" % (resource_name, key, 
-                      max_age, cleanup_trigger))
+                      max_age, trigger_given_phrase))
 
         try:
             (value, timestamp) = self.cache[resource_name][key]
@@ -132,7 +138,8 @@ class _CacheAgent(object):
     fault_handler   = None
     cleanup_trigger = None
 
-    def __init__(self, resource_name, max_age, fault_handler=None, cleanup_trigger=None):
+    def __init__(self, resource_name, max_age, fault_handler=None, 
+                 cleanup_trigger=None):
         logging.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
                                                    type(fault_handler), 
                                                    cleanup_trigger))
@@ -144,8 +151,6 @@ class _CacheAgent(object):
         self.fault_handler = fault_handler
         self.cleanup_trigger = cleanup_trigger
 
-        instance = _CacheRegistry.instance
-
     def set(self, key, value):
         logging.debug("CacheAgent.set(%s,%s)" % (key, type(value)))
 
@@ -154,9 +159,14 @@ class _CacheAgent(object):
     def remove(self, key):
         logging.debug("CacheAgent.remove(%s)" % (key))
 
-        return self.registry.remove(self.resource_name, key, cleanup_trigger=self.cleanup_trigger)
+        return self.registry.remove(self.resource_name, key, 
+                                    cleanup_trigger=self.cleanup_trigger)
 
-    def get(self, key):
+    def get(self, key, handle_fault = None):
+
+        if handle_fault == None:
+            handle_fault = True
+
         logging.debug("CacheAgent.get(%s)" % (key))
 
         try:
@@ -164,7 +174,10 @@ class _CacheAgent(object):
                                        max_age=self.max_age, 
                                        cleanup_trigger=self.cleanup_trigger)
         except (CacheFault):
-            if self.fault_handler == None:
+            logging.debug("There was a cache-miss while requesting item with "
+                          "ID (key).")
+
+            if self.fault_handler == None or not handle_fault:
                 raise
 
             try:
@@ -200,7 +213,18 @@ class CacheClient(object):
     namespace within the cache.
     """
 
-    cache = None
+    @property
+    def cache(self):
+        try:
+            return self._cache
+        except:
+            pass
+
+        self._cache = _CacheAgent(self.child_type, self.max_age, 
+                                 fault_handler=self.fault_handler, 
+                                 cleanup_trigger=self.cleanup_trigger)
+
+        return self._cache
 
     def __init__(self):
         child_type = self.__class__.__bases__[0].__name__
@@ -208,9 +232,8 @@ class CacheClient(object):
         
         logging.debug("CacheClient(%s,%s)" % (child_type, max_age))
 
-        self.cache = _CacheAgent(child_type, max_age, 
-                                 fault_handler=self.fault_handler, 
-                                 cleanup_trigger=self.cleanup_trigger)
+        self.child_type = child_type
+        self.max_age = max_age
 
         self.init()
 
@@ -233,456 +256,756 @@ class CacheClient(object):
         from us.
         """
 
-        try:
-            CacheClient.instance
-        except:
-            CacheClient.instance = cls()
-
-        return CacheClient.instance
-
-class EntryCache(CacheClient):
-    """Manages our knowledge of file entries."""
-
-    def fault_handler(self, resource_name, key):
-        pass
-
-    def cleanup_trigger(self, resource_name, key, force):
-        pass
-
-    def get_max_cache_age_seconds(self):
-        return None
-
-class _FileCache(object):
-    """An in-memory buffer of the files that we're aware of."""
-
-    entry_cache         = { }
-    cleanup_index       = OrderedDict()
-#    name_index          = { }
-#    name_index_r        = { }
-    filepath_index      = { }
-    filepath_index_r    = { }
-# TODO: The following includes duplicates of the above.
-    paths           = { }
-    paths_by_name   = { }
-    root_entries    = [ ]
-    entry_ll        = { }
-
-    locker = Lock()
-    latest_change_id = None
-    local_character_set = getfilesystemencoding()
-
-    def get_cached_entries(self):
-        return self.entry_cache
-
-    def cleanup_by_id(self, id):
-        with self.locker:
-            try:
-                del self.cleanup_index[id]
-
-            except:
-                pass
-
-#            try:
-#                parent_id = self.name_index_r[id]
-#                del self.name_index_r[id]
-#                del self.name_index[parent_id][id]
-#
-#            except:
-#                pass
-
-            try:
-                filepath = self.filepath_index_r[id]
-                del self.filepath_index_r[id]
-                del self.filepath_index[filepath]
-
-            except:
-                pass
-
-            try:
-                del self.entry_cache[id]
-
-            except:
-                pass
-
-    def register_entry(self, parent_id, entry, filepath):
-        """Register file in the cache. We assume that the file-path is unique 
-        (no duplicates).
-        """
-
-        entry_id = entry[u'id']
-
-        # TODO: Register in our granular entry cache. We don't do anything with
-        #       this right now, and the current class/method will probably go 
-        #       away.
-
-        cache = EntryCache.get_instance().cache
+        class_name = cls.__name__
 
         try:
-            cache[entry_id] = entry
+            CacheClient.__instances
         except:
-            logging.exception("Could not set entry with ID [%s] in entry-"
-                              "cache." % (entry_id))
+            CacheClient.__instances = { }
+
+        try:
+            return CacheClient.__instances[class_name]
+        except:
+            CacheClient.__instances[class_name] = cls()
+            return CacheClient.__instances[class_name]
+
+class PathRelations(object):
+    """Manages physical path representations of all of the entries in our "
+    account.
+    """
+
+    entry_ll = { }
+    path_cache = { }
+
+    @staticmethod
+    def get_instance():
+
+        try:
+            return _CacheRegistry.__instance;
+        except:
+            pass
+
+        _CacheRegistry.__instance = PathRelations()
+        return _CacheRegistry.__instance
+
+    def remove_entry(self, entry_id):
+
+        # Clip from path cache.
+        
+        key = None
+        for path, this_entry_id in self.path_cache.items():
+            if this_entry_id == entry_id:
+                key = path
+                break
+        
+        if key != None:
+            del self.path_cache[key]
+
+        # Ensure that the entry-ID is valid.
+
+        try:
+            entry_clause = self.entry_ll[entry_id]
+        except:
+            logging.exception("Could not remove invalid entry with ID [%s]." % 
+                              (entry_id))
             raise
 
-        self.cleanup_by_id(entry_id)
+        # Clip us from the list of children on each of our parents.
 
-        with self.locker:
-            # Store the entry.
+        entry_parents = entry_clause[1]
+        entry_children = entry_clause[2]
 
-            # Keep a forward and reverse index for the file-paths so that we 
-            # can allow look-up and clean-up based on IDs while also allowing 
-            # us to efficiently manage naming duplicity.
+        parents_to_remove = [ ]
+        if entry_parents:
+            for parent_clause in entry_parents:
+                # A placeholder has an entry and parents field (fields 0, 1) of 
+                # None.
 
-            if filepath in self.filepath_index:
-                raise Exception("File-path [%s] is already recorded in the "
-                                "cache with a different ID [%s]." % (filepath, 
-                                                                    entry_id))
+                (parent, parent_parents, parent_children, parent_id) \
+                    = parent_clause
 
-            self.filepath_index[filepath] = entry_id
-            self.filepath_index_r[entry_id] = filepath
-
-            # An ordered-dict to keep track of the tracked files by add order.
-            self.entry_cache[entry_id] = entry
-#            logging.info("ParentID: %s" % (parent_id))
-#            # A hash for the heirarchical structure.
-#            if parent_id not in self.name_index:
-#                self.name_index[parent_id] = { entry_id: entry }
-#
-#            else:
-#                self.name_index[parent_id][entry_id] = entry
-#
-#            self.name_index_r[entry_id] = parent_id
-
-            # Delete it from the clean-up index.
-
-            try:
-                del self.cleanup_index[entry_id]
-            except:
-                pass
-
-            # Now, add it to the end of the clean-up index.
-            self.cleanup_index[entry_id] = entry
-
-    def get_entry_by_filepath(self, filepath):
-        logging.info("Retrieving entry for file-path [%s] from list of (%d) entries." % (filepath, len(self.filepath_index)))
-
-        with self.locker:
-            try:
-                entry_id = self.filepath_index[filepath]
-                entry = self.entry_cache[entry_id]
-
-                logging.debug("Found as [%s]." % (entry_id))
-            except:
-                return None
-
-            return entry
-
-    def get_entry_by_id(self, id):
-        with self.locker:
-            if id in self.entry_cache:
-                return entry_cache[id]
-
-            else:
-                return None
-
-    def get_latest_change_id(self):
-        return self.latest_change_id
-
-    def apply_changes(self, changes):
-        # Sort by change-ID (integer) in ascending order.
-
-        logging.debug("Sorting changes to be applied.")
-
-        sorted_changes = sorted(changes.items(), key=lambda t: t[0])
-        updates = 0
-
-        with self.locker:
-            for change_id, change in sorted_changes:
-                logging.debug("Applying change with ID (%d)." % (change_id))
-
-                # If we've already processed updates, skip everything we've already 
-                # processed.
-                if self.latest_change_id != None and \
-                        self.latest_change_id >= change_id:
-                    logging.debug("The current change-ID (%d) is less than the"
-                                  " last recorded change-ID (%d)." % 
-                                  (change_id, self.latest_change_id))
+                # Integrity-check that the parent we're referencing is still in the list.
+                if parent_id not in self.entry_ll:
+                    logging.warn("Parent with ID [%s] on entry with ID [%s] is not"
+                                 " valid." % (parent_id, entry_id))
                     continue
-
-                (entry_id, was_deleted, entry) = change
-
-                # Determine if we're already up-to-date.
-
-                if entry_id in self.entry_cache:
-                    logging.debug("We received a change item for entry-ID [%s]"
-                                  " in our cache." % (entry_id))
-
-                    local_entry = self.entry_cache['entry_id']
-
-                    local_mtime = local_entry[u'modifiedDate']
-                    date_obj = dateutil.parser.parse(local_mtime)
-                    local_mtime_epoch = time.mktime(date_obj.timetuple())
-
-                    remote_mtime = entry[u'modifiedDate']
-                    date_obj = dateutil.parser.parse(remote_mtime)
-                    remote_mtime_epoch = time.mktime(date_obj.timetuple())
-
-                    # The local version is newer or equal-to this change.
-                    if remote_mtime_epoch <= local_mtime_epoch:
-                        logging.info("Change will be ignored because its mtime"
-                                     " is [%s] and the one we have is [%s]." % 
-                                     (remote_mtime, local_mtime))
-                        continue
-
-                # If we're here, our data for this file is old or non-existent.
-
-                updates += 1
-
-                if was_deleted:
-                    logging.info("File [%s] will be deleted." % (entry_id))
-
-                    try:
-                        self.cleanup_by_id(entry_id)
-                    except:
-                        logging.exception("Could not cleanup deleted file with"
-                                          " ID [%s]." % (entry_id))
-                        raise
+            
+                updated_children = [ child_tuple for child_tuple in parent_children if child_tuple[1] != entry_clause ]
+# TODO: Confirm that this works. We tested it.. It should.
+                if parent_children != updated_children:
+                    parent_children[:] = updated_children
 
                 else:
-                    logging.info("File [%s] will be inserted/updated." % 
-                                 (entry_id))
+                    logging.error("Entry with ID [%s] referenced parent with ID "
+                                  "[%s], but not vice-versa." % (entry_id, 
+                                                                 parent_id))
 
-#                    try:
-#                        self.register_entry(None, None, entry)
-#                    except:
-#                        logging.exception("Could not register changed file "
-#                                          "with ID [%s].  WAS_DELETED= (%s)" % 
-#                                          (entry_id, was_deleted))
-#                        raise
-        
-                logging.info("Update successful.")
+                # If the parent now has no children and is a placeholder, advise 
+                # that we remove it.
+                if not parent_children and parent == None:
+                    parents_to_remove.append(parent)
 
-                # Update our tracker for which changes have been applied.
-                self.latest_change_id = change_id
+        # Remove/neutralize entry, now that references have been removed.
 
-            logging.info("(%d) updates were performed." % (updates))
+        set_placeholder = len(entry_children) > 0
 
-    def _is_invisible(self, entry):
-        labels = entry[u'labels']
-        if labels[u'hidden'] or labels[u'trashed']:
-            return True
+        if set_placeholder:
+            # Just nullify the entry information, but leave the clause. We had 
+            # children that still need a parent.
 
-        return False
+            entry_clause[0] = None
+            entry_clause[1] = None
 
-    def _build_ll(self, entry_list):
-        """Build a linked list of directory-entries. We need it to determine 
-        the heirarchy, as well as to calculate the full pathnames of the 
-        constituents.
+        else:
+            try:
+                del self.entry_ll[entry_id]
+            except:
+                logging.exception("Could not remove entry with ID [%s]. We've "
+                                  "previously confirmed it to exist. There "
+                                  "might've been a cyclic reference that "
+                                  "caused it to be removed during clean-up." % 
+                                  (entry_id))
+                raise
+
+        return parents_to_remove
+
+    def dump_entry_clause(self, entry_id):
+        """Shows info on a single entry_clause. Does not assume that all of "
+        the information is correct/consistent.
         """
 
-        filtered_list = [ ]
-        entry_ll = { }
-        for entry in entry_list:
-            # At this point, we'll filter any files that we want to hide.
-            if self._is_invisible(entry):
-                continue
-
-            filtered_list.append(entry)
-
-            entry_id = entry[u'id']
-            entry_ll[entry_id] = [entry, None, []]
-
-        root_entries = [ ]
-        for entry in filtered_list:
-            entry_id = entry[u'id']
-            entry_record = entry_ll[entry_id]
-
-            in_root = False
-            for parent in entry[u'parents']:
-                parent_id = parent[u'id']
-
-                if parent[u'isRoot']:
-                    in_root = True
-
-                # If we're not in the root, link to the parent, and vice-versa. 
-                # Only do this if the parent has a record, which won't happen 
-                # if we've filtered it (above).
-                elif parent_id in entry_ll:
-                    parent_record = entry_ll[parent_id]
-
-                    entry_record[1] = parent_record
-                    parent_record[2].append(entry_record)
-
-            if in_root:
-                root_entries.append(entry_record)
-
-        return (root_entries, entry_ll)
-
-    def _translate_filename_charset(self, original_filename):
-        """Make sure we're in the right character set."""
-        
-        return original_filename.encode(self.local_character_set)
-
-    def _build_heirarchy(self, entry_list_raw):
-        """Build a heirarchical model of the filesystem."""
-
-        logging.info("Building file heirarchies.")
-
-        # Build a list of relations (as a linked-list).
-
         try:
-            (root_entries, entry_ll) = self._build_ll(entry_list_raw)
+            entry_clause = self.entry_ll[entry_id]
         except:
-            logging.exception("Could not build heirarchy from files.")
+            logger.exception("Entry with ID [%s] is not valid." % (entry_id))
             raise
 
-        path_cache = { }
-        def get_path(linked_entry, depth = 1):
-            """A recursive path-name finder."""
+        (entry, parents, children, entry_id_recorded) = entry_clause
 
-            if depth > 8:
-                raise Exception("Could not calculate paths for folder heirarchy"
-                                " that's too deep.")
+        print("Entry ID [%s]\n" % (entry_id))
 
-            if not linked_entry:
-                return ''
+        title_phrase = (entry.title if entry else '<none>')
 
-            entry = linked_entry[0]
-            entry_id = entry[u'id']
+        print("Entry title: %s" % (title_phrase))
 
-            if entry_id in path_cache:
-                return path_cache[entry_id]
+        if parents != None:
+            print("Parents: (%d)" % (len(parents)))
 
-            parent_path = get_path(linked_entry[1], depth + 1)
-            path = ("%s/%s" % (parent_path, entry[u'title']))
+            for parent in parents:
+                title = parent[0].title if parent[0] else '<none>'
+                print("  %s: %s" % (title, parent[3]))
+        else:
+            print("Parents: <none>")
 
-            # If it's not a folder, try to find an extension to attach to it.
+        if children != None:
+            print("Children: (%d)" % (len(children)))
 
-            utility = get_utility()
+            for (filename, child_clause) in children:
+                print("  %s: %s" % (filename, child_clause[0].id))
+        else:
+            print("Children: <none>")
 
-            if not utility.is_folder(entry):
-                try:
-                    extension = utility.get_extension(entry)
-                except:
-                    logging.exception("Could not attempt to derive an extension "
-                                      "for entry with ID [%s] and mime-type "
-                                      "[%s]." % (entry_id, entry[u'mimeType']))
-                    raise
+        print("Recorded Entry Id: %s" % (entry_id_recorded))
 
-                if extension != None:
-                    path = ("%s.%s" % (path, extension))
+    def get_proper_filenames(self, entry_clause):
+        """Return what was determined to be the unique filename for this "
+        particular entry for each of its respective parents. This will return 
+        the standard 'title' value as a scalar when the root entry, and a 
+        dictionary of parent-IDs to unique-filenames when not.
 
-            path = self._translate_filename_charset(path)
-            path_cache[entry_id] = path
+        This call is necessary because GD allows duplicate filenames until any 
+        one folder. Note that a consequence of both this and the fact that GD 
+        allows the same file to be listed under multiple folders means that a 
+        file may look like "filename" under one and "filename (2)" under 
+        another.
+        """
 
-            return path
+        found = { }
+        parents = entry_clause[1]
+        if not parents:
+            return entry_clause[0].title_fs
 
-        # Produce a dictionary of entry-IDs and unique file-paths.
+        else:
+            for parent_clause in parents:
+                matching_children = [ filename for filename, child_clause in parent_clause[2] if child_clause == entry_clause ]
+                if not matching_children:
+                    logging.error("No matching entry-ID [%s] was not found "
+                                  "among children of entry's parent with ID "
+                                  "[%s] for proper-filename lookup." % 
+                                  (entry_clause[3], parent_clause[3]))
 
-        paths = { }
-        paths_by_name = { }
-        for entry_id, linked_entry in entry_ll.iteritems():
-            path = get_path(linked_entry)
-            
-            current_variation = path
-            elected_variation = None
-            i = 1
-            while i < 256:
-                if current_variation not in paths_by_name:
-                    elected_variation = current_variation
+                else:
+                    found[parent_clause[3]] = matching_children[0]
+
+        return found
+
+    def dump_ll(self):
+
+        i = 0
+        for entry_id, entry_clause in self.entry_ll.iteritems():
+            entry_phrase = ('<entry>' if entry_clause[0] else '<none>')
+
+            if entry_clause[1] != None:
+                parents_phrase = ('(%d)' % len(entry_clause[1]))
+            else:
+                parents_phrase = '<none>'
+
+            if entry_clause[2] != None:
+                children_phrase = ('(%d)' % len(entry_clause[2]))
+            else:
+                children_phrase = '<none>'
+
+            entry_id_phrase = ('[%s]' % entry_clause[3])
+
+            print("(%d) %s" % (i, entry_id))
+            print("  (E= %s, P= %s, C= %s, I= %s)" % (entry_phrase, parents_phrase, children_phrase, entry_id_phrase))
+            print("  %s\n" % (entry_clause[0].title if entry_clause[0] else '<none>'))
+
+            i += 1
+
+    def register_entry(self, normalized_entry):
+
+        entry_id = normalized_entry.id
+
+        if normalized_entry.__class__ is not NormalEntry:
+            raise Exception("PathRelations expects to register an object of "
+                            "type NormalEntry, not [%s]." % 
+                            (type(normalized_entry)))
+
+        logging.info("Registering entry with ID [%s] within path-relations." %
+                     (entry_id))
+
+        if entry_id in self.entry_ll:
+            logging.debug("Entry to register with ID [%s] already exists "
+                          "within path-relations, and will be removed in lieu "
+                          "of update." % (entry_id))
+
+            # Remove this entry, and any placeholder-parents that are left 
+            # empty as a result of the removal of it.
+
+            entries_to_remove = deque([ entry_id ])
+            while 1:
+                if not len(entries_to_remove):
                     break
 
+                entry_id_to_remove = entries_to_remove.popleft()
+
+                logging.info("Removing entry with ID [%s] as a result of the "
+                             "preliminary clean-up prior to the add of ID "
+                             "[%s]." % (entry_id_to_remove, entry_id))
+
+                try:
+                    additional_to_remove = self.remove_entry(entry_id_to_remove)
+                    entries_to_remove.extend(additional_to_remove)
+                except:
+                    logging.exception("Could not remove existing entry with ID "
+                                      "[%s] prior to its update." % (entry_id_to_remove))
+                    raise
+
+        # We do a linked list using object references.
+        # (
+        #   normalized_entry, 
+        #   [ parent clause, ... ], 
+        #   [ child clause, ... ], 
+        #   entry-ID
+        # )
+
+        logging.info("Doing add of entry with ID [%s]." % (entry_id))
+
+        if entry_id not in self.entry_ll:
+            logging.debug("Entry does not yet exist in LL.")
+
+            entry_clause = [normalized_entry, [ ], [ ], entry_id]
+            self.entry_ll[entry_id] = entry_clause
+        else:
+            logging.debug("Placeholder exists for entry-to-register with ID [%s]." % (entry_id))
+
+            entry_clause = self.entry_ll[entry_id]
+            entry_clause[0] = normalized_entry
+            entry_clause[1] = [ ]
+
+        entry_parents = entry_clause[1]
+        title = normalized_entry.title
+
+        logging.debug("Registering entry with title [%s]." % (title))
+        parent_ids = [ parent_id for parent_id in normalized_entry.parents ]
+        logging.debug("Parents are: %s" % (', '.join(parent_ids)))
+
+        for parent_id in normalized_entry.parents:
+            logging.debug("Processing parent with ID [%s] of entry with ID [%s]." % (parent_id, entry_id))
+
+            # If the parent hasn't yet been loaded, install a placeholder.
+            if parent_id not in self.entry_ll:
+                logging.debug("Parent is not yet registered.")
+
+                parent_clause = [None, None, [ ], parent_id]
+                self.entry_ll[parent_id] = parent_clause
+            else:
+                logging.debug("Parent has an existing entry.")
+
+                parent_clause = self.entry_ll[parent_id]
+
+            if parent_clause not in entry_parents:
+                entry_parents.append(parent_clause)
+
+            parent_children = parent_clause[2]
+
+            # Register among the children of this parent, but make sure we have 
+            # a unique filename among siblings.
+
+            i = 1
+            current_variation = title
+            elected_variation = None
+            while i <= 255:
+                if not [ child_name_tuple 
+                         for child_name_tuple 
+                         in parent_children 
+                         if child_name_tuple[0] == current_variation ]:
+                    elected_variation = current_variation
+                    break
+                    
                 i += 1
-                current_variation = self._translate_filename_charset("%s (%d)" % (path, i))
-            
+                current_variation = ("%s (%s)" % (title, i))
+
             if elected_variation == None:
-                logging.error("There were too many duplicates of filename [%s]."
-                              " We will have to hide all excess entries." % 
-                              (base))
-                continue
+                logging.error("Could not register entry with ID [%s]. There "
+                              "are too many duplicate names in that "
+                              "directory." % (entry_id))
+                return
 
-            paths[entry_id] = elected_variation
-            paths_by_name[elected_variation] = entry_id
+            logging.debug("Final filename is [%s]." % (current_variation))
 
-        return (paths, paths_by_name, root_entries, entry_ll)
+            # Register us in the list of children on this parent.
+            parent_children.append((elected_variation, entry_clause))
 
-    def get_children_by_path(self, path):
-        if path == '/':
-            entries = [ ]
-            for linked_entry in self.root_entries:
-                entry_id = linked_entry[0][u'id']
-                entries.append(entry_id)
+        logging.debug("Entry registration complete.")
 
-            return entries
+        return entry_clause
 
-        elif path not in self.paths_by_name:
-            message = "Path [%s] not found in cache."
+    def get_children_by_query_under_folder(self, entry_id, name_fragment):
+        """Get the entries with a title that contains the given fragment, 
+        having a parent with the given entry-ID. The entries will be loaded 
+        into the cache out of a consequence of the process.
+        """
+
+        logging.info("Ensuring that a child with a name like [%s] is loaded "
+                     "under folder with entry-ID [%s]." % (name_fragment, 
+                                                           entry_id))
+
+        try:
+            matched_children = drive_proxy('get_children_under_parent_id', 
+                                   parent_id=entry_id, 
+# TODO: Need to escape the query token.
+                                   query=("title='%s'" % 
+                                          (name_fragment)))
+        except:
+            logging.exception("Could not list children containing [%s] under "
+                              "folder with entry-ID [%s]." % (name_fragment, 
+                                                              entry_id))
+            raise
+
+        cache = EntryCache.get_instance().cache
+        results = [ ]
+        for child_id in matched_children:
+            try:
+                results.append(cache.get(child_id))
+            except:
+                logging.exception("Could not retrieve entry for matched child "
+                                  "with entry-ID [%s]." % (child_id))
+                raise
+
+        return results
+
+    def get_child_filenames_from_entry_id(self, entry_id):
+        """Return the filenames contained in the folder with the given 
+        entry-ID.
+        """
+
+        logging.info("Getting children under entry with ID [%s]." % (entry_id))
+
+# TODO: When do we automatically update children rather than forcing, here?
+        try:
+            child_ids = drive_proxy('get_children_under_parent_id', 
+                                    parent_id=entry_id)
+        except:
+            logging.exception("Could not retrieve children for parent with"
+                              " ID [%s]." % (entry_id))
+            raise
+
+        for child_id in child_ids:
+            try:
+                self.__get_entry_clause_by_id(child_id)
+            except:
+                logging.exception("Could not get filenames under invalid "
+                                  "entry-ID [%s]." % (entry_id))
+                raise
+###
+        try:
+            entry_clause = self.__get_entry_clause_by_id(entry_id)
+        except:
+            logging.exception("Could not get entry_clause with invalid entry-"
+                              "ID [%s]." % (entry_id))
+            raise
+
+        if not get_utility().is_directory(entry_clause[0]):
+            message = ("Could not get child filenames for non-directory with "
+                       "entry-ID [%s]." % (entry_id))
 
             logging.error(message)
             raise Exception(message)
 
-        else:
-            entry_id = self.paths_by_name[path]
-            return [child[0][u'id'] for child in self.entry_ll[entry_id][2]]
+        children_filenames = [ child_tuple[0] for child_tuple in entry_clause[2] ]
 
-    def get_filepaths_for_entries(self, entry_id_list):
+        logging.info("(%d) children found." % (len(children_filenames)))
 
-        filepaths = { }
-        for entry_id in entry_id_list:
-            filepaths[entry_id] = self.filepath_index_r[entry_id]
+        return children_filenames
 
-        return filepaths
+    def get_clause_from_path(self, path):
 
-    def init_heirarchy(self, entry_list_raw):
-
-        logging.info("Initializing file heirarchies.")
+        logging.info("Getting clause for path [%s]." % (path))
 
         try:
-            heirarchy = self._build_heirarchy(entry_list_raw)
+            path_results = self.find_path_components_goandget(path)
         except:
-            logging.exception("Could not build heirarchy.")
+            logging.exception("Could not resolve path [%s] to entry." % (path))
             raise
 
-        (paths, paths_by_name, root_entries, entry_ll) = heirarchy
+        (entry_ids, path_parts, success) = path_results
 
-        self.paths          = paths
-        self.paths_by_name  = paths_by_name
-        self.root_entries   = root_entries
-        self.entry_ll       = entry_ll
+        if not success:
+            message = ("Could not resolve path [%s]." % (path))
+            logging.error(message)
+            raise Exception(message)
 
-        logging.info("Registering entries in cache.")
+        entry_id = path_results[0][-1]
+        
+        logging.info("Found entry with ID [%s]." % (entry_id))
 
-        for entry_id, linked_entry in self.entry_ll.iteritems():
-            entry = linked_entry[0]
-            parent = linked_entry[1]
+        return self.entry_ll[entry_id]
 
-            if parent:
-                parent_id = parent[0][u'id']
-            else:
-                parent_id = None
+    def find_path_components_goandget(self, path):
+        """Do the same thing that find_path_components() does, except that 
+        when we don't have record of a path-component, try to go and find it 
+        among the children of the previous path component, and then try again.
+        """
+
+        previous_results = []
+        i = 0
+        while 1:
+            logging.info("Attempting to find path-components (go and get) for "
+                         "path [%s].  CYCLE= (%d)" % (path, i))
+
+            # See how many components can be found in our current cache.
 
             try:
-                self.register_entry(parent_id, entry, self.paths[entry_id])
+                result = self.__find_path_components(path)
             except:
-                logging.exception("Could not register entry with ID [%s] with "
-                                  "the cache." % (entry_id))
+                logging.exception("There was a problem doing an iteration of "
+                                  "find_path_components() on [%s]." % (path))
                 raise
 
-        logging.info("All entries registered.")
+            # If we could resolve the entire path, return success.
 
-        return self.paths
+            logging.debug("Found within current cache? %s" % (result[2]))
 
-def get_cache():
-    if get_cache.instance == None:
+            if result[2] == True:
+                return result
+
+            # If we could not resolve the entire path, and we're no more 
+            # successful than a prior attempt, we'll just have to return a 
+            # partial.
+
+            num_results = len(result[0])
+            if num_results in previous_results:
+                logging.debug("We couldn't improve our results. This path most"
+                              " likely does not exist.")
+                return result
+
+            previous_results.append(num_results)
+
+            logging.debug("(%d) path-components were found, but not all." % (num_results))
+
+            # Else, we've encountered a component/depth of the path that we 
+            # don't currently know about.
+
+            # The parent is the last one found, or the root if none.
+            parent_id = result[0][num_results - 1] \
+                            if num_results \
+                            else AccountInfo().root_id
+
+            # The child will be the first part that was not found.
+            child_name = result[1][num_results]
+
+            logging.debug("Trying to reconcile child named [%s] under folder "
+                          "with entry-ID [%s]." % (child_name, parent_id))
+
+            try:
+                candidates = self.get_children_by_query_under_folder(parent_id, child_name)
+            except:
+                logging.exception("Could not retrieve children like [%s] under"
+                                  " parent with entry-ID [%s]." % (child_name, 
+                                                                   parent_id))
+                raise
+
+            filenames_phrase = ', '.join([ candidate.id for candidate in candidates ])
+            logging.debug("(%d) candidate children were found: %s" % (len(candidates), filenames_phrase))
+
+            i += 1
+
+    def __find_path_components(self, path):
+        """Given a path, return a list of all Google Drive entries that 
+        comprise each component, or as many as can be found. As we've ensured 
+        that all sibling filenames are unique, there can not be multiple 
+        matches.
+        """
+
+        logging.debug("Searching for path components of [%s]." % (path))
+        logging.debug("Resolving entry_clause for path [%s]." % (path))
+
+        if path[0] == '/':
+            path = path[1:]
+
+        if len(path) and path[-1] == '/':
+            path = path[:-1]
+
+#        if path in self.path_cache:
+#            return self.path_cache[path]
+
+        logging.debug("Locating entry information for path [%s]." % (path))
+
         try:
-            get_cache.instance = _FileCache()
+            root_id = AccountInfo().root_id
         except:
-            logging.exception("Could not manufacture FileCache.")
+            logging.exception("Could not get root-ID.")
             raise
 
-    return get_cache.instance
+        # Ensure that the root node is loaded.
 
-get_cache.instance = None
+        try:
+            self.__get_entry_clause_by_id(root_id)
+        except:
+            logging.exception("Could not ensure root-node with entry-ID "
+                              "[%s]." % (root_id))
+            raise
+
+        path_parts = path.split('/')
+
+        entry_ptr = root_id
+        parent_id = None
+        i = 0
+        num_parts = len(path_parts)
+        results = [ ]
+        while i < num_parts:
+            child_filename_to_search = path_parts[i]
+            logging.debug('Checking part (%d): [%s]' % 
+                          (i, child_filename_to_search))
+
+            try:
+                current_clause = self.entry_ll[entry_ptr]
+            except:
+                # TODO: If entry with ID entry_ptr is not registered, update 
+                #       children of parent parent_id. Throttle how often this 
+                #       happens.
+
+                logging.exception("Could not find current subdirectory.  "
+                                  "ENTRY_ID= [%s]" % (entry_ptr))
+                raise
+
+            
+            # Search this entry's children for the next filename further down 
+            # in the path among this entry's children. Any duplicates should've 
+            # already beeen handled as entries were stored. We name the variable 
+            # just to emphasize that no ambiguity -as well as- no error will 
+            # occur in the traversal process.
+            first_matching_child_clause = None
+            children = current_clause[2]
+            
+            # If they just wanted the "" path (root), return the root-ID.
+            if path == "":
+                found = [ root_id ]
+            else:
+                found = [ child_tuple[1][3] 
+                          for child_tuple 
+                          in children 
+                          if child_tuple[0] == child_filename_to_search ]
+            
+            if found:
+                results.append(found[0])
+            else:
+                return (results, path_parts, False)
+
+            # Have we traveled far enough into the linked list?
+            if (i + 1) >= num_parts:
+                self.path_cache[path] = current_clause
+                return (results, path_parts, True)
+
+            parent_id = entry_ptr
+            entry_ptr = found[0]
+            i += 1
+
+    def __get_entry_clause_by_id(self, entry_id):
+        """We may keep a linked-list of GD entries, but what we have may just 
+        be placeholders. This function will make sure the data is actually here.
+        """
+
+        if entry_id in self.entry_ll and self.entry_ll[entry_id][0]:
+            return self.entry_ll[entry_id]
+
+        else:
+            cache = EntryCache.get_instance().cache
+
+            try:
+                normalized_entry = cache.get(entry_id)
+            except:
+                logging.exception("Could not fetch normalized entry with ID "
+                                  "[%s]." % (entry_id))
+                raise
+
+            try:
+                return self.register_entry(normalized_entry)
+            except:
+                logging.exception("Could not register retrieved-entry for "
+                                  "entry with ID [%s] in path-cache." % 
+                                  (entry_id))
+                raise
+            
+class EntryCache(CacheClient):
+    """Manages our knowledge of file entries."""
+
+    about = AccountInfo.get_instance()
+
+    def __is_update_needed(self, entry_id):
+        return True
+
+    def __get_entries_to_update(self, requested_entry_id):
+        # Get more entries than just what was requested, while we're at it.
+
+        try:
+            parent_ids = drive_proxy('get_parents_over_child_id', 
+                                     child_id=requested_entry_id)
+        except:
+            logging.exception("Could not retrieve parents for child with ID "
+                              "[%s]." % (requested_entry_id))
+            raise
+
+        logging.debug("Found (%d) parents." % (len(parent_ids)))
+
+        affected_entries = [ ]
+        considered_entries = { }
+        max_readahead_entries = Conf.get('max_readahead_entries')
+        for parent_id in parent_ids:
+            logging.debug("Retrieving children for parent with ID [%s]." % 
+                          (parent_id))
+
+            try:
+                child_ids = drive_proxy('get_children_under_parent_id', 
+                                        parent_id=parent_id)
+            except:
+                logging.exception("Could not retrieve children for parent with"
+                                  " ID [%s]." % (requested_entry_id))
+                raise
+
+            logging.debug("(%d) children found under parent with ID [%s]." % 
+                          (len(child_ids), parent_id))
+
+            for child_id in child_ids:
+                if child_id == requested_entry_id:
+                    continue
+
+                # We've already looked into this entry.
+
+                try:
+                    considered_entries[child_id]
+                    continue
+                except:
+                    pass
+
+                considered_entries[child_id] = True
+
+                # Is it already cached?
+
+                if self.cache.exists(child_id):
+                    continue
+
+                if self.__is_update_needed(child_id):
+                    affected_entries.append(child_id)
+
+                if len(affected_entries) >= (max_readahead_entries - 1):
+                    break
+
+        affected_entries[0:0] = [ requested_entry_id ]
+
+        return affected_entries
+
+    def __set_cache(self, entry_id, entry):
+
+        try:
+            self.cache.set(entry_id, entry)
+        except:
+            logging.exception("Could not store entry with ID [%s]." % 
+                              (entry))
+            raise
+
+    def fault_handler(self, resource_name, requested_entry_id):
+        """A requested entry wasn't stored."""
+
+        logging.info("EntryCache has faulted on entry with ID [%s]." % 
+                      (requested_entry_id))
+
+        # Get the entries to update.
+
+        try:
+            affected_entries = self.__get_entries_to_update(requested_entry_id)
+        except:
+            logging.exception("Could not aggregate requested and readahead "
+                              "entries to refresh.")
+            raise
+
+        # Read the entries, now.
+
+        logging.info("(%d) primary and secondary entry/entries will be "
+                     "updated." % (len(affected_entries)))
+
+        try:
+            retrieved = drive_proxy('get_entries', entry_ids=affected_entries)
+        except:
+            logging.exception("Could not retrieve the (%d) entries." % (len(affected_entries)))
+            raise
+
+        # Update the cache.
+
+        path_relations = PathRelations.get_instance()
+
+        for entry_id, entry in retrieved.iteritems():
+            try:
+                self.__set_cache(entry_id, entry)
+            except:
+                logging.exception("Could not set entry with ID [%s] in cache." % (entry_id))
+                raise
+
+            try:
+                path_relations.register_entry(entry)
+            except:
+                logger.exception("Could not register entry with ID [%s] with path-relations cache." % (entry_id))
+                raise
+
+        logging.debug("(%d) entries were loaded." % (len(retrieved)))
+
+        # Return the requested entry.
+
+        try:
+            return retrieved[requested_entry_id]
+        except:
+            logging.exception("We just updated as a result of a fault, but "
+                              "entry with ID [%s] is still not available from "
+                              "the cache." % (requested_entry_id))
+            return None
+
+    def cleanup_trigger(self, resource_name, entry_id, force):
+        pass
+
+    def get_max_cache_age_seconds(self):
+        return None
 
 # TODO: Start a cache clean-up thread to make sure that all old items at the 
 # beginning of the cleanup_index are constantly pruned.

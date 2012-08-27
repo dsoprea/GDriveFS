@@ -8,6 +8,11 @@ class Conf(object):
     extension_mapping_filepath      = '/etc/gdfs/extension_mapping.json'
     change_check_interval_s         = .5
 
+    max_readahead_entries = 10
+    """How many extra entries to retrieve when an entry is accessed that is 
+    not currently cached.
+    """
+
     @staticmethod
     def get(key):
         try:
