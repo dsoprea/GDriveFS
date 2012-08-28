@@ -102,14 +102,14 @@ class _GDriveFS(Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logger.exception("Could not get clause from path [%s]." % (path))
+            logging.exception("Could not get clause from path [%s]." % (path))
             raise
 
         try:
             filenames = path_relations.get_child_filenames_from_entry_id \
                             (entry_clause[3])
         except:
-            logger.exception("Could not render list of filenames under path "
+            logging.exception("Could not render list of filenames under path "
                              "[%s]." % (path))
             raise
 

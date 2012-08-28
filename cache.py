@@ -31,7 +31,7 @@ class _CacheRegistry(object):
             try:
                 _CacheRegistry.__instance = _CacheRegistry()
             except:
-                logger.exception("Could not manufacture singleton "
+                logging.exception("Could not manufacture singleton "
                                  "CacheRegistry instance.")
                 raise
 
@@ -381,7 +381,7 @@ class PathRelations(object):
         try:
             entry_clause = self.entry_ll[entry_id]
         except:
-            logger.exception("Entry with ID [%s] is not valid." % (entry_id))
+            logging.exception("Entry with ID [%s] is not valid." % (entry_id))
             raise
 
         (entry, parents, children, entry_id_recorded, all_children_loaded) = entry_clause
@@ -577,6 +577,12 @@ class PathRelations(object):
                               "are too many duplicate names in that "
                               "directory." % (entry_id))
                 return
+
+            # Prepend a period if it's a hidden file.
+            if u'hidden' in normalized_entry.labels \
+                    and normalized_entry.labels[u'hidden']:
+                elected_variation = get_utility(). \
+                    translate_filename_charset(".%s" % (elected_variation))
 
             logging.debug("Final filename is [%s]." % (current_variation))
 
@@ -1055,7 +1061,7 @@ class EntryCache(CacheClient):
             try:
                 path_relations.register_entry(entry)
             except:
-                logger.exception("Could not register entry with ID [%s] with path-relations cache." % (entry_id))
+                logging.exception("Could not register entry with ID [%s] with path-relations cache." % (entry_id))
                 raise
 
         logging.debug("(%d) entries were loaded." % (len(retrieved)))
