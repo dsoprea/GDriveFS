@@ -54,19 +54,20 @@ class _GDriveFS(Operations):
             logging.exception("Could not get clause from path [%s]." % (path))
             return -errno.ENOENT
 
+        effective_permission = 0444
+
         logging.info("Got clause.")
         is_folder = get_utility().is_directory(entry_clause[0])
         entry = entry_clause[0]
 
-#        st = _GDriveStat()
-
-#        return dict(st_mode=(S_IFDIR | 0755), st_ctime=now,
-#            st_mtime=now, st_atime=now, st_nlink=2)
-
+        if entry.user_permission[u'role'] in [ u'owner', u'writer' ]:
+            effective_permission |= 0222
 
         if is_folder:
+            effective_permission |= 0111
+
             return {
-                    "st_mode": (stat.S_IFDIR | 0755),
+                    "st_mode": (stat.S_IFDIR | effective_permission),
                     "st_nlink": 2
                 }
         else:
@@ -74,24 +75,23 @@ class _GDriveFS(Operations):
             mtime_epoch = mktime(date_obj.timetuple())
 
             return {
-                    "st_mode": (stat.S_IFREG | 0444),
+                    "st_mode": (stat.S_IFREG | effective_permission),
                     "st_nlink": 1,
                     "st_size": int(entry.quota_bytes_used),
                     "st_mtime": mtime_epoch
                 }
 
-    def readdir(self, path, fh):
+    def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
 
-        logging.info("ReadDir(%s,%s) invoked." % (path, type(fh)))
+        logging.info("ReadDir(%s,%s) invoked." % (path, type(offset)))
 
         # We expect "offset" to always be (0).
-#        if offset != 0:
-#            logging.warning("readdir() has been invoked for path [%s] and non-"
-#                            "zero offset (%d). This is not allowed." % 
-#                            (path, offset))
+        if offset != 0:
+            logging.warning("readdir() has been invoked for path [%s] and non-"
+                            "zero offset (%d). This is not allowed." % 
+                            (path, offset))
 
-# TODO: Return -ENOENT if not found?
 # TODO: Once we start working on the cache, make sure we don't make this call, 
 #       constantly.
 
