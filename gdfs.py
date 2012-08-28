@@ -6,6 +6,7 @@ import logging
 import dateutil.parser
 import getpass
 import os
+import errno
 
 from time       import mktime
 from argparse   import ArgumentParser
@@ -49,8 +50,9 @@ class _GDriveFS(fuse.Fuse):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logger.exception("Could not get clause from path [%s]." % (path))
+            logging.exception("Could not get clause from path [%s]." % (path))
             return -errno.ENOENT
+
         logging.info("Got clause.")
         is_folder = get_utility().is_directory(entry_clause[0])
         entry = entry_clause[0]
@@ -111,7 +113,7 @@ class _GDriveFS(fuse.Fuse):
         filenames[0:0] = ['.','..']
         logging.info(filenames)
         for filename in filenames:
-            yield fuse.Direntry(get_utility().translate_filename_charset(filename))
+            yield fuse.Direntry(filename)
 
 #    def fsinit(*args): 
 #        import syslog
