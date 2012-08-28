@@ -321,7 +321,7 @@ class PathRelations(object):
                 # A placeholder has an entry and parents field (fields 0, 1) of 
                 # None.
 
-                (parent, parent_parents, parent_children, parent_id) \
+                (parent, parent_parents, parent_children, parent_id, all_children_loaded) \
                     = parent_clause
 
                 # Integrity-check that the parent we're referencing is still 
@@ -384,7 +384,7 @@ class PathRelations(object):
             logger.exception("Entry with ID [%s] is not valid." % (entry_id))
             raise
 
-        (entry, parents, children, entry_id_recorded) = entry_clause
+        (entry, parents, children, entry_id_recorded, all_children_loaded) = entry_clause
 
         print("Entry ID [%s]\n" % (entry_id))
 
@@ -511,7 +511,8 @@ class PathRelations(object):
         #   normalized_entry, 
         #   [ parent clause, ... ], 
         #   [ child clause, ... ], 
-        #   entry-ID
+        #   entry-ID,
+        #   < boolean indicating that we know about all children >
         # )
 
         logging.info("Doing add of entry with ID [%s]." % (entry_id))
@@ -519,7 +520,7 @@ class PathRelations(object):
         if entry_id not in self.entry_ll:
             logging.debug("Entry does not yet exist in LL.")
 
-            entry_clause = [normalized_entry, [ ], [ ], entry_id]
+            entry_clause = [normalized_entry, [ ], [ ], entry_id, False]
             self.entry_ll[entry_id] = entry_clause
         else:
             logging.debug("Placeholder exists for entry-to-register with ID [%s]." % (entry_id))
@@ -542,7 +543,7 @@ class PathRelations(object):
             if parent_id not in self.entry_ll:
                 logging.debug("Parent is not yet registered.")
 
-                parent_clause = [None, None, [ ], parent_id]
+                parent_clause = [None, None, [ ], parent_id, False]
                 self.entry_ll[parent_id] = parent_clause
             else:
                 logging.debug("Parent has an existing entry.")
@@ -664,6 +665,30 @@ class PathRelations(object):
 
         return (results, found)
 
+    def __load_all_children(self, parent_id):
+        logging.info("Loading children under parent with ID [%s]." % 
+                     (parent_id))
+
+        try:
+            child_ids = drive_proxy('get_children_under_parent_id', 
+                                    parent_id=parent_id)
+        except:
+            logging.exception("Could not retrieve children for parent with"
+                              " ID [%s]." % (parent_id))
+            raise
+
+        logging.debug("(%d) children found." % (len(child_ids)))
+
+        for child_id in child_ids:
+            try:
+                self.__get_entry_clause_by_id(child_id)
+            except:
+                logging.exception("Could not get entry-clause for ID [%s]." %
+                                  (child_id))
+                raise
+
+        return child_ids
+
     def get_child_filenames_from_entry_id(self, entry_id):
         """Return the filenames contained in the folder with the given 
         entry-ID.
@@ -671,29 +696,23 @@ class PathRelations(object):
 
         logging.info("Getting children under entry with ID [%s]." % (entry_id))
 
-# TODO: When do we automatically update children rather than forcing, here?
-        try:
-            child_ids = drive_proxy('get_children_under_parent_id', 
-                                    parent_id=entry_id)
-        except:
-            logging.exception("Could not retrieve children for parent with"
-                              " ID [%s]." % (entry_id))
-            raise
-
-        for child_id in child_ids:
-            try:
-                self.__get_entry_clause_by_id(child_id)
-            except:
-                logging.exception("Could not get filenames under invalid "
-                                  "entry-ID [%s]." % (entry_id))
-                raise
-###
         try:
             entry_clause = self.__get_entry_clause_by_id(entry_id)
         except:
-            logging.exception("Could not get entry_clause with invalid entry-"
-                              "ID [%s]." % (entry_id))
+            logging.exception("Could not retrieve entry with ID from the path-"
+                              "cache [%s]." % (entry_id))
             raise
+
+        if not entry_clause[4]:
+            logging.debug("Not all children have been loaded for parent with "
+                          "ID [%s]. Loading them now." % (entry_id))
+
+            try:
+                self.__load_all_children(entry_id)
+            except:
+                logging.exception("Could not load all children for parent with"
+                                  " ID [%s]." % (entry_id))
+                raise
 
         if not get_utility().is_directory(entry_clause[0]):
             message = ("Could not get child filenames for non-directory with "
