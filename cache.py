@@ -525,9 +525,9 @@ class PathRelations(object):
             entry_clause[1] = [ ]
 
         entry_parents = entry_clause[1]
-        title = normalized_entry.title
+        title_fs = normalized_entry.title_fs
 
-        logging.debug("Registering entry with title [%s]." % (title))
+        logging.debug("Registering entry with title [%s]." % (title_fs))
         parent_ids = [ parent_id for parent_id in normalized_entry.parents ]
         logging.debug("Parents are: %s" % (', '.join(parent_ids)))
 
@@ -554,7 +554,7 @@ class PathRelations(object):
             # a unique filename among siblings.
 
             i = 1
-            current_variation = title
+            current_variation = title_fs
             elected_variation = None
             while i <= 255:
                 if not [ child_name_tuple 
@@ -565,7 +565,7 @@ class PathRelations(object):
                     break
                     
                 i += 1
-                current_variation = ("%s (%s)" % (title, i))
+                current_variation = ("%s (%s)" % (title_fs, i))
 
             if elected_variation == None:
                 logging.error("Could not register entry with ID [%s]. There "
