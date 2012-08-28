@@ -16,7 +16,7 @@ Design goals:
 x Seamlessly work around duplicate-file allowances in Google Drive (DONE).
 x Seamlessly manage file-type versatility in Google Drive (files do not retain 
   a particular mime-type under GD) (DONE).
-> Allow for multiple references to the same files.
+x Allow for multiple references to the same files.
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive. This is a moronic choice. Our implementation is built against 
