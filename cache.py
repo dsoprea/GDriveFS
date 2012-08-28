@@ -621,9 +621,15 @@ class PathRelations(object):
         query_contains_string_fs = get_utility(). \
             translate_filename_charset(query_contains_string)
 
+        # We'll have to end-up searching -every- child in the directory. In the 
+        # beginning, we knew that, if the file existed at all, at least the 
+        # first character would be searchable. However, now the hidden files 
+        # are locally modified to have a prefixing dot, and we no longer has 
+        # this assumption.
         search_tokens = [query_contains_string_fs, 
                          query_contains_string_fs[:prefix_length], 
-                         query_contains_string_fs[0]]
+                         query_contains_string_fs[0],
+                         None]
 
         i = 0
         found = False
