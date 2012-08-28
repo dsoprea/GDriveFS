@@ -324,13 +324,17 @@ class PathRelations(object):
                 (parent, parent_parents, parent_children, parent_id) \
                     = parent_clause
 
-                # Integrity-check that the parent we're referencing is still in the list.
+                # Integrity-check that the parent we're referencing is still 
+                # in the list.
                 if parent_id not in self.entry_ll:
-                    logging.warn("Parent with ID [%s] on entry with ID [%s] is not"
-                                 " valid." % (parent_id, entry_id))
+                    logging.warn("Parent with ID [%s] on entry with ID [%s] is"
+                                 " not valid." % (parent_id, entry_id))
                     continue
             
-                updated_children = [ child_tuple for child_tuple in parent_children if child_tuple[1] != entry_clause ]
+                updated_children = [ child_tuple 
+                                     for child_tuple 
+                                     in parent_children 
+                                     if child_tuple[1] != entry_clause ]
 # TODO: Confirm that this works. We tested it.. It should.
                 if parent_children != updated_children:
                     parent_children[:] = updated_children
@@ -582,39 +586,83 @@ class PathRelations(object):
 
         return entry_clause
 
-    def get_children_by_query_under_folder(self, entry_id, name_fragment):
-        """Get the entries with a title that contains the given fragment, 
-        having a parent with the given entry-ID. The entries will be loaded 
-        into the cache out of a consequence of the process.
-        """
+    def get_children_with_contains_and_decay(self, parent_id, query_contains_string):
 
-        logging.info("Ensuring that a child with a name like [%s] is loaded "
-                     "under folder with entry-ID [%s]." % (name_fragment, 
-                                                           entry_id))
+        logging.info("Getting child-listing under parent_id [%s] with query "
+                     "[%s] WITH DECAY." % (parent_id, query_contains_string))
 
-        try:
-            matched_children = drive_proxy('get_children_under_parent_id', 
-                                   parent_id=entry_id, 
-# TODO: Need to escape the query token.
-                                   query=("title='%s'" % 
-                                          (name_fragment)))
-        except:
-            logging.exception("Could not list children containing [%s] under "
-                              "folder with entry-ID [%s]." % (name_fragment, 
-                                                              entry_id))
-            raise
+        # We're going to potentially repeat the call to GD several times, with 
+        # varying lengths of a query (if a query_contains_string was provided 
+        # and query_contains_decay is True). In addition to the query itself, 
+        # we'll try a search with just the first <prefix> characters, another 
+        # one with just the first character, and then a comprehensive search. 
+        # The moment a filename matching query_contains_string is found, we 
+        # bail. This is necessary in a situation where there are duplicate 
+        # filenames in the same directory, but we don't know about all of the 
+        # entries in that directory yet, nor have we determined their unique 
+        # filenames, yet (filenames that Google won't know about).
 
-        cache = EntryCache.get_instance().cache
+        prefix_length = Conf.get('query_decay_intermed_prefix_length')
+        query_contains_string_fs = get_utility(). \
+            translate_filename_charset(query_contains_string)
+
+        search_tokens = [query_contains_string_fs, 
+                         query_contains_string_fs[:prefix_length], 
+                         query_contains_string_fs[0]]
+
+        i = 0
+        found = False
         results = [ ]
-        for child_id in matched_children:
+        cache = EntryCache.get_instance().cache
+        for search_token in search_tokens:
+            logging.info("Listing entries under parent with ID [%s] and "
+                         "contains-query [%s], in cycle (%d)." % 
+                         (parent_id, search_token, i))
+
+            # Get the list of children.
+
             try:
-                results.append(cache.get(child_id))
+                matched_children = drive_proxy('get_children_under_parent_id',
+                                       parent_id=parent_id, 
+                                       query_contains_string=search_token)
             except:
-                logging.exception("Could not retrieve entry for matched child "
-                                  "with entry-ID [%s]." % (child_id))
+                logging.exception("Could not list children containing [%s] under "
+                                  "folder with entry-ID [%s]." % 
+                                  (search_token, parent_id))
                 raise
 
-        return results
+            # Induce a retrieval of each child by asking for it.
+
+            for child_id in matched_children:
+                try:
+                    results.append(cache.get(child_id))
+                except:
+                    logging.exception("Could not retrieve entry for matched child "
+                                      "with entry-ID [%s]." % (child_id))
+                    raise
+
+            # If there's a child under the given parent where the filename 
+            # matches query_contains, return.
+
+            try:
+                parent_clause = self.__get_entry_clause_by_id(parent_id)
+            except:
+                logging.exception("Could not retrieve clause for parent-entry "
+                                  "[%s] in contains-with-decay function." % 
+                                  (parent_id))
+                raise
+
+            found = [ child_tuple[1] 
+                      for child_tuple 
+                      in parent_clause[2] 
+                      if child_tuple[0] == query_contains_string_fs ]
+
+            if found:
+                break
+
+            i += 1
+
+        return (results, found)
 
     def get_child_filenames_from_entry_id(self, entry_id):
         """Return the filenames contained in the folder with the given 
@@ -740,15 +788,15 @@ class PathRelations(object):
                           "with entry-ID [%s]." % (child_name, parent_id))
 
             try:
-                candidates = self.get_children_by_query_under_folder(parent_id, child_name)
+                results = self.get_children_with_contains_and_decay(parent_id, child_name)
             except:
                 logging.exception("Could not retrieve children like [%s] under"
                                   " parent with entry-ID [%s]." % (child_name, 
                                                                    parent_id))
                 raise
 
-            filenames_phrase = ', '.join([ candidate.id for candidate in candidates ])
-            logging.debug("(%d) candidate children were found: %s" % (len(candidates), filenames_phrase))
+            filenames_phrase = ', '.join([ candidate.id for candidate in results[0] ])
+            logging.debug("(%d) candidate children were found: %s" % (len(results[0]), filenames_phrase))
 
             i += 1
 
@@ -796,9 +844,11 @@ class PathRelations(object):
         num_parts = len(path_parts)
         results = [ ]
         while i < num_parts:
-            child_filename_to_search = path_parts[i]
+            child_filename_to_search_fs = get_utility(). \
+                translate_filename_charset(path_parts[i])
+
             logging.debug('Checking part (%d): [%s]' % 
-                          (i, child_filename_to_search))
+                          (i, child_filename_to_search_fs))
 
             try:
                 current_clause = self.entry_ll[entry_ptr]
@@ -827,7 +877,7 @@ class PathRelations(object):
                 found = [ child_tuple[1][3] 
                           for child_tuple 
                           in children 
-                          if child_tuple[0] == child_filename_to_search ]
+                          if child_tuple[0] == child_filename_to_search_fs ]
             
             if found:
                 results.append(found[0])
@@ -881,7 +931,7 @@ class EntryCache(CacheClient):
         # Get more entries than just what was requested, while we're at it.
 
         try:
-            parent_ids = drive_proxy('get_parents_over_child_id', 
+            parent_ids = drive_proxy('get_parents_containing_id', 
                                      child_id=requested_entry_id)
         except:
             logging.exception("Could not retrieve parents for child with ID "

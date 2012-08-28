@@ -420,7 +420,7 @@ class _GdriveManager(object):
 
         return (largest_change_id, next_page_token, changes)
 
-    def get_parents_over_child_id(self, child_id, max_results=None):
+    def get_parents_containing_id(self, child_id, max_results=None):
         
         logging.info("Getting client for parent-listing.")
 
@@ -428,7 +428,7 @@ class _GdriveManager(object):
             client = self.get_client()
         except:
             logging.exception("There was an error while acquiring the Google "
-                              "Drive client (get_parents_over_child_id).")
+                              "Drive client (get_parents_containing_id).")
             raise
 
         logging.info("Listing entries over child with ID [%s]." % (child_id))
@@ -441,7 +441,7 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
-    def get_children_under_parent_id(self, parent_id, query=None):
+    def get_children_under_parent_id(self, parent_id, query_contains_string=None, query_is_string=None):
 
         logging.info("Getting client for child-listing.")
 
@@ -452,7 +452,19 @@ class _GdriveManager(object):
                               "Drive client (list_files_by_parent_id).")
             raise
 
-        logging.info("Listing entries under parent with ID [%s]." % (parent_id))
+        if query_contains_string and query_is_string:
+            logging.exception("The query_contains_string and query_is_string "
+                              "parameters are mutually exclusive.")
+            raise
+
+        if query_is_string:
+            query = ("title='%s'" % (query_is_string.replace("'", "\\'")))
+        elif query_contains_string:
+            query = ("title contains '%s'" % (query_contains_string.replace("'", "\\'")))
+        else:
+            query = None
+
+        logging.info("Listing entries under parent with ID [%s].  QUERY= [%s]" % (parent_id, query))
 
         try:
             response = client.children().list(q=query,folderId=parent_id).execute()
@@ -596,22 +608,6 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
         raise
     
 drive_proxy.gp = None
-
-## TODO: Add documentation annotations. Complete comments.
-## TODO: Rename properties to be private
-
-#drive_proxy('print_files')
-    
-#wrapper = _GdriveManager(authorize)
-#wrapper.print_files("title contains 'agenda'")
-#wrapper.print_files()#(parentId="0B5Ft2OXeDBqSRzlxM0xXdDFDX0E")
-
-#exit()
-#f = service.files().get(fileId=file_id).execute()
-#downloadUrl = f.get('downloadUrl')
-#print(downloadUrl)
-#if downloadUrl:
-#  resp, f['content'] = service._http.request(downloadUrl)
 
 def main():
     parser = ArgumentParser(prog=app_name)
