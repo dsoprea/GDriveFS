@@ -3,3 +3,4 @@ google_appengine
 google_api_python_client
 httplib2
 python-dateutil
+fusepy
