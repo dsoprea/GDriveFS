@@ -469,6 +469,14 @@ class PathRelations(object):
 
     def register_entry(self, normalized_entry):
 
+        logging.debug("We're registering entry with ID [%s]." % (normalized_entry.id))
+
+        if [ flag 
+             for flag, value 
+             in normalized_entry.labels.items() 
+             if flag in [u'restricted', u'trashed'] and value ]:
+            return None
+
         entry_id = normalized_entry.id
 
         if normalized_entry.__class__ is not NormalEntry:
@@ -659,13 +667,14 @@ class PathRelations(object):
                                   (parent_id))
                 raise
 
-            found = [ child_tuple[1] 
-                      for child_tuple 
-                      in parent_clause[2] 
-                      if child_tuple[0] == query_contains_string_fs ]
+            if parent_clause:
+                found = [ child_tuple[1] 
+                          for child_tuple 
+                          in parent_clause[2] 
+                          if child_tuple[0] == query_contains_string_fs ]
 
-            if found:
-                break
+                if found:
+                    break
 
             i += 1
 
@@ -708,6 +717,13 @@ class PathRelations(object):
             logging.exception("Could not retrieve entry with ID from the path-"
                               "cache [%s]." % (entry_id))
             raise
+
+        if not entry_clause:
+            message = ("Can not list the children for an unavailable entry "
+                       "with ID [%s]." % (entry_id))
+
+            logging.error(message)
+            raise Exception(message)
 
         if not entry_clause[4]:
             logging.debug("Not all children have been loaded for parent with "
