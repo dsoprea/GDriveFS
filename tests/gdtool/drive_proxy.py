@@ -34,7 +34,43 @@ class GetDriveTestCase(TestCase):
 
         print(entries)
 
+    def test_get_parents_containing_id(self):
+
+        return
+        
+        entry_id = u'11EIs1ZxCykme0FnAdY8Xm_ktUCQ9y5lHC3EwAKFsiFk'
+
+        try:
+            parent_ids = drive_proxy('get_parents_containing_id', 
+                                     child_id=entry_id)
+        except:
+            logging.exception("Could not retrieve parents for child with ID "
+                              "[%s]." % (entry_id))
+            raise
+
+        from pprint import pprint
+        pprint(parent_ids)
+
+    def test_download_file(self):
+
+        return
+
+        from gdrivefs.gdtool import drive_proxy
+        http = drive_proxy('get_authed_http')
+
+        files = drive_proxy('list_files')
+
+        from pprint import pprint
+        url = files[16].download_links[u'text/plain']
+        pprint(url)
+
+        data = http.request(url)
+        #pprint(len(data[1]))
+        print(data[1])
+
     def test_get_about(self):
+
+        return
 
         entry_id_1 = u'11EIs1ZxCykme0FnAdY8Xm_ktUCQ9y5lHC3EwAKFsiFk'
         entry1 = EntryCache.get_instance().cache.get(entry_id_1)

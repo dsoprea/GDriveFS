@@ -68,17 +68,12 @@ class _DriveUtility(object):
         file.
         """
 
-        # A front-line defense against receiving the wrong kind of data.
-        if u'id' not in entry:
-            raise Exception("Entry is not a dictionary with a key named "
-                            "'id'.")
-
         logging.debug("Deriving extension for extension with ID [%s]." % 
-                      (entry[u'id']))
+                      (entry.id))
 
-        if self.is_folder(entry):
+        if entry.is_directory:
             message = ("Could not derive extension for folder.  ENTRY_ID= "
-                       "[%s]" % (entry[u'id']))
+                       "[%s]" % (entry.id))
             
             logging.error(message)
             raise Exception(message)
@@ -87,12 +82,12 @@ class _DriveUtility(object):
         # from Google, we're just going to normalize all of the character-sets 
         # to ASCII. This is reasonable since they're supposed to be standards-
         # based, anyway.
-        mime_type = entry[u'mimeType']
+        mime_type = entry.mime_type
         normal_mime_type = None
 
         # If there's a standard type on the entry, there won't be a list of
         # export options.
-        if u'exportLinks' not in entry or not entry[u'exportLinks']:
+        if not entry.download_links:
             normal_mime_type = mime_type
 
         # If we have a local mapping of the mime-type on the entry to another 
@@ -100,7 +95,7 @@ class _DriveUtility(object):
         # types.
         elif mime_type in self.gd_to_normal_mime_mappings:
             normal_mime_type_candidate = self.gd_to_normal_mime_mappings[mime_type]
-            if normal_mime_type_candidate in entry[u'exportLinks']:
+            if normal_mime_type_candidate in entry.download_links:
                 normal_mime_type = normal_mime_type_candidate
 
         # If we still haven't been able to normalize the mime-type, use the 
@@ -109,7 +104,7 @@ class _DriveUtility(object):
             normal_mime_type = None
 
             # If there is one or more mime-type-specific download links.
-            for temp_mime_type in entry[u'exportLinks'].iterkeys():
+            for temp_mime_type in entry.download_links.iterkeys():
                 normal_mime_type = temp_mime_type
                 break
 
@@ -142,13 +137,6 @@ class _DriveUtility(object):
         """Convert the given filename to the correct character set."""
         
         return original_filename.encode(self.local_character_set)
-
-    def is_invisible(self, entry):
-        labels = entry[u'labels']
-        if labels[u'hidden'] or labels[u'trashed']:
-            return True
-
-        return False
 
 def get_utility():
     if get_utility.__instance == None:

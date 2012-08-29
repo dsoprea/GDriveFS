@@ -14,6 +14,7 @@ from sys        import argv
 
 from utility import get_utility
 from gdrivefs.cache import PathRelations
+from gdtool import drive_proxy
 
 #if not hasattr(fuse, '__version__'):
 #    raise RuntimeError, \
@@ -63,23 +64,22 @@ class _GDriveFS(Operations):
         if entry.user_permission[u'role'] in [ u'owner', u'writer' ]:
             effective_permission |= 0222
 
+        date_obj = dateutil.parser.parse(entry.modified_date)
+        mtime_epoch = mktime(date_obj.timetuple())
+
+        stat_result = { "st_mtime": mtime_epoch }
+
         if is_folder:
             effective_permission |= 0111
+            stat_result["st_mode"] = (stat.S_IFDIR | effective_permission)
 
-            return {
-                    "st_mode": (stat.S_IFDIR | effective_permission),
-                    "st_nlink": 2
-                }
+            stat_result["st_nlink"] = 2
         else:
-            date_obj = dateutil.parser.parse(entry.modified_date)
-            mtime_epoch = mktime(date_obj.timetuple())
+            stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
+            stat_result["st_nlink"] = 1
+            stat_result["st_size"] = int(entry.quota_bytes_used)
 
-            return {
-                    "st_mode": (stat.S_IFREG | effective_permission),
-                    "st_nlink": 1,
-                    "st_size": int(entry.quota_bytes_used),
-                    "st_mtime": mtime_epoch
-                }
+        return stat_result
 
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
@@ -114,26 +114,62 @@ class _GDriveFS(Operations):
             raise
 
         filenames[0:0] = ['.','..']
-        logging.info(filenames)
+
         for filename in filenames:
             yield filename
 
-#    def fsinit(*args): 
-#        import syslog
-#        syslog.openlog('myfs') 
-#        syslog.syslog("INIT") 
-#        syslog.closelog() 
-#
-#    def __del__(self, *args):
-#        with open('/tmp/destroy', 'w') as f:
-#            f.write("Content.")
-#
-#    def fsdestroy(self, *args):
-#        with open('/tmp/destroy', 'w') as f:
-#            f.write("Content.")
+    def read(self, path, size, offset, fh):
+
+        logging.info("Reading file at path [%s] with offset (%d) and count "
+                     "(%d)." % (path, offset, size))
+
+        path_relations = PathRelations.get_instance()
+
+        # Figure out what entry represents the path.
+
+        logging.debug("Deriving entry-clause from path.")
+
+        try:
+            entry_clause = path_relations.get_clause_from_path(path)
+        except:
+            logging.exception("Could not get clause from path [%s]." % (path))
+            return -errno.ENOENT
+
+        normalized_entry = entry_clause[0]
+        entry_id = entry_clause[3]
+
+        # TODO: mime_type needs to be derived, still.
+        mime_type = mime_type
+
+        # Fetch the file to a local, temporary file.
+
+        logging.info("Downloading entry with ID [%s] for path [%s]." % 
+                     (entry_id, path))
+
+        try:
+            temp_file_path = drive_proxy('download_to_local', 
+                                     normalized_entry=normalized_entry,
+                                     mime_type=mime_type)
+        except:
+            logging.exception("Could not localize file with entry having ID "
+                              "[%s]." % (entry_id))
+            raise
+
+        # Retrieve the data.
+
+        try:
+            with open(temp_file_path, 'rb') as f:
+                f.seek(offset)
+                return f.read(size)
+        except:
+            logging.exception("Could not produce data from the temporary file-"
+                              "path [%s]." % (temp_file_path))
+            raise
+
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /"""
-        logging.info("FS destroyed.")
+
+        pass
 
 def dump_changes(overview):
     (largest_change_id, next_page_token, changes) = overview

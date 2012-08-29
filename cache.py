@@ -563,11 +563,33 @@ class PathRelations(object):
 
             parent_children = parent_clause[2]
 
+            filename_base = title_fs
+
+            utility = get_utility()
+
+            # Append an extension to the bare filename.
+
+            try:
+                file_extension = utility.get_extension(normalized_entry)
+            except:
+                logging.exception("Could not derive extension for entry. "
+                                  "Skipping.")
+            else:
+                filename_base = ("%s.%s" % (filename_base, file_extension))
+                logging.debug("File will be given extension [%s]." % (file_extension))
+
+            # Prepend a period if it's a hidden file.
+
+            if u'hidden' in normalized_entry.labels \
+                    and normalized_entry.labels[u'hidden']:
+                filename_base = utility. \
+                    translate_filename_charset(".%s" % (filename_base))
+
             # Register among the children of this parent, but make sure we have 
             # a unique filename among siblings.
 
             i = 1
-            current_variation = title_fs
+            current_variation = filename_base
             elected_variation = None
             while i <= 255:
                 if not [ child_name_tuple 
@@ -578,19 +600,13 @@ class PathRelations(object):
                     break
                     
                 i += 1
-                current_variation = ("%s (%s)" % (title_fs, i))
+                current_variation = ("%s (%s)" % (filename_base, i))
 
             if elected_variation == None:
                 logging.error("Could not register entry with ID [%s]. There "
                               "are too many duplicate names in that "
                               "directory." % (entry_id))
                 return
-
-            # Prepend a period if it's a hidden file.
-            if u'hidden' in normalized_entry.labels \
-                    and normalized_entry.labels[u'hidden']:
-                elected_variation = get_utility(). \
-                    translate_filename_charset(".%s" % (elected_variation))
 
             logging.debug("Final filename is [%s]." % (current_variation))
 

@@ -14,6 +14,7 @@ import logging
 import os
 import pickle
 import json
+import re
 
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
@@ -226,7 +227,7 @@ class NormalEntry(object):
             self.info['modified_date']              = raw_data[u'modifiedDate']
             self.info['created_date']               = raw_data[u'createdDate']
 
-            self.info['export_links']           = raw_data[u'exportLinks'] if u'exportLinks' in raw_data else { }
+            self.info['download_links']         = raw_data[u'exportLinks'] if u'exportLinks' in raw_data else { }
             self.info['link']                   = raw_data[u'embedLink'] if u'embedLink' in raw_data else None
             self.info['modified_by_me_date']    = raw_data[u'modifiedByMeDate'] if u'modifiedByMeDate' in raw_data else None
             self.info['last_viewed_by_me_date'] = raw_data[u'lastViewedByMeDate'] if u'lastViewedByMeDate' in raw_data else None
@@ -250,6 +251,10 @@ class NormalEntry(object):
 
     def __str__(self):
         return ("<Normalized entry object with ID [%s]: %s>" % (self.info['id']))
+
+    @property
+    def is_directory(self):
+        return get_utility().is_directory(self)
 
 class LiveReader(object):
     """A base object for data that can be retrieved on demand."""
@@ -337,12 +342,10 @@ class _GdriveManager(object):
     def check_authorization(self):
         self.credentials = self.authorize.get_credentials()
 
-    def get_client(self):
+    def get_authed_http(self):
+
         self.check_authorization()
     
-        if self.client != None:
-            return self.client
-
         logging.info("Getting authorized HTTP tunnel.")
             
         http = Http()
@@ -353,12 +356,25 @@ class _GdriveManager(object):
             logging.exception("Could not get authorized HTTP client for Google"
                               " Drive client.")
             raise
-    
-        logging.info("Building authorized client.")
+
+        return http
+
+    def get_client(self):
+
+        if self.client != None:
+            return self.client
+
+        try:
+            authed_http = self.get_authed_http()
+        except:
+            logging.exception("Could not get authed Http instance.")
+            raise
+
+        logging.info("Building authorized client from Http.  TYPE= [%s]" % (type(authed_http)))
     
         # Build a client from the passed discovery document path
         client = build(self.conf_service_name, self.conf_service_version, 
-                        http=http)
+                        http=authed_http)
 
         self.client = client
         return self.client
@@ -451,7 +467,7 @@ class _GdriveManager(object):
             client = self.get_client()
         except:
             logging.exception("There was an error while acquiring the Google "
-                              "Drive client (list_files_by_parent_id).")
+                              "Drive client (get_children_under_parent_id).")
             raise
 
         if query_contains_string and query_is_string:
@@ -516,6 +532,122 @@ class _GdriveManager(object):
             raise
 
         return entry
+
+    def list_files(self):
+        
+        logging.info("Listing all files.")
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (list_files).")
+            raise
+
+        try:
+            result = client.files().list().execute()
+        except:
+            logging.exception("Could not get the list of files.")
+            raise
+
+        entries = []
+        for entry_raw in result[u'items']:
+            try:
+                entry = NormalEntry('files_list', entry_raw)
+            except:
+                logging.exception("Could not normalize raw-data for entry with"
+                                  " ID [%s]." % (entry_raw[u'id']))
+                raise
+
+            entries.append(entry)
+
+        return entries
+
+    def download_to_local(self, normalized_entry, mime_type):
+        """Download the given file. If we've cached a previous download and the 
+        mtime hasn't changed, re-use.
+        """
+
+        logging.info("Downloading entry with ID [%s] and mime-type [%s]." % 
+                     (entry_id, mime_type))
+
+        if mime_type not in normalized_entry.download_links:
+            message = ("Entry with ID [%s] can not be exported to type [%s]." % 
+                       (normalized_entry.id, mime_type))
+
+            logging.error(message)
+            raise Exception(message)
+
+        temp_path = Conf.get('file_download_temp_path')
+
+        if not os.path.isdir(temp_path):
+            try:
+                os.makedirs(temp_path)
+            except:
+                logging.exception("Could not create temporary download path "
+                                  "[%s]." % (temp_path))
+                raise
+
+        # Produce a file-path of a temporary file that we can store the data 
+        # to. More often than not, we'll be called when the OS wants to read 
+        # the file, and we'll need the data at hand in order to page through 
+        # it.
+
+        temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)). \
+                            encode('ascii')
+        temp_filename = rx.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
+        temp_filepath = ("%s/%s" % (temp_path, temp_filename))
+
+        use_cache = False
+
+        if os.path.isfile(temp_filepath):
+            try:
+                stat = os.stat(temp_filepath)
+            except:
+                logging.exception("Could not retrieve stat() information for "
+                                  "temp download file [%s]." % (temp_filepath))
+                raise
+
+            if normalized_entry.modified_date == stat.st_mtime:
+                use_cache = True
+
+        if use_cache:
+            # Use the cache. It's fine.
+            return temp_filepath
+
+        # Go and get the file.
+
+        try:
+            authed_http = self.get_authed_http()
+        except:
+            logging.exception("Could not get authed Http instance for download.")
+            raise
+
+        url = normalized_entry.download_links[mime_type]
+
+        logging.debug("Downloading file from [%s]." % (url))
+
+        try:
+            data_tuple = http.request(url)
+        except:
+            logging.exception("Could not download entry with ID [%s], type "
+                              "[%s], and URL [%s]." % (normalized_entry.id, mime_type, url))
+            raise
+
+        data = data_tuple[1]
+
+        logging.info("Downloaded file is (%d) bytes. Writing to [%s]." % (len(data), temp_filepath))
+
+        try:
+            with open(temp_filepath, 'wb') as f:
+                f.write(data)
+        except:
+            logging.exception("Could not cached downloaded file. Skipped.")
+
+        else:
+            logging.info("File written to cache successfully.")
+
+        return temp_filepath
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
