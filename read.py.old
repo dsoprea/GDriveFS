@@ -1,0 +1,103 @@
+import logging
+
+from datetime import datetime
+from threading import Lock, Thread, Queue, Event
+from Queue import Queue
+
+from conf import Conf
+
+class ReadExchange(Thread):
+    last_activity = datetime.now()
+    ping_lock = Lock()
+
+    entry_id = None
+    q = None
+    file_jobthread_max_idle_time = None
+
+    def __init__(self, entry_id, q):
+        Thread.__init__(self)
+
+        self.entry_id = entry_id
+        self.q = q
+        self.max_idle_time = Conf.get('file_jobthread_max_idle_time')
+
+    def run(self):        
+        while 1:
+            try:
+                job = q.get(True, self.max_idle_time)
+
+            except Empty:
+                logging.info("READ thread for entry with ID [%s] is terminating "
+                             "due to idleness." % (self.entry_id))
+                return
+
+    def read(self, entry_id, offset, count):
+        pass
+
+    def ping(self):
+        with self.ping_lock:
+            old_last_activity = self.last_activity
+            self.last_activity = datetime.now()
+            return old_last_activity
+
+class ReadTracker(object):
+    threads = { }
+    next_request_sn = 1
+
+    def __ensure_thread(self, entry_id):
+        thread = None
+        if entry_id in request_data.threads:
+            logging.info("A READ thread already exists for entry with ID [%s]."
+                         " Checking state." % (entry_id))
+
+            thread_tuple = request_data.threads[entry_id]
+            thread = thread_tuple[0]
+
+            # Check if the thread is alive, do a ping, and then make sure it's 
+            # still alive to make sure that we didn't -just- miss keeping it 
+            # alive.
+            if not thread.is_alive() or thread.ping() and \
+                    not thread.is_alive():
+                logging.info("Existing thread is no longer in operation. "
+                             "Joining.")
+                thread.join()
+                thread = None
+
+       if not thread:
+            logging.info("A new READ thread will be started for entry with ID "
+                         "[%s]." % (entry_id))
+
+            q = Queue()
+
+            thread = ReadExchange(entry_id, q)
+            thread.name = ("Read_%s" % (entry_id))
+            thread.start()
+        
+            self.threads[entry_id] = (thread, q)
+
+    def request_data(self, entry_id, offset, count):
+
+        logging.debug("Doing data request for entry-ID [%s] at offset [%d] for"
+                      " count [%d]." % (entry_id, offset, count))
+
+        try:
+            self.__ensure_thread(entry_id)
+        except:
+            logging.exception("Could not ensure thread for entry with ID "
+                              "[%s]." % (entry_id))
+            raise
+
+        (thread, q) = self.threads[entry_id]
+
+        ev = Event()
+        buffer = ''
+
+        # Queue the request.
+        job = (offset, count, ev, buffer)
+        q.put(job)
+
+        # Wait for it to complete.
+        ev.wait()
+
+        return buffer
+
