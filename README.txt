@@ -12,11 +12,12 @@ Design goals:
 > Limited caching.
 > Cleanup thread to manage cleanup of aged cache items.
 > Thread for monitoring changes via "changes" functionality of API.
-> Complete stat() implementation.
+x Complete stat() implementation.
 x Seamlessly work around duplicate-file allowances in Google Drive (DONE).
 x Seamlessly manage file-type versatility in Google Drive (files do not retain 
   a particular mime-type under GD) (DONE).
 x Allow for multiple references to the same files.
+> Allow copy-from using default formats as well as allowing one to be chosen on-the-fly.
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive. This is a moronic choice. Our implementation is built against 
