@@ -708,6 +708,16 @@ class PathRelations(object):
                                   (child_id))
                 raise
 
+        try:
+            parent_clause = self.__get_entry_clause_by_id(parent_id)
+        except:
+            logging.exception("Could not retrieve clause for parent-entry "
+                              "[%s] in load-all-children function." % 
+                              (parent_id))
+            raise
+
+        parent_clause[4] = True
+
         return child_ids
 
     def get_child_filenames_from_entry_id(self, entry_id):
@@ -826,7 +836,7 @@ class PathRelations(object):
             # The parent is the last one found, or the root if none.
             parent_id = result[0][num_results - 1] \
                             if num_results \
-                            else AccountInfo().root_id
+                            else AccountInfo.get_instance().root_id
 
             # The child will be the first part that was not found.
             child_name = result[1][num_results]
@@ -869,7 +879,7 @@ class PathRelations(object):
         logging.debug("Locating entry information for path [%s]." % (path))
 
         try:
-            root_id = AccountInfo().root_id
+            root_id = AccountInfo.get_instance().root_id
         except:
             logging.exception("Could not get root-ID.")
             raise

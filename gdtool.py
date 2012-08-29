@@ -257,12 +257,14 @@ class LiveReader(object):
     data = None
 
     def __getitem__(self, key):
+        child_name = self.__class__.__name__
+
+        logging.debug("Key [%s] requested on LiveReader type [%s]." % (key, child_name))
+
         try:
             return self.data[key]
         except:
             pass
-
-        child_name = self.__class__.__name__
 
         try:
             self.data = self.get_data(key)
