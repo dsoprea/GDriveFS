@@ -86,7 +86,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         else:
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
-            stat_result["st_size"] = int(entry.quota_bytes_used)
+            stat_result["st_size"] = int(entry.file_size)
 
         return stat_result
 

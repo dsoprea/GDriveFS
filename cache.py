@@ -567,19 +567,22 @@ class PathRelations(object):
 
             utility = get_utility()
 
-            # Append an extension to the bare filename, if available.
+            if not normalized_entry.file_extension:
+                # Append an extension to the bare filename, if available. If 
+                # the file_extension property is available, the filename 
+                # already has an extension.
 
-            try:
-                file_extension = utility.get_extension(normalized_entry)
-            except:
-                logging.exception("There was a problem trying to derive an "
-                                  "extension for entry with ID [%s]." %
-                                  (normalized_entry.id))
-                raise
+                try:
+                    file_extension = utility.get_extension(normalized_entry)
+                except:
+                    logging.exception("There was a problem trying to derive an "
+                                      "extension for entry with ID [%s]." %
+                                      (normalized_entry.id))
+                    raise
             
-            if file_extension:
-                filename_base = ("%s.%s" % (filename_base, file_extension))
-                logging.debug("File will be given extension [%s]." % (file_extension))
+                if file_extension:
+                    filename_base = ("%s.%s" % (filename_base, file_extension))
+                    logging.debug("File will be given extension [%s]." % (file_extension))
 
             # Prepend a period if it's a hidden file.
 

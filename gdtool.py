@@ -229,11 +229,16 @@ class NormalEntry(object):
             self.info['modified_date']              = raw_data[u'modifiedDate']
             self.info['created_date']               = raw_data[u'createdDate']
 
-            self.info['download_links']         = raw_data[u'exportLinks'] if u'exportLinks' in raw_data else { }
-            self.info['link']                   = raw_data[u'embedLink'] if u'embedLink' in raw_data else None
-            self.info['modified_by_me_date']    = raw_data[u'modifiedByMeDate'] if u'modifiedByMeDate' in raw_data else None
-            self.info['last_viewed_by_me_date'] = raw_data[u'lastViewedByMeDate'] if u'lastViewedByMeDate' in raw_data else None
-            self.info['quota_bytes_used']       = int(raw_data[u'quotaBytesUsed']) if u'quotaBytesUsed' in raw_data else 0
+            self.info['download_links']         = raw_data[u'exportLinks']          if u'exportLinks'           in raw_data else { }
+            self.info['link']                   = raw_data[u'embedLink']            if u'embedLink'             in raw_data else None
+            self.info['modified_by_me_date']    = raw_data[u'modifiedByMeDate']     if u'modifiedByMeDate'      in raw_data else None
+            self.info['last_viewed_by_me_date'] = raw_data[u'lastViewedByMeDate']   if u'lastViewedByMeDate'    in raw_data else None
+            self.info['file_size']              = int(raw_data[u'fileSize'])        if u'fileSize'              in raw_data else 0
+            self.info['file_extension']         = raw_data[u'fileExtension']        if u'fileExtension'         in raw_data else None
+            self.info['md5_checksum']           = raw_data[u'md5Checksum']          if u'md5Checksum'           in raw_data else None
+
+            if u'downloadUrl' in raw_data:
+                self.info['download_links'][self.info['mime_type']] = raw_data[u'downloadUrl']
 
             # This is encoded for displaying locally.
             self.info['title_fs'] = get_utility().translate_filename_charset(raw_data[u'title'])
@@ -573,7 +578,8 @@ class _GdriveManager(object):
         logging.info("Downloading entry with ID [%s] and mime-type [%s]." % 
                      (normalized_entry.id, mime_type))
 
-        if mime_type not in normalized_entry.download_links:
+        if mime_type != normalized_entry.mime_type and \
+                mime_type not in normalized_entry.download_links:
             message = ("Entry with ID [%s] can not be exported to type [%s]. The available types are: %s" % 
                        (normalized_entry.id, mime_type, ', '.join(normalized_entry.download_links.keys())))
 
