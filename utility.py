@@ -155,6 +155,9 @@ class _DriveUtility(object):
                                   "for mime-type [%s]." % (normal_mime_type))
                 raise
 
+            if not file_extension:
+                return None
+
             file_extension = file_extension[1:]
 
             logging.debug("Guessed extension [%s] for mime-type [%s]." % 
