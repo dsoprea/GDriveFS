@@ -567,14 +567,17 @@ class PathRelations(object):
 
             utility = get_utility()
 
-            # Append an extension to the bare filename.
+            # Append an extension to the bare filename, if available.
 
             try:
                 file_extension = utility.get_extension(normalized_entry)
             except:
-                logging.exception("Could not derive extension for entry. "
-                                  "Skipping.")
-            else:
+                logging.exception("There was a problem trying to derive an "
+                                  "extension for entry with ID [%s]." %
+                                  (normalized_entry.id))
+                raise
+            
+            if file_extension:
                 filename_base = ("%s.%s" % (filename_base, file_extension))
                 logging.debug("File will be given extension [%s]." % (file_extension))
 
@@ -768,7 +771,7 @@ class PathRelations(object):
                                   " ID [%s]." % (entry_id))
                 raise
 
-        if not get_utility().is_directory(entry_clause[0]):
+        if not entry_clause[0].is_directory:
             message = ("Could not get child filenames for non-directory with "
                        "entry-ID [%s]." % (entry_id))
 

@@ -11,24 +11,31 @@ class _DriveUtility(object):
 
     # Mime-types to translate to, if they appear within the "exportLinks" list.
     gd_to_normal_mime_mappings = {
-            u'application/vnd.google-apps.document':        u'text/plain',
-            u'application/vnd.google-apps.spreadsheet':     u'application/vnd.ms-excel',
-            u'application/vnd.google-apps.presentation':    u'application/vnd.ms-powerpoint',
-            u'application/vnd.google-apps.drawing':         u'application/pdf',
-            u'application/vnd.google-apps.audio':           u'audio/mpeg',
-            u'application/vnd.google-apps.photo':           u'image/png',
-            u'application/vnd.google-apps.video':           u'video/x-flv'
+            'application/vnd.google-apps.document':        
+                'text/plain',
+            'application/vnd.google-apps.spreadsheet':     
+                'application/vnd.ms-excel',
+            'application/vnd.google-apps.presentation':    
+                'application/vnd.ms-powerpoint',
+            'application/vnd.google-apps.drawing':         
+                'application/pdf',
+            'application/vnd.google-apps.audio':           
+                'audio/mpeg',
+            'application/vnd.google-apps.photo':           
+                'image/png',
+            'application/vnd.google-apps.video':           
+                'video/x-flv'
         }
 
     # Default extensions for mime-types.
     default_extensions = { 
-            u'text/plain':                      u'txt',
-            u'application/vnd.ms-excel':        u'xls',
-            u'application/vnd.ms-powerpoint':   u'ppt',
-            u'application/pdf':                 u'pdf',
-            u'audio/mpeg':                      u'mp3',
-            u'image/png':                       u'png',
-            u'video/x-flv':                     u'flv'
+            'text/plain':                       'txt',
+            'application/vnd.ms-excel':         'xls',
+            'application/vnd.ms-powerpoint':    'ppt',
+            'application/pdf':                  'pdf',
+            'audio/mpeg':                       'mp3',
+            'image/png':                        'png',
+            'video/x-flv':                      'flv'
         }
 
     mimetype_directory = u'application/vnd.google-apps.folder'
@@ -63,20 +70,24 @@ class _DriveUtility(object):
     def is_directory(self, entry):
         return (entry.mime_type == self.mimetype_directory)
 
-    def get_extension(self, entry):
-        """Return the filename extension that should be associated with this 
-        file.
-        """
+    def get_first_mime_type_by_extension(self, extension):
 
-        logging.debug("Deriving extension for extension with ID [%s]." % 
-                      (entry.id))
+        found = [ mime_type 
+                    for mime_type, temp_extension 
+                    in self.default_extensions.iteritems()
+                    if temp_extension == extension ]
+
+        if not found:
+            return None
+
+        return found[0]
+
+    def get_normalized_mime_type(self, entry):
+        
+        logging.debug("Deriving mime-type entry with ID [%s]." % (entry.id))
 
         if entry.is_directory:
-            message = ("Could not derive extension for folder.  ENTRY_ID= "
-                       "[%s]" % (entry.id))
-            
-            logging.error(message)
-            raise Exception(message)
+            return None
 
         # Since we're loading from files and also juggling mime-types coming 
         # from Google, we're just going to normalize all of the character-sets 
@@ -94,22 +105,40 @@ class _DriveUtility(object):
         # mime-type, only use it if that mime-type is listed among the export-
         # types.
         elif mime_type in self.gd_to_normal_mime_mappings:
-            normal_mime_type_candidate = self.gd_to_normal_mime_mappings[mime_type]
+            normal_mime_type_candidate = \
+                self.gd_to_normal_mime_mappings[mime_type]
             if normal_mime_type_candidate in entry.download_links:
                 normal_mime_type = normal_mime_type_candidate
 
         # If we still haven't been able to normalize the mime-type, use the 
-        # first export-link
+        # first available export-link.
         if normal_mime_type == None:
-            normal_mime_type = None
-
-            # If there is one or more mime-type-specific download links.
             for temp_mime_type in entry.download_links.iterkeys():
                 normal_mime_type = temp_mime_type
                 break
 
         logging.debug("GD MIME [%s] normalized to [%s]." % (mime_type, 
                                                            normal_mime_type))
+
+        return normal_mime_type.encode('ASCII')
+
+    def get_extension(self, entry):
+        """Return the filename extension that should be associated with this 
+        file.
+        """
+
+        logging.debug("Deriving extension for entry with ID [%s]." % 
+                      (entry.id))
+
+        try:
+            normal_mime_type = self.get_normalized_mime_type(entry)
+        except:
+            logging.exception("Could not render a mime-type for entry with ID "
+                              "[%s]." % (entry.id))
+            raise
+        
+        if not normal_mime_type:
+            return None
 
         # We have an actionable mime-type for the entry, now.
 

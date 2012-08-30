@@ -4,13 +4,15 @@ import stat
 import logging
 import dateutil.parser
 import getpass
-import os
 import errno
+import re
 
+from errno      import *
 from time       import mktime
 from argparse   import ArgumentParser
-from fuse       import FUSE, Operations
+from fuse       import FUSE, Operations, LoggingMixIn, FuseOSError
 from sys        import argv
+from os         import getenv
 
 from utility import get_utility
 from gdrivefs.cache import PathRelations
@@ -39,13 +41,19 @@ app_name = 'GDriveFS Tool'
 #        self.st_mtime = 0
 #        self.st_ctime = 0
 
-class _GDriveFS(Operations):
+class _GDriveFS(LoggingMixIn,Operations):
     """The main filesystem class."""
 
-    def getattr(self, path, fh=None):
+    def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
 
-        logging.info("Stat() on [%s]." % (path))
+        logging.info("Stat() on [%s]." % (raw_path))
+
+        try:
+            (path, mime_type, extension) = self.__strip_export_type(raw_path)
+        except:
+            logging.exception("Could not process export-type directives.")
+            raise
 
         path_relations = PathRelations.get_instance()
 
@@ -53,15 +61,14 @@ class _GDriveFS(Operations):
             entry_clause = path_relations.get_clause_from_path(path)
         except:
             logging.exception("Could not get clause from path [%s]." % (path))
-            return -errno.ENOENT
+            raise FuseOSError(ENOENT)
 
         effective_permission = 0444
 
-        logging.info("Got clause.")
         is_folder = get_utility().is_directory(entry_clause[0])
         entry = entry_clause[0]
 
-        if entry.user_permission[u'role'] in [ u'owner', u'writer' ]:
+        if entry.editable:
             effective_permission |= 0222
 
         date_obj = dateutil.parser.parse(entry.modified_date)
@@ -103,7 +110,7 @@ class _GDriveFS(Operations):
             entry_clause = path_relations.get_clause_from_path(path)
         except:
             logging.exception("Could not get clause from path [%s]." % (path))
-            raise
+            raise FuseOSError(ENOENT)
 
         try:
             filenames = path_relations.get_child_filenames_from_entry_id \
@@ -118,10 +125,46 @@ class _GDriveFS(Operations):
         for filename in filenames:
             yield filename
 
-    def read(self, path, size, offset, fh):
+    def __strip_export_type(self, path):
+
+        rx = re.compile('#([a-zA-Z0-9]+)$')
+        matched = rx.search(path.encode('ASCII'))
+
+        extension = None
+        mime_type = None
+
+        if matched:
+            fragment = matched.group(0)
+            extension = matched.group(1)
+
+            logging.info("User wants to export to extension [%s]." % 
+                         (extension))
+
+            try:
+                mime_type = get_utility().get_first_mime_type_by_extension \
+                                (extension)
+            except:
+                logging.warning("Could not render a mime-type for prescribed"
+                                "extension [%s], for read." % (extension))
+
+            if mime_type:
+                logging.info("We have been told to export using mime-type "
+                             "[%s]." % (mime_type))
+
+                path = path[:-len(fragment)]
+
+        return (path, mime_type, extension)
+
+    def read(self, raw_path, size, offset, fh):
 
         logging.info("Reading file at path [%s] with offset (%d) and count "
-                     "(%d)." % (path, offset, size))
+                     "(%d)." % (raw_path, offset, size))
+
+        try:
+            (path, mime_type, extension) = self.__strip_export_type(raw_path)
+        except:
+            logging.exception("Could not process export-type directives.")
+            raise
 
         path_relations = PathRelations.get_instance()
 
@@ -133,13 +176,19 @@ class _GDriveFS(Operations):
             entry_clause = path_relations.get_clause_from_path(path)
         except:
             logging.exception("Could not get clause from path [%s]." % (path))
-            return -errno.ENOENT
+            raise FuseOSError(ENOENT)
 
         normalized_entry = entry_clause[0]
         entry_id = entry_clause[3]
 
-        # TODO: mime_type needs to be derived, still.
-        mime_type = mime_type
+        if not mime_type:
+            try:
+                mime_type = get_utility().get_normalized_mime_type \
+                                (normalized_entry)
+            except:
+                logging.exception("Could not render a mime-type for entry with"
+                                  " ID [%s], for read." % (entry.id))
+                raise
 
         # Fetch the file to a local, temporary file.
 
@@ -160,7 +209,10 @@ class _GDriveFS(Operations):
         try:
             with open(temp_file_path, 'rb') as f:
                 f.seek(offset)
-                return f.read(size)
+                buffer = f.read(size)
+                
+                logging.debug("(%d) bytes are being returned." % (len(buffer)))
+                return buffer
         except:
             logging.exception("Could not produce data from the temporary file-"
                               "path [%s]." % (temp_file_path))

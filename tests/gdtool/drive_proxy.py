@@ -23,16 +23,14 @@ class GetDriveTestCase(TestCase):
 
     def test_list_files_by_parent_id(self):
 
-        return
-
         from gdrivefs.gdtool import drive_proxy
-        drive_proxy('list_files')
+        entries = drive_proxy('list_files')
 
-        parent_id = '0AJFt2OXeDBqSUk9PVA'
-
-        entries = drive_proxy('get_children_under_parent_id', parent_id=parent_id)
-
-        print(entries)
+        from pprint import pprint
+        import json
+        with open('/tmp/entries', 'w') as f:
+            for entry in entries:
+                f.write("%s\n" % (json.dumps(entry.info)))
 
     def test_get_parents_containing_id(self):
 
@@ -58,15 +56,29 @@ class GetDriveTestCase(TestCase):
         from gdrivefs.gdtool import drive_proxy
         http = drive_proxy('get_authed_http')
 
-        files = drive_proxy('list_files')
+        normalized_entry = EntryCache.get_instance().cache.get('1DcIWAjj-pnSCXBQa3kHJQuL-QMRoopx8Yx_LVhfRigk')
+        mime_type = 'text/plain'
+
+        files = drive_proxy('download_to_local', normalized_entry=normalized_entry, mime_type=mime_type)
+
+        return
 
         from pprint import pprint
         url = files[16].download_links[u'text/plain']
         pprint(url)
 
         data = http.request(url)
-        #pprint(len(data[1]))
-        print(data[1])
+        response_headers = data[0]
+
+        import re
+        r = re.compile('Range')
+        found = [("%s: %s" % (k, v)) for k, v in response_headers.iteritems() if r.match(k)]
+        if found:
+            print("Found: %s" % (", ".join(found)))
+
+        print(">>>===============================================")
+#        print(data[1][:200])
+        print("<<<===============================================")
 
     def test_get_about(self):
 

@@ -1,20 +1,22 @@
 #!/usr/bin/python
 
-from apiclient.discovery    import build
-from oauth2client.client    import flow_from_clientsecrets
-from oauth2client.client    import OOB_CALLBACK_URN
-
-from datetime       import datetime
-from argparse       import ArgumentParser
-from httplib2       import Http
-from sys            import exit
-from threading      import Thread, Event
-
 import logging
 import os
 import pickle
 import json
 import re
+import dateutil.parser
+
+from apiclient.discovery    import build
+from oauth2client.client    import flow_from_clientsecrets
+from oauth2client.client    import OOB_CALLBACK_URN
+
+from time           import mktime, time
+from datetime       import datetime
+from argparse       import ArgumentParser
+from httplib2       import Http
+from sys            import exit
+from threading      import Thread, Event
 
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
@@ -250,7 +252,7 @@ class NormalEntry(object):
         return self.info[key]
 
     def __str__(self):
-        return ("<Normalized entry object with ID [%s]: %s>" % (self.info['id']))
+        return ("<Normalized entry object with ID [%s]: %s>" % (self.id, self.title))
 
     @property
     def is_directory(self):
@@ -569,7 +571,7 @@ class _GdriveManager(object):
         """
 
         logging.info("Downloading entry with ID [%s] and mime-type [%s]." % 
-                     (entry_id, mime_type))
+                     (normalized_entry.id, mime_type))
 
         if mime_type not in normalized_entry.download_links:
             message = ("Entry with ID [%s] can not be exported to type [%s]." % 
@@ -595,12 +597,17 @@ class _GdriveManager(object):
 
         temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)). \
                             encode('ascii')
-        temp_filename = rx.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
+        temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
         temp_filepath = ("%s/%s" % (temp_path, temp_filename))
 
-        use_cache = False
+        gd_date_obj = dateutil.parser.parse(normalized_entry.modified_date)
+        gd_mtime_epoch = mktime(gd_date_obj.timetuple())
 
+        logging.info("File will be downloaded to [%s]." % (temp_filepath))
+
+        use_cache = False
         if os.path.isfile(temp_filepath):
+            # Determine if a local copy already exists that we can use.
             try:
                 stat = os.stat(temp_filepath)
             except:
@@ -608,11 +615,13 @@ class _GdriveManager(object):
                                   "temp download file [%s]." % (temp_filepath))
                 raise
 
-            if normalized_entry.modified_date == stat.st_mtime:
+            if gd_mtime_epoch == stat.st_mtime:
                 use_cache = True
 
         if use_cache:
             # Use the cache. It's fine.
+
+            logging.info("File retrieved from the previously downloaded, still-current file.")
             return temp_filepath
 
         # Go and get the file.
@@ -628,13 +637,22 @@ class _GdriveManager(object):
         logging.debug("Downloading file from [%s]." % (url))
 
         try:
-            data_tuple = http.request(url)
+            data_tuple = authed_http.request(url)
         except:
             logging.exception("Could not download entry with ID [%s], type "
                               "[%s], and URL [%s]." % (normalized_entry.id, mime_type, url))
             raise
 
-        data = data_tuple[1]
+        (response_headers, data) = data_tuple
+
+        # Throw a log-item if we see any "Range" response-headers. If GD ever
+        # starts supporting "Range" headers, we'll be able to write smarter 
+        # download mechanics (resume, etc..).
+
+        r = re.compile('Range')
+        range_found = [("%s: %s" % (k, v)) for k, v in response_headers.iteritems() if r.match(k)]
+        if range_found:
+            logger.info("GD has returned Range-related headers: %s" % (", ".join(found)))
 
         logging.info("Downloaded file is (%d) bytes. Writing to [%s]." % (len(data), temp_filepath))
 
@@ -646,6 +664,12 @@ class _GdriveManager(object):
 
         else:
             logging.info("File written to cache successfully.")
+
+        try:
+            os.utime(temp_filepath, (time(), gd_mtime_epoch))
+        except:
+            logging.exception("Could not set time on [%s]." % (temp_filepath))
+            raise
 
         return temp_filepath
 
