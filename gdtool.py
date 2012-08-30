@@ -20,7 +20,7 @@ from threading      import Thread, Event
 
 from errors import AuthorizationError, AuthorizationFailureError
 from errors import AuthorizationFaultError, MustIgnoreFileError
-from errors import FilenameQuantityError
+from errors import FilenameQuantityError, ExportFormatError
 from conf import Conf
 from utility import get_utility
 
@@ -574,11 +574,11 @@ class _GdriveManager(object):
                      (normalized_entry.id, mime_type))
 
         if mime_type not in normalized_entry.download_links:
-            message = ("Entry with ID [%s] can not be exported to type [%s]." % 
-                       (normalized_entry.id, mime_type))
+            message = ("Entry with ID [%s] can not be exported to type [%s]. The available types are: %s" % 
+                       (normalized_entry.id, mime_type, ', '.join(normalized_entry.download_links.keys())))
 
-            logging.error(message)
-            raise Exception(message)
+            logging.warning(message)
+            raise ExportFormatError(message)
 
         temp_path = Conf.get('file_download_temp_path')
 

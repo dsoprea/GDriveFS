@@ -17,6 +17,8 @@ from os         import getenv
 from utility import get_utility
 from gdrivefs.cache import PathRelations
 from gdtool import drive_proxy
+from errors import ExportFormatError
+
 
 #if not hasattr(fuse, '__version__'):
 #    raise RuntimeError, \
@@ -60,7 +62,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s]." % (path))
+            logging.exception("Could not get clause from path [%s] (getattr)." % (path))
             raise FuseOSError(ENOENT)
 
         effective_permission = 0444
@@ -109,7 +111,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s]." % (path))
+            logging.exception("Could not get clause from path [%s] (readdir)." % (path))
             raise FuseOSError(ENOENT)
 
         try:
@@ -175,7 +177,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s]." % (path))
+            logging.exception("Could not get clause from path [%s] (read)." % (path))
             raise FuseOSError(ENOENT)
 
         normalized_entry = entry_clause[0]
@@ -199,6 +201,8 @@ class _GDriveFS(LoggingMixIn,Operations):
             temp_file_path = drive_proxy('download_to_local', 
                                      normalized_entry=normalized_entry,
                                      mime_type=mime_type)
+        except (ExportFormatError):
+            raise FuseOSError(ENOENT)
         except:
             logging.exception("Could not localize file with entry having ID "
                               "[%s]." % (entry_id))
