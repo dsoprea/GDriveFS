@@ -100,8 +100,7 @@ class _DisplacedFile(object):
 
         try:
             result = json.dumps(stub_data)
-            NL_LEN = 2
-            padding = (' ' * (self.get_listed_file_size() - len(result) - NL_LEN))
+            padding = (' ' * (self.get_listed_file_size() - len(result) - 1))
 
             return ("%s%s\n" % (result, padding))
         except:
@@ -117,7 +116,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         logging.info("Stat() on [%s]." % (raw_path))
 
         try:
-            (path, mime_type, extension, just_info) = self.__strip_export_type
+            (path, mime_type, extension, just_info) = self.__strip_export_type \
                                                         (raw_path)
         except:
             logging.exception("Could not process export-type directives.")
