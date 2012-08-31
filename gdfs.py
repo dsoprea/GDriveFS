@@ -6,6 +6,7 @@ import dateutil.parser
 import getpass
 import errno
 import re
+import json
 
 from errno      import *
 from time       import mktime
@@ -14,11 +15,10 @@ from fuse       import FUSE, Operations, LoggingMixIn, FuseOSError
 from sys        import argv
 from os         import getenv
 
-from utility import get_utility
-from gdrivefs.cache import PathRelations
-from gdtool import drive_proxy
-from errors import ExportFormatError
-
+from gdrivefs.utility import get_utility
+from gdrivefs.cache import PathRelations, EntryCache
+from gdrivefs.gdtool import drive_proxy, NormalEntry
+from gdrivefs.errors import ExportFormatError
 
 #if not hasattr(fuse, '__version__'):
 #    raise RuntimeError, \
@@ -43,6 +43,71 @@ app_name = 'GDriveFS Tool'
 #        self.st_mtime = 0
 #        self.st_ctime = 0
 
+class _DisplacedFile(object):
+    normalized_entry = None
+
+    def __init__(self, normalized_entry):
+        if normalized_entry.__class__ != NormalEntry:
+            raise Exception("_DisplacedFile can not wrap a non-NormalEntry object.")
+
+        self.normalized_entry = normalized_entry
+
+    def get_listed_file_size(self):
+        return 1000
+
+    def deposit_file(self, mime_type=None):
+        """Write the file to a temporary path, and present a stub (JSON) to the 
+        user. This is the only way of getting files that don't have a definite 
+        filesize.
+        """
+
+        if not mime_type:
+            mime_type = self.normalized_entry.normalized_mime_type
+
+        try:
+            (temp_file_path, length) = drive_proxy('download_to_local', 
+                                     normalized_entry=self.normalized_entry,
+                                     mime_type=mime_type)
+        except:
+            logging.exception("Could not localize displaced file with entry "
+                              "having ID [%s]." % (self.normalized_entry.id))
+            raise
+
+        try:
+            return self.get_stub(mime_type, length, temp_file_path)
+        except:
+            logging.exception("Could not build stub.")
+            raise
+
+    def get_stub(self, mime_type=None, file_size=0, file_path=None):
+
+        if not mime_type:
+            mime_type = self.normalized_entry.normalized_mime_type
+
+        stub_data = {
+                'EntryId':          self.normalized_entry.id,
+                'OriginalMimeType': self.normalized_entry.mime_type,
+                'ExportTypes':      self.normalized_entry.download_links.keys(),
+                'Title':            self.normalized_entry.title,
+                'Labels':           self.normalized_entry.labels,
+                'FinalMimeType':    mime_type,
+                'Length':           file_size,
+                'Displaceable':     self.normalized_entry.requires_displaceable
+            }
+
+        if file_path:
+            stub_data['FilePath'] = file_path
+
+        try:
+            result = json.dumps(stub_data)
+            NL_LEN = 2
+            padding = (' ' * (self.get_listed_file_size() - len(result) - NL_LEN))
+
+            return ("%s%s\n" % (result, padding))
+        except:
+            logging.exception("Could not serialize stub-data.")
+            raise
+
 class _GDriveFS(LoggingMixIn,Operations):
     """The main filesystem class."""
 
@@ -52,7 +117,8 @@ class _GDriveFS(LoggingMixIn,Operations):
         logging.info("Stat() on [%s]." % (raw_path))
 
         try:
-            (path, mime_type, extension) = self.__strip_export_type(raw_path)
+            (path, mime_type, extension, just_info) = self.__strip_export_type
+                                                        (raw_path)
         except:
             logging.exception("Could not process export-type directives.")
             raise
@@ -62,13 +128,15 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s] (getattr)." % (path))
+            logging.exception("Could not get clause from path [%s] "
+                              "(getattr)." % (path))
             raise FuseOSError(ENOENT)
 
         effective_permission = 0444
+        normalized_entry = entry_clause[0]
 
-        is_folder = get_utility().is_directory(entry_clause[0])
         entry = entry_clause[0]
+        is_folder = get_utility().is_directory(entry)
 
         if entry.editable:
             effective_permission |= 0222
@@ -86,7 +154,17 @@ class _GDriveFS(LoggingMixIn,Operations):
         else:
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
-            stat_result["st_size"] = int(entry.file_size)
+
+            if entry.requires_displaceable:
+                try:
+                    displaced = _DisplacedFile(entry)
+                except:
+                    logging.exception("Could not wrap entry in _DisplacedFile.")
+                    raise
+
+                stat_result["st_size"] = displaced.get_listed_file_size()
+            else:
+                stat_result["st_size"] = int(entry.file_size)
 
         return stat_result
 
@@ -111,7 +189,8 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s] (readdir)." % (path))
+            logging.exception("Could not get clause from path [%s] "
+                              "(readdir)." % (path))
             raise FuseOSError(ENOENT)
 
         try:
@@ -129,33 +208,37 @@ class _GDriveFS(LoggingMixIn,Operations):
 
     def __strip_export_type(self, path):
 
-        rx = re.compile('#([a-zA-Z0-9]+)$')
+        rx = re.compile('(#([a-zA-Z0-9]+))?(\$)?$')
         matched = rx.search(path.encode('ASCII'))
 
         extension = None
         mime_type = None
+        just_info = None
 
         if matched:
             fragment = matched.group(0)
-            extension = matched.group(1)
+            extension = matched.group(2)
+            just_info = (matched.group(3) == '$')
 
-            logging.info("User wants to export to extension [%s]." % 
-                         (extension))
+            if extension:
+                logging.info("User wants to export to extension [%s]." % 
+                             (extension))
 
-            try:
-                mime_type = get_utility().get_first_mime_type_by_extension \
-                                (extension)
-            except:
-                logging.warning("Could not render a mime-type for prescribed"
-                                "extension [%s], for read." % (extension))
+                try:
+                    mime_type = get_utility().get_first_mime_type_by_extension \
+                                    (extension)
+                except:
+                    logging.warning("Could not render a mime-type for prescribed"
+                                    "extension [%s], for read." % (extension))
 
-            if mime_type:
-                logging.info("We have been told to export using mime-type "
-                             "[%s]." % (mime_type))
+                if mime_type:
+                    logging.info("We have been told to export using mime-type "
+                                 "[%s]." % (mime_type))
 
+            if fragment:
                 path = path[:-len(fragment)]
 
-        return (path, mime_type, extension)
+        return (path, mime_type, extension, just_info)
 
     def read(self, raw_path, size, offset, fh):
 
@@ -163,7 +246,8 @@ class _GDriveFS(LoggingMixIn,Operations):
                      "(%d)." % (raw_path, offset, size))
 
         try:
-            (path, mime_type, extension) = self.__strip_export_type(raw_path)
+            (path, mime_type, extension, just_info) = self.__strip_export_type \
+                                                        (raw_path)
         except:
             logging.exception("Could not process export-type directives.")
             raise
@@ -177,50 +261,69 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s] (read)." % (path))
+            logging.exception("Could not get clause from path [%s] (read)." % 
+                              (path))
             raise FuseOSError(ENOENT)
 
         normalized_entry = entry_clause[0]
         entry_id = entry_clause[3]
 
         if not mime_type:
-            try:
-                mime_type = get_utility().get_normalized_mime_type \
-                                (normalized_entry)
-            except:
-                logging.exception("Could not render a mime-type for entry with"
-                                  " ID [%s], for read." % (entry.id))
-                raise
+            mime_type = normalized_entry.normalized_mime_type
 
         # Fetch the file to a local, temporary file.
 
-        logging.info("Downloading entry with ID [%s] for path [%s]." % 
-                     (entry_id, path))
+        if normalized_entry.requires_displaceable or just_info:
+            logging.info("Doing displaced-file download of entry with ID "
+                         "[%s]." % (entry_id))
 
-        try:
-            temp_file_path = drive_proxy('download_to_local', 
-                                     normalized_entry=normalized_entry,
-                                     mime_type=mime_type)
-        except (ExportFormatError):
-            raise FuseOSError(ENOENT)
-        except:
-            logging.exception("Could not localize file with entry having ID "
-                              "[%s]." % (entry_id))
-            raise
+            try:
+                displaced = _DisplacedFile(normalized_entry)
+            except:
+                logging.exception("Could not wrap entry in _DisplacedFile.")
+                raise
 
-        # Retrieve the data.
+            try:
+                if just_info:
+                    logging.debug("Info for file was requested, rather than "
+                                  "the file itself.")
+                    return displaced.get_stub(mime_type)
+                else:
+                    logging.debug("A displaceable file was requested.")
+                    return displaced.deposit_file(mime_type)
+            except:
+                logging.exception("Could not do displaced-file download.")
+                raise
 
-        try:
-            with open(temp_file_path, 'rb') as f:
-                f.seek(offset)
-                buffer = f.read(size)
+        else:
+            logging.info("Downloading entry with ID [%s] for path [%s]." % 
+                         (entry_id, path))
+
+            try:
+                (temp_file_path, length) = \
+                    drive_proxy('download_to_local', 
+                                normalized_entry=normalized_entry,
+                                mime_type=mime_type)
+            except (ExportFormatError):
+                raise FuseOSError(ENOENT)
+            except:
+                logging.exception("Could not localize file with entry having ID "
+                                  "[%s]." % (entry_id))
+                raise
+
+            # Retrieve the data.
+
+            try:
+                with open(temp_file_path, 'rb') as f:
+                    f.seek(offset)
+                    buffer = f.read(size)
                 
-                logging.debug("(%d) bytes are being returned." % (len(buffer)))
-                return buffer
-        except:
-            logging.exception("Could not produce data from the temporary file-"
-                              "path [%s]." % (temp_file_path))
-            raise
+                    logging.debug("(%d) bytes are being returned." % (len(buffer)))
+                    return buffer
+            except:
+                logging.exception("Could not produce data from the temporary file-"
+                                  "path [%s]." % (temp_file_path))
+                raise
 
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /"""

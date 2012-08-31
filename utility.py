@@ -4,7 +4,7 @@ import logging
 from mimetypes import guess_extension
 from sys       import getfilesystemencoding
 
-from conf import Conf
+from gdrivefs.conf import Conf
 
 class _DriveUtility(object):
     """General utility functions loosely related to GD."""

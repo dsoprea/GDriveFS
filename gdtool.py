@@ -18,11 +18,11 @@ from httplib2       import Http
 from sys            import exit
 from threading      import Thread, Event
 
-from errors import AuthorizationError, AuthorizationFailureError
-from errors import AuthorizationFaultError, MustIgnoreFileError
-from errors import FilenameQuantityError, ExportFormatError
-from conf import Conf
-from utility import get_utility
+from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
+from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
+from gdrivefs.errors import FilenameQuantityError, ExportFormatError
+from gdrivefs.conf import Conf
+from gdrivefs.utility import get_utility
 
 app_name = 'GDriveFS Tool'
 change_monitor_thread = None
@@ -209,12 +209,14 @@ def get_auth():
 get_auth.__instance = None
 
 class NormalEntry(object):
+    raw_data = None
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
         #                reusing the reference between objects.
         self.info = { }
         self.parents = [ ]
+        self.raw_data = raw_data
 
         try:
             self.info['mime_type']                  = raw_data[u'mimeType']
@@ -261,7 +263,25 @@ class NormalEntry(object):
 
     @property
     def is_directory(self):
+        """Return True if we represent a directory."""
         return get_utility().is_directory(self)
+
+    @property
+    def requires_displaceable(self):
+        """Return True if reading from this file should return info and deposit 
+        the data elsewhere. This is predominantly determined by whether we can
+        get a file-size up-front.
+        """
+        return (u'fileSize' not in self.raw_data)
+
+    @property
+    def normalized_mime_type(self):
+        try:
+            return get_utility().get_normalized_mime_type(self)
+        except:
+            logging.exception("Could not render a mime-type for entry with"
+                              " ID [%s], for read." % (self.id))
+            raise
 
 class LiveReader(object):
     """A base object for data that can be retrieved on demand."""
@@ -628,7 +648,7 @@ class _GdriveManager(object):
             # Use the cache. It's fine.
 
             logging.info("File retrieved from the previously downloaded, still-current file.")
-            return temp_filepath
+            return (temp_filepath, stat.st_size)
 
         # Go and get the file.
 
@@ -677,7 +697,7 @@ class _GdriveManager(object):
             logging.exception("Could not set time on [%s]." % (temp_filepath))
             raise
 
-        return temp_filepath
+        return (temp_filepath, len(data))
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
