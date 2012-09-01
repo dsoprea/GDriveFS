@@ -19,6 +19,7 @@ from gdrivefs.utility import get_utility
 from gdrivefs.cache import PathRelations, EntryCache
 from gdrivefs.gdtool import drive_proxy, NormalEntry
 from gdrivefs.errors import ExportFormatError
+from gdrivefs.change import get_change_manager
 
 #if not hasattr(fuse, '__version__'):
 #    raise RuntimeError, \
@@ -324,10 +325,15 @@ class _GDriveFS(LoggingMixIn,Operations):
                                   "path [%s]." % (temp_file_path))
                 raise
 
-    def destroy(self, path):
-        """Called on filesystem destruction. Path is always /"""
+    def init(self, path):
+        """Called on filesystem mount. Path is always /."""
 
-        pass
+        get_change_manager().mount_init()
+
+    def destroy(self, path):
+        """Called on filesystem destruction. Path is always /."""
+
+        get_change_manager().mount_destroy()
 
 def dump_changes(overview):
     (largest_change_id, next_page_token, changes) = overview

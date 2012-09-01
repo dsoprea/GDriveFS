@@ -23,7 +23,8 @@ class GetDriveTestCase(TestCase):
 
     def test_list_files_by_parent_id(self):
 
-        from gdrivefs.gdtool import drive_proxy
+        return
+
         entries = drive_proxy('list_files')
 
         from pprint import pprint
@@ -31,6 +32,33 @@ class GetDriveTestCase(TestCase):
         with open('/tmp/entries', 'w') as f:
             for entry in entries:
                 f.write("%s\n" % (json.dumps(entry.info)))
+
+    def test_get_changes(self):
+
+        from gdrivefs.change import get_change_manager
+        get_change_manager().process_updates()
+
+        import sys
+        sys.exit()
+
+        (largest_change_id, next_page_token, changes) = drive_proxy('list_changes')
+
+        print("Largest Change ID: [%s]" % (largest_change_id))
+        print("Next Page Token: [%s]" % (next_page_token))
+
+        from pprint import pprint
+        pprint(len(changes))
+        print
+
+        for change_id, (entry_id, was_deleted, entry) in changes.iteritems():
+            print("%d> [%s] D:[%s] [%s]" % (change_id, entry_id, was_deleted, entry.title if entry else '<deleted>'))
+
+#            pprint(change_id)
+#            pprint(change_info)
+
+#            import sys
+#            sys.exit()
+#            pprint("%s, %s, %s" % (type(change[0]), type(change[1]), type(change[2])))
 
     def test_get_parents_containing_id(self):
 

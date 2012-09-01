@@ -17,6 +17,7 @@ from argparse       import ArgumentParser
 from httplib2       import Http
 from sys            import exit
 from threading      import Thread, Event
+from collections    import OrderedDict
 
 from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
@@ -348,6 +349,10 @@ class AccountInfo(LiveReader):
     def root_id(self):
         return self[u'rootFolderId']
 
+    @property
+    def largest_change_id(self):
+        return int(self[u'largestChangeId'])
+
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
     try to invoke only one call, or make sure they handle authentication 
@@ -424,44 +429,69 @@ class _GdriveManager(object):
         
         return response
 
-    def list_changes(self, page_token=None):
-        """Get a list of the most recent changes from GD. This only returns one
-        page at a time.
+    def list_changes(self, start_change_id=None, page_token=None):
+        """Get a list of the most recent changes from GD, with the earliest 
+        changes first. This only returns one page at a time.
         """
+
+        logging.info("Listing changes starting at ID [%s] with page_token "
+                     "[%s]." % (start_change_id, page_token))
 
         try:
             client = self.get_client()
         except:
             logging.exception("There was an error while acquiring the Google "
-                              "Drive client (list_files).")
+                              "Drive client (list_changes).")
             raise
 
         try:
-            response = client.changes().list(pageToken=page_token).execute()
+            response = client.changes().list(pageToken=page_token, \
+                            startChangeId=start_change_id).execute()
         except:
             logging.exception("Problem while listing changes.")
             raise
 
-        largest_change_id   = response[u'largestChangeId']
+        largest_change_id   = int(response[u'largestChangeId'])
         items               = response[u'items']
+        next_page_token     = response[u'nextPageToken'] if u'nextPageToken' \
+                                in response else None
 
-        if u'nextPageToken' in response:
-            next_page_token = response[u'nextPageToken']
-        else:
-            next_page_token = None
-
-        changes = { }
+        changes = OrderedDict()
+        last_change_id = None
         for item in items:
-            change_id   = item[u'id']
+            change_id   = int(item[u'id'])
             entry_id    = item[u'fileId']
             was_deleted = item[u'deleted']
+            entry       = None if item[u'deleted'] else item[u'file']
 
-            if was_deleted:
-                entry = None
-            else:
-                entry = item[u'file']
+            if last_change_id and change_id <= last_change_id:
+                message = "Change-ID (%d) being processed is less-than the last" \
+                          " change-ID (%d) to be processed." % \
+                          (change_id, last_change_id)
 
-            changes[int(change_id)] = (entry_id, was_deleted, entry)
+                logging.error(message)
+                raise Exception(message)
+
+            elif not last_change_id and start_change_id and \
+                    start_change_id != change_id:
+
+                message = ("We requested changes starting at change-ID (%d), "
+                           "but the first change ID was (%d) instead." % 
+                           (start_change_id, change_id))
+
+                logging.error(message)
+                raise Exception(message)
+
+            try:
+                normalized_entry = None if was_deleted \
+                                        else NormalEntry('list_changes', entry)
+            except:
+                logging.exception("Could not normalize entry embedded in "
+                                  "change with ID (%d)." % (change_id))
+                raise
+
+            changes[change_id] = (entry_id, was_deleted, normalized_entry)
+            last_change_id = change_id
 
         return (largest_change_id, next_page_token, changes)
 
@@ -486,7 +516,8 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
-    def get_children_under_parent_id(self, parent_id, query_contains_string=None, query_is_string=None):
+    def get_children_under_parent_id(self, parent_id, query_contains_string=None, \
+                                        query_is_string=None):
 
         logging.info("Getting client for child-listing.")
 
@@ -505,14 +536,17 @@ class _GdriveManager(object):
         if query_is_string:
             query = ("title='%s'" % (query_is_string.replace("'", "\\'")))
         elif query_contains_string:
-            query = ("title contains '%s'" % (query_contains_string.replace("'", "\\'")))
+            query = ("title contains '%s'" % 
+                     (query_contains_string.replace("'", "\\'")))
         else:
             query = None
 
-        logging.info("Listing entries under parent with ID [%s].  QUERY= [%s]" % (parent_id, query))
+        logging.info("Listing entries under parent with ID [%s].  QUERY= "
+                     "[%s]" % (parent_id, query))
 
         try:
-            response = client.children().list(q=query,folderId=parent_id).execute()
+            response = client.children().list(q=query,folderId=parent_id). \
+                                            execute()
         except:
             logging.exception("Problem while listing files.")
             raise
@@ -580,7 +614,7 @@ class _GdriveManager(object):
         entries = []
         for entry_raw in result[u'items']:
             try:
-                entry = NormalEntry('files_list', entry_raw)
+                entry = NormalEntry('list_files', entry_raw)
             except:
                 logging.exception("Could not normalize raw-data for entry with"
                                   " ID [%s]." % (entry_raw[u'id']))
@@ -779,7 +813,7 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
     if drive_proxy.gp == None:
         try:
             drive_proxy.gp = _GoogleProxy()
-        except (Exception) as e:
+        except:
             logging.exception("There was an exception while creating the proxy"
                               " singleton.")
             raise
@@ -787,7 +821,7 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
     try:    
         method = getattr(drive_proxy.gp, action)
         return method(auto_refresh, **kwargs)
-    except (Exception) as e:
+    except:
         logging.exception("There was an exception while invoking proxy action.")
         raise
     
