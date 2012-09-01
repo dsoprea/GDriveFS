@@ -13,22 +13,21 @@ Design goals:
 > Cleanup thread to manage cleanup of aged cache items.
 > Thread for monitoring changes via "changes" functionality of API.
 x Complete stat() implementation.
-x Seamlessly work around duplicate-file allowances in Google Drive (DONE).
-x Seamlessly manage file-type versatility in Google Drive (files do not retain 
-  a particular mime-type under GD) (DONE).
-x Allow for multiple references to the same files.
-x Allow copy-from using default formats as well as allowing one to be chosen on-the-fly.
+x Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
+x Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
+  not have a particular format). (DONE)
+x Allow for many-to-one references on the files. (DONE)
 
 Also, a design choice of other implementations is to make the user get API keys 
-for Google Drive. This is a moronic choice. Our implementation is built against 
+for Google Drive, and this doesn't sense. Our implementation is built against 
 OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
 
 Format Management
 =================
 
-Google Drive will typically strip uploaded files of their standard formats. If 
-you wish to re-download it, you have to select which format you'd like to 
+Google Drive will store Google Document files without a standard format. If 
+you wish to download them, you have to select which format you'd like to 
 download it as. One of the more exciting features of this FUSE implementation 
 is the flexibility in both downloading in a default format, while still 
 allowing you to elect a different format on the fly. See the section below
@@ -66,11 +65,6 @@ drwxrwxrwx  2 root root     0 Aug 26 08:36 Untitled document
 -rw-rw-rw-  1 root root  1000 Aug 20 08:25 Untitled document.txt (2)
 
 
-One terrific feature of this implementation is the simplicity of reading from 
-a non-default format:
-
-    cp "searches - standard.xls#pdf" "/tmp/output.pdf"
-
 Displaceables
 =============
 
@@ -98,9 +92,12 @@ Export Formats
 ==============
 
 To access a file in something other than the default format, append 
-"#<file extension>" to the filename. A list of available MIME-types can be seen 
-under "ExportTypes" in the stub info. The effective MIME-type that will be used 
-can be found under "FinalMimeType".
+"#<file extension>" to the filename:
+
+    cp "searches - standard.xls#pdf" "/tmp/output.pdf"
+
+A list of available MIME-types can be seen under "ExportTypes" in the stub info. 
+The effective MIME-type that will be used can be found under "FinalMimeType".
 
 
 Dustin Oprea
