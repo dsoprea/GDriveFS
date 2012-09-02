@@ -9,9 +9,8 @@ involved.
 
 Design goals:
 
-> Limited caching.
 > Cleanup thread to manage cleanup of aged cache items.
-> Thread for monitoring changes via "changes" functionality of API.
+x Thread for monitoring changes via "changes" functionality of API.
 x Complete stat() implementation.
 x Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
 x Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
@@ -99,6 +98,10 @@ To access a file in something other than the default format, append
 A list of available MIME-types can be seen under "ExportTypes" in the stub info. 
 The effective MIME-type that will be used can be found under "FinalMimeType".
 
+Cache/Change Management
+=======================
+
+No cache is maintained. Updates are performed frequently.
 
 Dustin Oprea
 myselfasunder, gmail.com

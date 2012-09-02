@@ -101,7 +101,7 @@ class _ChangeManager(object):
                 return False
 
             self.at_change_id = change_id
-        PathRelations.get_instance().dump_ll()
+
         return (next_page_token == None)
 
     def __apply_change(self, change_id, change_tuple):
