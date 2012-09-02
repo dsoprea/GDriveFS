@@ -249,6 +249,8 @@ class NormalEntry(object):
             for parent in raw_data[u'parents']:
                 self.parents.append(parent[u'id'])
 
+            logging.debug("Entry with ID [%s] is visible? %s" % (self.id, self.is_visible))
+
         except (KeyError) as e:
             logging.exception("Could not normalize entry on raw key [%s]. Does not exist in source." % (str(e)))
             raise
@@ -274,6 +276,16 @@ class NormalEntry(object):
         get a file-size up-front.
         """
         return (u'fileSize' not in self.raw_data)
+
+    @property
+    def is_visible(self):
+        if [ flag 
+             for flag, value 
+             in self.labels.items() 
+             if flag in [u'restricted', u'trashed'] and value ]:
+            return False
+        else:
+            return True
 
     @property
     def normalized_mime_type(self):
@@ -431,7 +443,9 @@ class _GdriveManager(object):
 
     def list_changes(self, start_change_id=None, page_token=None):
         """Get a list of the most recent changes from GD, with the earliest 
-        changes first. This only returns one page at a time.
+        changes first. This only returns one page at a time. start_change_id 
+        doesn't have to be valid.. It's just the lower limit to what you want 
+        back. Change-IDs are integers, but are not necessarily sequential.
         """
 
         logging.info("Listing changes starting at ID [%s] with page_token "
@@ -468,16 +482,6 @@ class _GdriveManager(object):
                 message = "Change-ID (%d) being processed is less-than the last" \
                           " change-ID (%d) to be processed." % \
                           (change_id, last_change_id)
-
-                logging.error(message)
-                raise Exception(message)
-
-            elif not last_change_id and start_change_id and \
-                    start_change_id != change_id:
-
-                message = ("We requested changes starting at change-ID (%d), "
-                           "but the first change ID was (%d) instead." % 
-                           (start_change_id, change_id))
 
                 logging.error(message)
                 raise Exception(message)

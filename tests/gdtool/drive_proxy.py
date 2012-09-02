@@ -159,6 +159,53 @@ class GetDriveTestCase(TestCase):
 #        pprint.pprint(response[u'importFormats'])
         pprint.pprint(result)
 
+    def test_remove_entry(self):
+
+        from gdrivefs.cache import PathRelations
+
+        path_relations = PathRelations.get_instance()
+        entry_clause = path_relations.get_clause_from_path('HelloFax')
+
+        filenames = path_relations.get_child_filenames_from_entry_id(entry_clause[3])
+        
+        root_id = u'0AJFt2OXeDBqSUk9PVA'
+        middle_id = entry_clause[3]
+        child_id = u'0B5Ft2OXeDBqSTmpjSHlVbEV5ajg'
+
+#        from pprint import pprint
+#        pprint(filenames)
+
+#        path_relations.dump_entry_clause(middle_id)
+
+        print("1: =============================")
+        path_relations.dump_ll()
+        print("2: =============================")
+#        print("middle: %s" % (middle_id))
+#        return
+
+        path_relations.remove_entry_recursive(middle_id)
+#        path_relations.remove_entry(middle_id)
+
+        print("3: =============================")
+        path_relations.dump_ll()
+
+        return
+
+        try:
+            path_relations.dump_entry_clause(root_id)
+        except:
+            print("<No root.>")
+
+        try:
+            path_relations.dump_entry_clause(middle_id)
+        except:
+            print("<No middle.>")
+
+        try:
+            path_relations.dump_entry_clause(child_id)
+        except:
+            print("<No child.>")
+
 if __name__ == '__main__':
     main()
 

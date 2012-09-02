@@ -283,6 +283,7 @@ class PathRelations(object):
 
     entry_ll = { }
     path_cache = { }
+    path_cache_byid = { }
 
     @staticmethod
     def get_instance():
@@ -296,20 +297,71 @@ class PathRelations(object):
             _CacheRegistry.__instance = PathRelations()
             return _CacheRegistry.__instance
 
-    def remove_entry(self, entry_id):
+    def remove_entry_recursive(self, entry_id, is_update=False):
+        """Remove an entry, all children, and any newly orphaned parents."""
+
+        logging.info("Doing recursive removal of entry with ID [%s]." % (entry_id))
+
+        to_remove = deque([ entry_id ])
+        stat_placeholders = 0
+        stat_folders = 0
+        stat_files = 0
+        while 1:
+            if not to_remove:
+                break
+
+            current_entry_id = to_remove.popleft()
+
+            logging.debug("RR: Entry with ID (%s) will be removed. (%d) "
+                          "remaining." % (current_entry_id, len(to_remove)))
+
+            entry_clause = self.entry_ll[current_entry_id]
+
+            # Any entry that still has children will be transformed into a 
+            # placeholder, and not actually removed. Once the children are 
+            # removed in this recursive process, we'll naturally clean-up the 
+            # parent as a last step. Therefore, the number of placeholders will 
+            # overlap with the number of folders (a placeholder must represent 
+            # a folder. It is only there because the entry had children).
+
+            if not entry_clause[0]:
+                stat_placeholders += 1
+            elif entry_clause[0].is_directory:
+                stat_folders += 1
+            else:
+                stat_files += 1
+
+            try:
+                result = self.__remove_entry(current_entry_id, is_update)
+            except:
+                logging.debug("Could not remove entry with ID [%s] "
+                              "(recursive)." % (current_entry_id))
+                raise
+
+            (current_orphan_ids, current_children_clauses) = result
+
+            logging.debug("RR: Entry removed. (%d) orphans and (%d) children "
+                          "were reported." % (len(current_orphan_ids), 
+                                                len(current_children_clauses)))
+
+            children_ids_to_remove = [ children[3] for children 
+                                                in current_children_clauses ]
+
+            to_remove.extend(current_orphan_ids)
+            to_remove.extend(children_ids_to_remove)
+
+        logging.debug("RR: Removal complete. (%d) PH, (%d) folders, (%d) files removed." % (stat_placeholders, stat_folders, stat_files))
+
+        return (stat_folders + stat_files)
+
+    def __remove_entry(self, entry_id, is_update=False):
+        """Remove an entry. Updates references from linked entries, but does 
+        not remove any other entries. We return a tuple, where the first item 
+        is a list of any parents that, themselves, no longer have parents or 
+        children, and the second item is a list of children to this entry.
+        """
 
         with PathRelations.rlock:
-            # Clip from path cache.
-        
-            key = None
-            for path, this_entry_id in self.path_cache.items():
-                if this_entry_id == entry_id:
-                    key = path
-                    break
-        
-            if key != None:
-                del self.path_cache[key]
-
             # Ensure that the entry-ID is valid.
 
             try:
@@ -318,20 +370,42 @@ class PathRelations(object):
                 logging.exception("Could not remove invalid entry with ID "
                                   "[%s]." % (entry_id))
                 raise
+            
+            # Clip from path cache.
+
+            if entry_id in self.path_cache_byid:
+                logging.debug("Entry found in path-cache. Removing.")
+
+                path = self.path_cache_byid[entry_id]
+                del self.path_cache[path]
+                del self.path_cache_byid[entry_id]
+
+            else:
+                logging.debug("Entry with ID [%s] did not need to be removed "
+                              "from the path cache." % (entry_id))
 
             # Clip us from the list of children on each of our parents.
 
             entry_parents = entry_clause[1]
-            entry_children = entry_clause[2]
+            entry_children_tuples = entry_clause[2]
 
             parents_to_remove = [ ]
+            children_to_remove = [ ]
             if entry_parents:
+                logging.debug("Entry to be removed has (%d) parents." % (len(entry_parents)))
+
                 for parent_clause in entry_parents:
                     # A placeholder has an entry and parents field (fields 
                     # 0, 1) of None.
 
                     (parent, parent_parents, parent_children, parent_id, \
                         all_children_loaded) = parent_clause
+
+                    if all_children_loaded and not is_update:
+                        all_children_loaded = False
+
+                    logging.debug("Adjusting parent with ID [%s]." % 
+                                  (parent_id))
 
                     # Integrity-check that the parent we're referencing is 
                     # still in the list.
@@ -341,11 +415,16 @@ class PathRelations(object):
                                                                 entry_id))
                         continue
             
-                    updated_children = [ child_tuple 
-                                         for child_tuple 
+                    old_children_filenames = [ child_tuple[0] for child_tuple 
+                                                in parent_children ]
+
+                    logging.debug("Old children: %s" % 
+                                  (', '.join(old_children_filenames)))
+
+                    updated_children = [ child_tuple for child_tuple 
                                          in parent_children 
                                          if child_tuple[1] != entry_clause ]
-# TODO: Confirm that this works. We tested it.. It should.
+
                     if parent_children != updated_children:
                         parent_children[:] = updated_children
 
@@ -354,23 +433,40 @@ class PathRelations(object):
                                       "with ID [%s], but not vice-versa." % 
                                       (entry_id, parent_id))
 
+                    updated_children_filenames = [ child_tuple[0] 
+                                                    for child_tuple
+                                                    in parent_children ]
+
+                    logging.debug("Up. children: %s" % 
+                                  (', '.join(updated_children_filenames)))
+
                     # If the parent now has no children and is a placeholder, 
                     # advise that we remove it.
                     if not parent_children and parent == None:
-                        parents_to_remove.append(parent)
+                        parents_to_remove.append(parent_id)
+
+            else:
+                logging.debug("Entry to be removed either has no parents, or is"
+                              " a placeholder.")
 
             # Remove/neutralize entry, now that references have been removed.
 
-            set_placeholder = len(entry_children) > 0
+            set_placeholder = len(entry_children_tuples) > 0
 
             if set_placeholder:
                 # Just nullify the entry information, but leave the clause. We 
                 # had children that still need a parent.
 
+                logging.debug("This entry has (%d) children. We will leave a "
+                              "placeholder behind." % 
+                              (len(entry_children_tuples)))
+
                 entry_clause[0] = None
                 entry_clause[1] = None
-
             else:
+                logging.debug("This entry does not have any children. It will "
+                              "be completely removed.")
+
                 try:
                     del self.entry_ll[entry_id]
                 except:
@@ -381,7 +477,65 @@ class PathRelations(object):
                                       " clean-up." % (entry_id))
                     raise
 
-        return parents_to_remove
+        if parents_to_remove:
+            logging.debug("Parents that still need to be removed: %s" % 
+                          (', '.join(parents_to_remove)))
+
+        children_entry_clauses = [ child_tuple[1] for child_tuple 
+                                    in entry_children_tuples ]
+
+        logging.debug("Remove complete. (%d) entries were orphaned. There were"
+                      " (%d) children." % 
+                      (len(parents_to_remove), len(children_entry_clauses)))
+        
+        return (parents_to_remove, children_entry_clauses)
+
+    def remove_entry_all(self, entry_id, is_update=False):
+        """Remove the the entry from both caches. EntryCache is more of an 
+        entity look-up, whereas this (PathRelations) has a bunch of expanded 
+        data regarding relationships and paths. This call will first remove the 
+        relationships from here, and then the entry from the EntryCache.
+
+        We do it in this order because if we were to remove entry from the core
+        library (EntryCache) first, then all of the relationships here will 
+        suddenly become invalid, and although the entry will be disregistered,
+        because it has references from this linked-list, those objects will be
+        very much alive. On the other hand, if we remove the entry from 
+        PathRelations first, then, because of the locks, PathRelations will not
+        be able to touch the relationships until after we're done, here. Ergo, 
+        the only thing that can happen is that something may look at the entry
+        in the library.
+        """
+
+        logging.info("Doing complete removal of entry with ID [%s]." % 
+                     (entry_id))
+
+        with PathRelations.rlock:
+            logging.debug("Clipping entry with ID [%s] from PathRelations and "
+                          "EntryCache." % (entry_id))
+
+            cache = EntryCache.get_instance().cache
+
+            if entry_id in self.entry_ll:
+                logging.debug("Removing found PathRelations entries.")
+
+                try:
+                    self.remove_entry_recursive(entry_id, is_update)
+                except:
+                    logging.exception("Could not remove entry-ID from "
+                                      "PathRelations. Still continuing, though.")
+
+            if cache.exists(entry_id):
+                logging.debug("Removing found EntryCache entries.")
+
+                try:
+                    cache.remove(entry_id)
+                except:
+                    logging.exception("Could not remove entry-ID from EntryCache. "
+                                      "Still continuing, though.")
+
+            logging.debug("All traces of entry with ID [%s] are gone " % 
+                          (entry_id))
 
     def dump_entry_clause(self, entry_id):
         """Shows info on a single entry_clause. Does not assume that all of "
@@ -476,28 +630,36 @@ class PathRelations(object):
             print("(%d) %s" % (i, entry_id))
             print("  (E= %s, P= %s, C= %s, I= %s)" % (entry_phrase, \
                     parents_phrase, children_phrase, entry_id_phrase))
-            print("  %s\n" % (entry_clause[0].title if entry_clause[0] \
-                                else '<none>'))
+            print("Title: %s" % (entry_clause[0].title if entry_clause[0] \
+                                        else '<none>'))
+
+            if entry_clause[1] == None:
+                parents_extended = '(None)'
+            elif not entry_clause[1]:
+                parents_extended = '<empty>'
+            else:
+                parents_extended = ', '.join([ parent_clause[3] for parent_clause in entry_clause[1] ])
+
+            print("Parents: %s\n" % (parents_extended))
 
             i += 1
 
     def register_entry(self, normalized_entry):
 
-        logging.debug("We're registering entry with ID [%s]." % (normalized_entry.id))
+        logging.debug("We're registering entry with ID [%s] [%s]." % 
+                      (normalized_entry.id, normalized_entry.title))
 
         with PathRelations.rlock:
-            if [ flag 
-                 for flag, value 
-                 in normalized_entry.labels.items() 
-                 if flag in [u'restricted', u'trashed'] and value ]:
+            if not normalized_entry.is_visible:
+                logging.info("We will not register entry with ID [%s] because it's not visible." % (normalized_entry.id))
                 return None
-
-            entry_id = normalized_entry.id
 
             if normalized_entry.__class__ is not NormalEntry:
                 raise Exception("PathRelations expects to register an object of "
                                 "type NormalEntry, not [%s]." % 
                                 (type(normalized_entry)))
+
+            entry_id = normalized_entry.id
 
             logging.info("Registering entry with ID [%s] within path-relations." %
                          (entry_id))
@@ -507,27 +669,26 @@ class PathRelations(object):
                               "within path-relations, and will be removed in lieu "
                               "of update." % (entry_id))
 
-                # Remove this entry, and any placeholder-parents that are left 
-                # empty as a result of the removal of it.
+                logging.debug("Removing existing entries.")
 
-                entries_to_remove = deque([ entry_id ])
-                while 1:
-                    if not len(entries_to_remove):
-                        break
+                try:
+                    self.remove_entry_recursive(entry_id, True)
+                except:
+                    logging.exception("Could not remove existing entry with ID "
+                                      "[%s] prior to its update." % 
+                                      (entry_id))
+                    raise
 
-                    entry_id_to_remove = entries_to_remove.popleft()
+            logging.info("Doing add of entry with ID [%s]." % (entry_id))
 
-                    logging.info("Removing entry with ID [%s] as a result of the "
-                                 "preliminary clean-up prior to the add of ID "
-                                 "[%s]." % (entry_id_to_remove, entry_id))
+            cache = EntryCache.get_instance().cache
 
-                    try:
-                        additional_to_remove = self.remove_entry(entry_id_to_remove)
-                        entries_to_remove.extend(additional_to_remove)
-                    except:
-                        logging.exception("Could not remove existing entry with ID "
-                                          "[%s] prior to its update." % (entry_id_to_remove))
-                        raise
+            try:
+                cache.set(normalized_entry.id, normalized_entry)
+            except:
+                logging.exception("Could not set entry with ID [%s] in "
+                                  "cache." % (entry_id))
+                raise
 
             # We do a linked list using object references.
             # (
@@ -537,8 +698,6 @@ class PathRelations(object):
             #   entry-ID,
             #   < boolean indicating that we know about all children >
             # )
-
-            logging.info("Doing add of entry with ID [%s]." % (entry_id))
 
             if entry_id not in self.entry_ll:
                 logging.debug("Entry does not yet exist in LL.")
@@ -737,25 +896,29 @@ class PathRelations(object):
                                   " ID [%s]." % (parent_id))
                 raise
 
-            logging.debug("(%d) children found." % (len(child_ids)))
+            logging.debug("(%d) children were found and will be loaded." % 
+                          (len(child_ids)))
 
-            for child_id in child_ids:
+            if child_ids:
+                for child_id in child_ids:
+                    try:
+                        self.__get_entry_clause_by_id(child_id)
+                    except:
+                        logging.exception("Could not get entry-clause for ID [%s]." %
+                                          (child_id))
+                        raise
+
                 try:
-                    self.__get_entry_clause_by_id(child_id)
+                    parent_clause = self.__get_entry_clause_by_id(parent_id)
                 except:
-                    logging.exception("Could not get entry-clause for ID [%s]." %
-                                      (child_id))
+                    logging.exception("Could not retrieve clause for parent-entry "
+                                      "[%s] in load-all-children function." % 
+                                      (parent_id))
                     raise
 
-            try:
-                parent_clause = self.__get_entry_clause_by_id(parent_id)
-            except:
-                logging.exception("Could not retrieve clause for parent-entry "
-                                  "[%s] in load-all-children function." % 
-                                  (parent_id))
-                raise
+                parent_clause[4] = True
 
-            parent_clause[4] = True
+                logging.debug("All children have been loaded.")
 
         return child_ids
 
@@ -791,6 +954,9 @@ class PathRelations(object):
                     logging.exception("Could not load all children for parent with"
                                       " ID [%s]." % (entry_id))
                     raise
+
+            else:
+                logging.debug("All children for [%s] have already been loaded." % (entry_id))
 
             if not entry_clause[0].is_directory:
                 message = ("Could not get child filenames for non-directory with "
@@ -915,8 +1081,9 @@ class PathRelations(object):
         if len(path) and path[-1] == '/':
             path = path[:-1]
 
-#        if path in self.path_cache:
-#            return self.path_cache[path]
+        if path in self.path_cache:
+            return self.path_cache[path]
+
         with PathRelations.rlock:
             logging.debug("Locating entry information for path [%s]." % (path))
 
@@ -959,7 +1126,6 @@ class PathRelations(object):
                     logging.exception("Could not find current subdirectory.  "
                                       "ENTRY_ID= [%s]" % (entry_ptr))
                     raise
-
             
                 # Search this entry's children for the next filename further down 
                 # in the path among this entry's children. Any duplicates should've 
@@ -985,8 +1151,10 @@ class PathRelations(object):
 
                 # Have we traveled far enough into the linked list?
                 if (i + 1) >= num_parts:
-                    self.path_cache[path] = current_clause
-                    return (results, path_parts, True)
+                    self.path_cache[path] = (results, path_parts, True)
+                    final_entry_id = results[-1]
+                    self.path_cache_byid[final_entry_id] = path
+                    return self.path_cache[path]
 
                 parent_id = entry_ptr
                 entry_ptr = found[0]
@@ -1018,7 +1186,7 @@ class PathRelations(object):
                                       "entry with ID [%s] in path-cache." % 
                                       (entry_id))
                     raise
-        
+
 PathRelations.rlock = RLock()
 
 class EntryCache(CacheClient):
@@ -1089,15 +1257,6 @@ class EntryCache(CacheClient):
 
         return affected_entries
 
-    def __set_cache(self, entry_id, entry):
-
-        try:
-            self.cache.set(entry_id, entry)
-        except:
-            logging.exception("Could not store entry with ID [%s]." % 
-                              (entry))
-            raise
-
     def fault_handler(self, resource_name, requested_entry_id):
         """A requested entry wasn't stored."""
 
@@ -1129,12 +1288,6 @@ class EntryCache(CacheClient):
         path_relations = PathRelations.get_instance()
 
         for entry_id, entry in retrieved.iteritems():
-            try:
-                self.__set_cache(entry_id, entry)
-            except:
-                logging.exception("Could not set entry with ID [%s] in cache." % (entry_id))
-                raise
-
             try:
                 path_relations.register_entry(entry)
             except:

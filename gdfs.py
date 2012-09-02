@@ -16,7 +16,7 @@ from sys        import argv
 from os         import getenv
 
 from gdrivefs.utility import get_utility
-from gdrivefs.cache import PathRelations, EntryCache
+from gdrivefs.cache import PathRelations
 from gdrivefs.gdtool import drive_proxy, NormalEntry
 from gdrivefs.errors import ExportFormatError
 from gdrivefs.change import get_change_manager
@@ -334,15 +334,6 @@ class _GDriveFS(LoggingMixIn,Operations):
         """Called on filesystem destruction. Path is always /."""
 
         get_change_manager().mount_destroy()
-
-def dump_changes(overview):
-    (largest_change_id, next_page_token, changes) = overview
-
-    for change_id, change in changes.iteritems():
-        (file_id, was_deleted, entry) = change
-        print("%s> %s" % (change_id, entry[u'title']))
-
-#    print(changes)
 
 def main():
 
