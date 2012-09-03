@@ -889,24 +889,28 @@ class PathRelations(object):
 
         with PathRelations.rlock:
             try:
-                child_ids = drive_proxy('get_children_under_parent_id', 
-                                        parent_id=parent_id)
+                children = drive_proxy('list_files', parent_id=parent_id)
             except:
                 logging.exception("Could not retrieve children for parent with"
                                   " ID [%s]." % (parent_id))
                 raise
 
-            logging.debug("(%d) children were found and will be loaded." % 
-                          (len(child_ids)))
+            child_ids = [ ]
+            if children:
+                logging.debug("(%d) children returned and will be "
+                              "registered." % (len(children)))
 
-            if child_ids:
-                for child_id in child_ids:
+                for child in children:
                     try:
-                        self.__get_entry_clause_by_id(child_id)
+                        self.register_entry(child)
                     except:
-                        logging.exception("Could not get entry-clause for ID [%s]." %
-                                          (child_id))
+                        logging.exception("Could not register retrieved-entry for "
+                                          "child with ID [%s] in path-cache." % 
+                                          (child.id))
                         raise
+
+                logging.debug("Looking up parent with ID [%s] for all-"
+                              "children update." % (parent_id))
 
                 try:
                     parent_clause = self.__get_entry_clause_by_id(parent_id)
@@ -920,7 +924,7 @@ class PathRelations(object):
 
                 logging.debug("All children have been loaded.")
 
-        return child_ids
+        return children
 
     def get_child_filenames_from_entry_id(self, entry_id):
         """Return the filenames contained in the folder with the given 

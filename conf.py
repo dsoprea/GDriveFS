@@ -13,6 +13,8 @@ class Conf(object):
     file_download_temp_path             = '/tmp/gdrivefs'
     file_download_temp_max_age_s        = 86400
     change_check_frequency_s            = 10
+    hidden_flags_list_local             = [u'trashed', u'restricted']
+    hidden_flags_list_remote            = [u'trashed']
 
     max_readahead_entries = 10
     """How many extra entries to retrieve when an entry is accessed that is 

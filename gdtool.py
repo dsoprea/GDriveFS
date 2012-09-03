@@ -282,7 +282,7 @@ class NormalEntry(object):
         if [ flag 
              for flag, value 
              in self.labels.items() 
-             if flag in [u'restricted', u'trashed'] and value ]:
+             if flag in Conf.get('hidden_flags_list_local') and value ]:
             return False
         else:
             return True
@@ -598,7 +598,7 @@ class _GdriveManager(object):
 
         return entry
 
-    def list_files(self):
+    def list_files(self, query_contains_string=None, query_is_string=None, parent_id=None):
         
         logging.info("Listing all files.")
 
@@ -609,8 +609,29 @@ class _GdriveManager(object):
                               "Drive client (list_files).")
             raise
 
+        query_components = [ ]
+
+        if parent_id:
+            query_components.append("'%s' in parents" % (parent_id))
+
+        if query_is_string:
+            query_components.append("title='%s'" % 
+                                    (query_is_string.replace("'", "\\'")))
+        elif query_contains_string:
+            query_components.append("title contains '%s'" % 
+                     (query_contains_string.replace("'", "\\'")))
+
+        # Make sure that we don't get any entries that we would have to ignore.
+
+        hidden_flags = Conf.get('hidden_flags_list_remote')
+        if hidden_flags:
+            for hidden_flag in hidden_flags:
+                query_components.append("%s = false" % (hidden_flag))
+
+        query = ' and '.join(query_components) if query_components else None
+
         try:
-            result = client.files().list().execute()
+            result = client.files().list(q=query).execute()
         except:
             logging.exception("Could not get the list of files.")
             raise
