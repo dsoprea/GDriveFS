@@ -86,14 +86,15 @@ class _DisplacedFile(object):
             mime_type = self.normalized_entry.normalized_mime_type
 
         stub_data = {
-                'EntryId':          self.normalized_entry.id,
-                'OriginalMimeType': self.normalized_entry.mime_type,
-                'ExportTypes':      self.normalized_entry.download_links.keys(),
-                'Title':            self.normalized_entry.title,
-                'Labels':           self.normalized_entry.labels,
-                'FinalMimeType':    mime_type,
-                'Length':           file_size,
-                'Displaceable':     self.normalized_entry.requires_displaceable
+                'EntryId':              self.normalized_entry.id,
+                'OriginalMimeType':     self.normalized_entry.mime_type,
+                'ExportTypes':          self.normalized_entry.download_links.keys(),
+                'Title':                self.normalized_entry.title,
+                'Labels':               self.normalized_entry.labels,
+                'FinalMimeType':        mime_type,
+                'Length':               file_size,
+                'Displaceable':         self.normalized_entry.requires_displaceable,
+                'ImageMediaMetadata':   self.normalized_entry.image_media_metadata
             }
 
         if file_path:
@@ -136,7 +137,10 @@ class _GDriveFS(LoggingMixIn,Operations):
         normalized_entry = entry_clause[0]
 
         entry = entry_clause[0]
-        is_folder = get_utility().is_directory(entry)
+
+        # If the user has required info, we'll treat folders like files so that 
+        # we can return the info.
+        is_folder = get_utility().is_directory(entry) and not just_info
 
         if entry.editable:
             effective_permission |= 0222
@@ -145,6 +149,11 @@ class _GDriveFS(LoggingMixIn,Operations):
         mtime_epoch = mktime(date_obj.timetuple())
 
         stat_result = { "st_mtime": mtime_epoch }
+        
+        stat_result["st_size"] = _DisplacedFile(entry).get_listed_file_size() \
+                                    if (is_folder or \
+                                            entry.requires_displaceable) \
+                                    else entry.file_size
 
         if is_folder:
             effective_permission |= 0111
@@ -154,17 +163,6 @@ class _GDriveFS(LoggingMixIn,Operations):
         else:
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
-
-            if entry.requires_displaceable:
-                try:
-                    displaced = _DisplacedFile(entry)
-                except:
-                    logging.exception("Could not wrap entry in _DisplacedFile.")
-                    raise
-
-                stat_result["st_size"] = displaced.get_listed_file_size()
-            else:
-                stat_result["st_size"] = int(entry.file_size)
 
         return stat_result
 

@@ -239,6 +239,7 @@ class NormalEntry(object):
             self.info['file_size']              = int(raw_data[u'fileSize'])        if u'fileSize'              in raw_data else 0
             self.info['file_extension']         = raw_data[u'fileExtension']        if u'fileExtension'         in raw_data else None
             self.info['md5_checksum']           = raw_data[u'md5Checksum']          if u'md5Checksum'           in raw_data else None
+            self.info['image_media_metadata']   = raw_data[u'imageMediaMetadata']   if u'imageMediaMetadata'    in raw_data else None
 
             if u'downloadUrl' in raw_data:
                 self.info['download_links'][self.info['mime_type']] = raw_data[u'downloadUrl']
