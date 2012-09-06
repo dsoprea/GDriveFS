@@ -2,6 +2,7 @@ from unittest import TestCase, main
 
 from gdrivefs.gdtool import drive_proxy, AccountInfo
 from gdrivefs.cache import EntryCache, PathRelations
+from gdrivefs.utility import get_utility
 
 class GetDriveTestCase(TestCase):
     """Test the _GdriveManager class via _GoogleProxy via get_drive()."""
@@ -161,6 +162,8 @@ class GetDriveTestCase(TestCase):
 
     def test_remove_entry(self):
 
+        return
+
         from gdrivefs.cache import PathRelations
 
         path_relations = PathRelations.get_instance()
@@ -205,6 +208,17 @@ class GetDriveTestCase(TestCase):
             path_relations.dump_entry_clause(child_id)
         except:
             print("<No child.>")
+
+    def test_insert_entry(self):
+
+        import datetime
+#        filename = ("NewFolder_%s" % (datetime.datetime.now().strftime("%H%M%S")))
+#        entry = drive_proxy('create_directory', filename=filename)
+
+        filename = ("NewFile_%s.txt" % (datetime.datetime.now().strftime("%H%M%S")))
+        entry = drive_proxy('create_file', filename=filename, data_filepath='/tmp/tmpdata.txt')
+
+        print(entry.id)
 
 if __name__ == '__main__':
     main()

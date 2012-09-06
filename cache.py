@@ -1,13 +1,14 @@
 import logging
 
-from collections    import OrderedDict
-from threading      import Lock, RLock
+from collections    import OrderedDict, deque
+from threading      import RLock, Timer
 from datetime       import datetime
-from collections    import deque
 
-from utility import get_utility
-from gdtool import drive_proxy, NormalEntry, AccountInfo
-from conf import Conf
+from gdrivefs.utility import get_utility
+from gdrivefs.gdtool import drive_proxy, NormalEntry, AccountInfo
+from gdrivefs.conf import Conf
+from gdrivefs.report import Report
+from gdrivefs.timer import Timers
 
 class CacheFault(Exception):
     pass
@@ -25,7 +26,7 @@ class _CacheRegistry(object):
     
         logging.debug("CacheRegistry(%s)" % (resource_name))
 
-        with _CacheRegistry.lock:
+        with _CacheRegistry.rlock:
             try:
                 _CacheRegistry.__instance;
             except:
@@ -45,7 +46,7 @@ class _CacheRegistry(object):
 
         logging.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, type(value)))
 
-        with _CacheRegistry.lock:
+        with _CacheRegistry.rlock:
             try:
                 old_tuple = self.cache[resource_name][key]
             except:
@@ -55,32 +56,32 @@ class _CacheRegistry(object):
 
         return old_tuple
 
-    def remove(self, resource_name, key, cleanup_trigger=None):
+    def remove(self, resource_name, key, cleanup_pretrigger=None):
 
         logging.debug("CacheRegistry.remove(%s,%s,%s)" % (resource_name, key, 
-                      type(cleanup_trigger)))
+                      type(cleanup_pretrigger)))
 
-        with _CacheRegistry.lock:
+        with _CacheRegistry.rlock:
             try:
                 old_tuple = self.cache[resource_name][key]
             except:
                 raise
 
             self.__cleanup_entry(resource_name, key, True, 
-                                 cleanup_trigger=cleanup_trigger)
+                                 cleanup_pretrigger=cleanup_pretrigger)
 
         return old_tuple[0]
 
-    def get(self, resource_name, key, max_age, cleanup_trigger=None):
+    def get(self, resource_name, key, max_age, cleanup_pretrigger=None):
         
         trigger_given_phrase = ('None' 
-                                if cleanup_trigger == None 
+                                if cleanup_pretrigger == None 
                                 else '<given>')
 
         logging.debug("CacheRegistry.get(%s,%s,%s,%s)" % (resource_name, key, 
                       max_age, trigger_given_phrase))
 
-        with _CacheRegistry.lock:
+        with _CacheRegistry.rlock:
             try:
                 (value, timestamp) = self.cache[resource_name][key]
             except:
@@ -88,33 +89,62 @@ class _CacheRegistry(object):
 
             if max_age != None and (datetime.now() - timestamp).seconds > max_age:
                 self.__cleanup_entry(resource_name, key, False, 
-                                     cleanup_trigger=cleanup_trigger)
+                                     cleanup_pretrigger=cleanup_pretrigger)
                 raise CacheFault("Stale")
 
         return value
 
-    def exists(self, resource_name, key, max_age, cleanup_trigger=None):
-
-        logging.debug("CacheRegistry.exists(%s,%s,%s,%s)" % (resource_name, key, 
-                      max_age, cleanup_trigger))
+    def list_raw(self, resource_name):
         
-        with _CacheRegistry.lock:
+        logging.debug("CacheRegistry.list(%s)" % (resource_name))
+
+        with _CacheRegistry.rlock:
+            try:
+                return self.cache[resource_name]
+            except:
+                logging.exception("Could not list raw-entries under cache "
+                                  "labelled with resource-name [%s]." %
+                                  (resource_name))
+                raise
+
+    def exists(self, resource_name, key, max_age, cleanup_pretrigger=None, no_fault_check=False):
+
+        logging.debug("CacheRegistry.exists(%s,%s,%s,%s)" % (resource_name, 
+                      key, max_age, cleanup_pretrigger))
+        
+        with _CacheRegistry.rlock:
             try:
                 (value, timestamp) = self.cache[resource_name][key]
             except:
                 return False
 
-            if max_age != None and (datetime.now() - timestamp).seconds > max_age:
+            if max_age != None and not no_fault_check and \
+                    (datetime.now() - timestamp).seconds > max_age:
                 self.__cleanup_entry(resource_name, key, False, 
-                                     cleanup_trigger=cleanup_trigger)
+                                     cleanup_pretrigger=cleanup_pretrigger)
                 return False
 
         return True
 
-    def __cleanup_entry(self, resource_name, key, force, cleanup_trigger=None):
+    def count(self, resource_name):
+
+        return len(self.cache[resource_name])
+
+    def __cleanup_entry(self, resource_name, key, force, 
+                        cleanup_pretrigger=None):
 
         logging.debug("Doing clean-up for resource_name [%s] and key [%s]." % 
                       (resource_name, key))
+
+        if cleanup_pretrigger != None:
+            logging.debug("Running pre-cleanup trigger for resource_name [%s] "
+                          "and key [%s]." % (resource_name, key))
+
+            try:
+                cleanup_pretrigger(resource_name, key, force)
+            except:
+                logging.exception("Cleanup-trigger failed.")
+                raise
 
         try:
             del self.cache[resource_name][key]
@@ -123,17 +153,7 @@ class _CacheRegistry(object):
                               "[%s] and key [%s]." % (resource_name, key))
             raise
 
-        if cleanup_trigger != None:
-            logging.debug("Running clean-up trigger for resource_name [%s] and"
-                          " key [%s]." % (resource_name, key))
-
-            try:
-                cleanup_trigger(resource_name, key, force)
-            except:
-                logging.exception("Cleanup-trigger failed.")
-                raise
-
-_CacheRegistry.lock = Lock()
+_CacheRegistry.rlock = RLock()
 
 class _CacheAgent(object):
     """A particular namespace within the cache."""
@@ -142,21 +162,108 @@ class _CacheAgent(object):
     resource_name   = None
     max_age         = None
 
-    fault_handler   = None
-    cleanup_trigger = None
+    fault_handler       = None
+    cleanup_pretrigger  = None
+
+    report              = Report.get_instance()
+    report_source_name  = None
 
     def __init__(self, resource_name, max_age, fault_handler=None, 
-                 cleanup_trigger=None):
+                 cleanup_pretrigger=None):
         logging.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
                                                    type(fault_handler), 
-                                                   cleanup_trigger))
+                                                   cleanup_pretrigger))
 
         self.registry = _CacheRegistry.get_instance(resource_name)
         self.resource_name = resource_name
         self.max_age = max_age
 
         self.fault_handler = fault_handler
-        self.cleanup_trigger = cleanup_trigger
+        self.cleanup_pretrigger = cleanup_pretrigger
+
+        self.report_source_name = ("cache-%s" % (self.resource_name))
+
+        # Run a clean-up cycle to get it scheduled.
+#        self.__cleanup_check()
+        self.__post_status()
+
+    def __del__(self):
+
+        if self.report.is_source(self.report_source_name):
+            self.report.remove_all_values(self.report_source_name)
+
+    def __post_status(self):
+        """Send the current status to our reporting tool."""
+
+        try:
+            num_values = self.registry.count(self.resource_name)
+        except:
+            logging.exception("Could not get count of values for resource with"
+                              " name [%s]." % (self.resource_name))
+            raise
+
+        try:
+            self.report.set_values(self.report_source_name, 'count', 
+                                   num_values)
+        except:
+            logging.exception("Cache could not post status for resource with "
+                              "name [%s]." % (self.resource_name))
+            raise
+
+        status_post_interval_s = Conf.get('cache_status_post_frequency_s')
+        status_timer = Timer(status_post_interval_s, self.__post_status)
+        status_timer.start()
+
+        Timers.get_instance().register_timer('status', status_timer)
+
+    def __cleanup_check(self):
+        """Scan the current cache and determine items old-enough to be 
+        removed.
+        """
+
+        logging.debug("Doing clean-up for cache resource with name [%s]." % 
+                      (self.resource_name))
+
+        try:
+            cache_dict = self.registry.list_raw(self.resource_name)
+        except:
+            logging.exception("Could not do clean-up check with resource-name "
+                              "[%s]." % (self.resource_name))
+            raise
+
+        total_keys = [ (key, value_tuple[1]) for key, value_tuple \
+                            in cache_dict.iteritems() ]
+
+        cleanup_keys = [ key for key, value_tuple \
+                            in cache_dict.iteritems() \
+                            if (datetime.now() - value_tuple[1]).seconds > \
+                                    self.max_age ]
+
+        logging.info("Found (%d) entries to clean-up from entry-cache." % (len(cleanup_keys)))
+
+        if cleanup_keys:
+            for key in cleanup_keys:
+                logging.debug("Cache entry [%s] under resource-name [%s] will "
+                              "be cleaned-up." % (key, self.resource_name))
+
+                if self.exists(key, no_fault_check=True) == False:
+                    logging.debug("Entry with ID [%s] has already been cleaned-up." % (key))
+                else:
+                    try:
+                        self.remove(key)
+                    except:
+                        logging.exception("Cache entry [%s] under resource-name [%s] "
+                                          "could not be cleaned-up." % 
+                                          (key, self.resource_name))
+                        raise
+
+            logging.debug("Scheduled clean-up complete.")
+
+        cleanup_interval_s = Conf.get('cache_cleanup_check_frequency_s')
+        cleanup_timer = Timer(cleanup_interval_s, self.__cleanup_check)
+        cleanup_timer.start()
+
+        Timers.get_instance().register_timer('cleanup', cleanup_timer)
 
     def set(self, key, value):
         logging.debug("CacheAgent.set(%s,%s)" % (key, type(value)))
@@ -167,7 +274,7 @@ class _CacheAgent(object):
         logging.debug("CacheAgent.remove(%s)" % (key))
 
         return self.registry.remove(self.resource_name, key, 
-                                    cleanup_trigger=self.cleanup_trigger)
+                                    cleanup_pretrigger=self.cleanup_pretrigger)
 
     def get(self, key, handle_fault = None):
 
@@ -179,7 +286,7 @@ class _CacheAgent(object):
         try:
             result = self.registry.get(self.resource_name, key, 
                                        max_age=self.max_age, 
-                                       cleanup_trigger=self.cleanup_trigger)
+                                       cleanup_pretrigger=self.cleanup_pretrigger)
         except (CacheFault):
             logging.debug("There was a cache-miss while requesting item with "
                           "ID (key).")
@@ -199,12 +306,13 @@ class _CacheAgent(object):
 
         return result
 
-    def exists(self, key):
+    def exists(self, key, no_fault_check=False):
         logging.debug("CacheAgent.exists(%s)" % (key))
 
         return self.registry.exists(self.resource_name, key, 
                                     max_age=self.max_age,
-                                    cleanup_trigger=self.cleanup_trigger)
+                                    cleanup_pretrigger=self.cleanup_pretrigger,
+                                    no_fault_check=no_fault_check)
 
     def __getitem__(self, key):
         return self.get(key)
@@ -229,7 +337,7 @@ class CacheClient(object):
 
         self._cache = _CacheAgent(self.child_type, self.max_age, 
                                  fault_handler=self.fault_handler, 
-                                 cleanup_trigger=self.cleanup_trigger)
+                                 cleanup_pretrigger=self.cleanup_pretrigger)
 
         return self._cache
 
@@ -247,7 +355,7 @@ class CacheClient(object):
     def fault_handler(self, resource_name, key):
         pass
 
-    def cleanup_trigger(self, resource_name, key, force):
+    def cleanup_pretrigger(self, resource_name, key, force):
         pass
 
     def init(self):
@@ -306,6 +414,7 @@ class PathRelations(object):
         stat_placeholders = 0
         stat_folders = 0
         stat_files = 0
+        removed = { }
         while 1:
             if not to_remove:
                 break
@@ -338,6 +447,8 @@ class PathRelations(object):
                               "(recursive)." % (current_entry_id))
                 raise
 
+            removed[current_entry_id] = True
+
             (current_orphan_ids, current_children_clauses) = result
 
             logging.debug("RR: Entry removed. (%d) orphans and (%d) children "
@@ -352,7 +463,7 @@ class PathRelations(object):
 
         logging.debug("RR: Removal complete. (%d) PH, (%d) folders, (%d) files removed." % (stat_placeholders, stat_folders, stat_files))
 
-        return (stat_folders + stat_files)
+        return (removed.keys(), (stat_folders + stat_files))
 
     def __remove_entry(self, entry_id, is_update=False):
         """Remove an entry. Updates references from linked entries, but does 
@@ -516,25 +627,31 @@ class PathRelations(object):
 
             cache = EntryCache.get_instance().cache
 
-            if entry_id in self.entry_ll:
+            removed_ids = [ entry_id ]
+            if self.is_cached(entry_id):
                 logging.debug("Removing found PathRelations entries.")
 
                 try:
-                    self.remove_entry_recursive(entry_id, is_update)
+                    removed_tuple = self.remove_entry_recursive(entry_id, \
+                                                               is_update)
                 except:
                     logging.exception("Could not remove entry-ID from "
                                       "PathRelations. Still continuing, though.")
 
-            if cache.exists(entry_id):
-                logging.debug("Removing found EntryCache entries.")
+                (removed_ids, number_removed) = removed_tuple
 
-                try:
-                    cache.remove(entry_id)
-                except:
-                    logging.exception("Could not remove entry-ID from EntryCache. "
-                                      "Still continuing, though.")
+            logging.debug("(%d) entries will now be removed from the core-cache." % (len(removed_ids)))
+            for removed_id in removed_ids:
+                if cache.exists(removed_id):
+                    logging.debug("Removing core EntryCache entry with ID [%s]." % (removed_id))
 
-            logging.debug("All traces of entry with ID [%s] are gone " % 
+                    try:
+                        cache.remove(removed_id)
+                    except:
+                        logging.exception("Could not remove entry-ID from the core"
+                                          " cache. Still continuing, though.")
+
+            logging.debug("All traces of entry with ID [%s] are gone." % 
                           (entry_id))
 
     def dump_entry_clause(self, entry_id):
@@ -664,7 +781,7 @@ class PathRelations(object):
             logging.info("Registering entry with ID [%s] within path-relations." %
                          (entry_id))
 
-            if entry_id in self.entry_ll:
+            if self.is_cached(entry_id, include_placeholders=False):
                 logging.debug("Entry to register with ID [%s] already exists "
                               "within path-relations, and will be removed in lieu "
                               "of update." % (entry_id))
@@ -699,17 +816,17 @@ class PathRelations(object):
             #   < boolean indicating that we know about all children >
             # )
 
-            if entry_id not in self.entry_ll:
-                logging.debug("Entry does not yet exist in LL.")
-
-                entry_clause = [normalized_entry, [ ], [ ], entry_id, False]
-                self.entry_ll[entry_id] = entry_clause
-            else:
+            if self.is_cached(entry_id, include_placeholders=True):
                 logging.debug("Placeholder exists for entry-to-register with ID [%s]." % (entry_id))
 
                 entry_clause = self.entry_ll[entry_id]
                 entry_clause[0] = normalized_entry
                 entry_clause[1] = [ ]
+            else:
+                logging.debug("Entry does not yet exist in LL.")
+
+                entry_clause = [normalized_entry, [ ], [ ], entry_id, False]
+                self.entry_ll[entry_id] = entry_clause
 
             entry_parents = entry_clause[1]
             title_fs = normalized_entry.title_fs
@@ -722,15 +839,15 @@ class PathRelations(object):
                 logging.debug("Processing parent with ID [%s] of entry with ID [%s]." % (parent_id, entry_id))
 
                 # If the parent hasn't yet been loaded, install a placeholder.
-                if parent_id not in self.entry_ll:
+                if self.is_cached(parent_id, include_placeholders=True):
+                    logging.debug("Parent has an existing entry.")
+
+                    parent_clause = self.entry_ll[parent_id]
+                else:
                     logging.debug("Parent is not yet registered.")
 
                     parent_clause = [None, None, [ ], parent_id, False]
                     self.entry_ll[parent_id] = parent_clause
-                else:
-                    logging.debug("Parent has an existing entry.")
-
-                    parent_clause = self.entry_ll[parent_id]
 
                 if parent_clause not in entry_parents:
                     entry_parents.append(parent_clause)
@@ -796,92 +913,6 @@ class PathRelations(object):
         logging.debug("Entry registration complete.")
 
         return entry_clause
-
-    def get_children_with_contains_and_decay(self, parent_id, query_contains_string):
-
-        logging.info("Getting child-listing under parent_id [%s] with query "
-                     "[%s] WITH DECAY." % (parent_id, query_contains_string))
-
-        # We're going to potentially repeat the call to GD several times, with 
-        # varying lengths of a query (if a query_contains_string was provided 
-        # and query_contains_decay is True). In addition to the query itself, 
-        # we'll try a search with just the first <prefix> characters, another 
-        # one with just the first character, and then a comprehensive search. 
-        # The moment a filename matching query_contains_string is found, we 
-        # bail. This is necessary in a situation where there are duplicate 
-        # filenames in the same directory, but we don't know about all of the 
-        # entries in that directory yet, nor have we determined their unique 
-        # filenames, yet (filenames that Google won't know about).
-
-        with PathRelations.rlock:
-            prefix_length = Conf.get('query_decay_intermed_prefix_length')
-            query_contains_string_fs = get_utility(). \
-                translate_filename_charset(query_contains_string)
-
-            # We'll have to end-up searching -every- child in the directory. In the 
-            # beginning, we knew that, if the file existed at all, at least the 
-            # first character would be searchable. However, now the hidden files 
-            # are locally modified to have a prefixing dot, and we no longer has 
-            # this assumption.
-            search_tokens = [query_contains_string_fs, 
-                             query_contains_string_fs[:prefix_length], 
-                             query_contains_string_fs[0],
-                             None]
-
-            i = 0
-            found = False
-            results = [ ]
-            cache = EntryCache.get_instance().cache
-            for search_token in search_tokens:
-                logging.info("Listing entries under parent with ID [%s] and "
-                             "contains-query [%s], in cycle (%d)." % 
-                             (parent_id, search_token, i))
-
-                # Get the list of children.
-
-                try:
-                    matched_children = drive_proxy('get_children_under_parent_id',
-                                           parent_id=parent_id, 
-                                           query_contains_string=search_token)
-                except:
-                    logging.exception("Could not list children containing [%s] under "
-                                      "folder with entry-ID [%s]." % 
-                                      (search_token, parent_id))
-                    raise
-
-                # Induce a retrieval of each child by asking for it.
-
-                for child_id in matched_children:
-                    try:
-                        results.append(cache.get(child_id))
-                    except:
-                        logging.exception("Could not retrieve entry for matched child "
-                                          "with entry-ID [%s]." % (child_id))
-                        raise
-
-                # If there's a child under the given parent where the filename 
-                # matches query_contains, return.
-
-                try:
-                    parent_clause = self.__get_entry_clause_by_id(parent_id)
-                except:
-                    logging.exception("Could not retrieve clause for parent-entry "
-                                      "[%s] in contains-with-decay function." % 
-                                      (parent_id))
-                    raise
-
-                if parent_clause:
-                    found = [ child_tuple[1] 
-                              for child_tuple 
-                              in parent_clause[2] 
-                              if child_tuple[0] == query_contains_string_fs ]
-
-                    if found:
-                        break
-
-                i += 1
-
-        return (results, found)
 
     def __load_all_children(self, parent_id):
         logging.info("Loading children under parent with ID [%s]." % 
@@ -989,9 +1020,7 @@ class PathRelations(object):
             (entry_ids, path_parts, success) = path_results
 
             if not success:
-                message = ("Could not resolve path [%s]." % (path))
-                logging.error(message)
-                raise Exception(message)
+                return None
 
             entry_id = path_results[0][-1]
         
@@ -1020,6 +1049,8 @@ class PathRelations(object):
                     logging.exception("There was a problem doing an iteration of "
                                       "find_path_components() on [%s]." % (path))
                     raise
+
+                logging.debug("Path resolution cycle (%d) results: %s" % (i, result))
 
                 # If we could resolve the entire path, return success.
 
@@ -1057,15 +1088,23 @@ class PathRelations(object):
                               "with entry-ID [%s]." % (child_name, parent_id))
 
                 try:
-                    results = self.get_children_with_contains_and_decay(parent_id, child_name)
+                    children = drive_proxy('list_files', parent_id=parent_id, query_is_string=child_name)
                 except:
-                    logging.exception("Could not retrieve children like [%s] under"
-                                      " parent with entry-ID [%s]." % (child_name, 
-                                                                       parent_id))
+                    logging.exception("Could not retrieve children for parent with"
+                                      " ID [%s]." % (parent_id))
                     raise
+                
+                for child in children:
+                    try:
+                        self.register_entry(child)
+                    except:
+                        logging.exception("Could not register child entry for "
+                                          "entry with ID [%s] in path-cache." % 
+                                          (child.id))
+                        raise
 
-                filenames_phrase = ', '.join([ candidate.id for candidate in results[0] ])
-                logging.debug("(%d) candidate children were found: %s" % (len(results[0]), filenames_phrase))
+                filenames_phrase = ', '.join([ candidate.id for candidate in children ])
+                logging.debug("(%d) candidate children were found: %s" % (len(children), filenames_phrase))
 
                 i += 1
 
@@ -1117,8 +1156,9 @@ class PathRelations(object):
                 child_filename_to_search_fs = get_utility(). \
                     translate_filename_charset(path_parts[i])
 
-                logging.debug('Checking part (%d): [%s]' % 
-                              (i, child_filename_to_search_fs))
+                logging.debug("Checking for part (%d) [%s] under parent with "
+                              "ID [%s]." % (i, child_filename_to_search_fs, 
+                                            entry_ptr))
 
                 try:
                     current_clause = self.entry_ll[entry_ptr]
@@ -1143,21 +1183,31 @@ class PathRelations(object):
                 if path == "":
                     found = [ root_id ]
                 else:
+                    logging.debug("Looking for child [%s] among (%d): %s" % 
+                                  (child_filename_to_search_fs, len(children),
+                                   [ child_tuple[0] for child_tuple 
+                                     in children ]))
+
                     found = [ child_tuple[1][3] 
                               for child_tuple 
                               in children 
                               if child_tuple[0] == child_filename_to_search_fs ]
-            
+
                 if found:
+                    logging.debug("Found matching child with ID [%s]." % (found[0]))
                     results.append(found[0])
                 else:
+                    logging.debug("Did not find matching child.")
                     return (results, path_parts, False)
 
                 # Have we traveled far enough into the linked list?
                 if (i + 1) >= num_parts:
+                    logging.debug("Path has been completely resolved: %s" % (', '.join(results)))
+
                     self.path_cache[path] = (results, path_parts, True)
                     final_entry_id = results[-1]
                     self.path_cache_byid[final_entry_id] = path
+
                     return self.path_cache[path]
 
                 parent_id = entry_ptr
@@ -1170,7 +1220,7 @@ class PathRelations(object):
         """
 
         with PathRelations.rlock:
-            if entry_id in self.entry_ll and self.entry_ll[entry_id][0]:
+            if self.is_cached(entry_id):
                 return self.entry_ll[entry_id]
 
             else:
@@ -1191,15 +1241,17 @@ class PathRelations(object):
                                       (entry_id))
                     raise
 
+    def is_cached(self, entry_id, include_placeholders=False):
+
+        return (entry_id in self.entry_ll and (include_placeholders or \
+                                               self.entry_ll[entry_id][0]))
+
 PathRelations.rlock = RLock()
 
 class EntryCache(CacheClient):
     """Manages our knowledge of file entries."""
 
     about = AccountInfo.get_instance()
-
-    def __is_update_needed(self, entry_id):
-        return True
 
     def __get_entries_to_update(self, requested_entry_id):
         # Get more entries than just what was requested, while we're at it.
@@ -1214,7 +1266,7 @@ class EntryCache(CacheClient):
 
         logging.debug("Found (%d) parents." % (len(parent_ids)))
 
-        affected_entries = [ ]
+        affected_entries = [ requested_entry_id ]
         considered_entries = { }
         max_readahead_entries = Conf.get('max_readahead_entries')
         for parent_id in parent_ids:
@@ -1251,21 +1303,14 @@ class EntryCache(CacheClient):
                 if self.cache.exists(child_id):
                     continue
 
-                if self.__is_update_needed(child_id):
-                    affected_entries.append(child_id)
+                affected_entries.append(child_id)
 
-                if len(affected_entries) >= (max_readahead_entries - 1):
+                if len(affected_entries) >= max_readahead_entries:
                     break
-
-        affected_entries[0:0] = [ requested_entry_id ]
 
         return affected_entries
 
-    def fault_handler(self, resource_name, requested_entry_id):
-        """A requested entry wasn't stored."""
-
-        logging.info("EntryCache has faulted on entry with ID [%s]." % 
-                      (requested_entry_id))
+    def __do_update_for_missing_entry(self, requested_entry_id):
 
         # Get the entries to update.
 
@@ -1280,6 +1325,10 @@ class EntryCache(CacheClient):
 
         logging.info("(%d) primary and secondary entry/entries will be "
                      "updated." % (len(affected_entries)))
+
+        # TODO: We have to determine when this is called, and either remove it 
+        # (if it's not), or find another way to not have to load them 
+        # individually.
 
         try:
             retrieved = drive_proxy('get_entries', entry_ids=affected_entries)
@@ -1300,6 +1349,21 @@ class EntryCache(CacheClient):
 
         logging.debug("(%d) entries were loaded." % (len(retrieved)))
 
+        return retrieved
+
+    def fault_handler(self, resource_name, requested_entry_id):
+        """A requested entry wasn't stored."""
+
+        logging.info("EntryCache has faulted on entry with ID [%s]." % 
+                      (requested_entry_id))
+
+        try:
+            retrieved = self.__do_update_for_missing_entry(requested_entry_id)
+        except:
+            logging.exception("Could not reconcile unknown entry with ID "
+                              "[%s]." % (requested_entry_id))
+            raise
+
         # Return the requested entry.
 
         try:
@@ -1310,12 +1374,27 @@ class EntryCache(CacheClient):
                               "the cache." % (requested_entry_id))
             return None
 
-    def cleanup_trigger(self, resource_name, entry_id, force):
-        pass
+    def cleanup_pretrigger(self, resource_name, entry_id, force):
+        """The core entry cache has a clean-up process that will remove old "
+        entries. This is called just before any record is removed.
+        """
+
+        # Now that the local cache-item has been removed, remove the same from
+        # the PathRelations cache.
+
+        path_relations = PathRelations.get_instance()
+
+        if path_relations.is_cached(entry_id):
+            logging.debug("Removing PathRelations entry for cleaned-up entry "
+                          "with ID [%s]." % (entry_id))
+
+            try:
+                path_relations.remove_entry_recursive(entry_id)
+            except:
+                logging.exception("Could not remove PathRelations entry with "
+                                  "ID [%s] on cleanup." % (entry_id))
+                raise
 
     def get_max_cache_age_seconds(self):
-        return None
-
-# TODO: Start a cache clean-up thread to make sure that all old items at the 
-# beginning of the cleanup_index are constantly pruned.
+        return Conf.get('cache_entries_max_age')
 

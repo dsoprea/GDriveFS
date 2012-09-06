@@ -5,6 +5,7 @@ from threading import Lock, Timer
 from gdrivefs.gdtool import AccountInfo, drive_proxy
 from gdrivefs.conf import Conf
 from gdrivefs.cache import PathRelations, EntryCache
+from gdrivefs.timer import Timers
 
 def _sched_check_changes():
     
@@ -16,7 +17,7 @@ def _sched_check_changes():
     t = Timer(Conf.get('change_check_frequency_s'), _sched_check_changes)
     t.start()
 
-    _sched_check_changes.timer = t
+    Timers.get_instance().register_timer('change', t)
 
 class _ChangeManager(object):
     at_change_id = None
@@ -34,25 +35,14 @@ class _ChangeManager(object):
     def mount_init(self):
         """Called when filesystem is first mounted."""
 
-        logging.info("Change init.")
+        logging.debug("Change init.")
 
         _sched_check_changes()
 
     def mount_destroy(self):
         """Called when the filesystem is unmounted."""
 
-        logging.info("Change destroy.")
-
-        try:
-            _sched_check_changes.timer
-        except:
-            message = "No timer was defined. This should not be possible."
-
-            logging.error(message)
-            raise Exception(message)
-
-        logging.info("Cancelling current change-timer.")
-        _sched_check_changes.timer.cancel()
+        logging.debug("Change destroy.")
 
     def __get_updates(self):
 
@@ -80,7 +70,7 @@ class _ChangeManager(object):
                                                         self.at_change_id))
 
         if largest_change_id == self.at_change_id:
-            logging.debug("No files affected.")
+            logging.debug("No entries have changed.")
             return True
 
         logging.info("(%d) changes will now be applied." % (len(changes)))

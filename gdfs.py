@@ -7,19 +7,21 @@ import getpass
 import errno
 import re
 import json
+import os
+import atexit
 
 from errno      import *
 from time       import mktime
 from argparse   import ArgumentParser
 from fuse       import FUSE, Operations, LoggingMixIn, FuseOSError
 from sys        import argv
-from os         import getenv
 
 from gdrivefs.utility import get_utility
 from gdrivefs.cache import PathRelations
 from gdrivefs.gdtool import drive_proxy, NormalEntry
 from gdrivefs.errors import ExportFormatError
 from gdrivefs.change import get_change_manager
+from gdrivefs.timer import Timers
 
 #if not hasattr(fuse, '__version__'):
 #    raise RuntimeError, \
@@ -115,7 +117,7 @@ class _GDriveFS(LoggingMixIn,Operations):
     def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
 
-        logging.info("Stat() on [%s]." % (raw_path))
+        logging.info("========== stat() on [%s]." % (raw_path))
 
         try:
             (path, mime_type, extension, just_info) = self.__strip_export_type \
@@ -129,8 +131,12 @@ class _GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except:
-            logging.exception("Could not get clause from path [%s] "
+            logging.exception("Could not try to get clause from path [%s] "
                               "(getattr)." % (path))
+            raise FuseOSError(ENOENT)
+
+        if not entry_clause:
+            logging.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
         effective_permission = 0444
@@ -169,7 +175,7 @@ class _GDriveFS(LoggingMixIn,Operations):
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
 
-        logging.info("ReadDir(%s,%s) invoked." % (path, type(offset)))
+        logging.info("========== readdir() on [%s]." % (path))
 
         # We expect "offset" to always be (0).
         if offset != 0:
@@ -189,6 +195,10 @@ class _GDriveFS(LoggingMixIn,Operations):
         except:
             logging.exception("Could not get clause from path [%s] "
                               "(readdir)." % (path))
+            raise FuseOSError(ENOENT)
+
+        if not entry_clause:
+            logging.debug("Path [%s] does not exist for readdir()." % (path))
             raise FuseOSError(ENOENT)
 
         try:
@@ -240,8 +250,8 @@ class _GDriveFS(LoggingMixIn,Operations):
 
     def read(self, raw_path, size, offset, fh):
 
-        logging.info("Reading file at path [%s] with offset (%d) and count "
-                     "(%d)." % (raw_path, offset, size))
+        logging.info("========== read() on path [%s] with offset (%d) and "
+                     "count (%d)." % (raw_path, offset, size))
 
         try:
             (path, mime_type, extension, just_info) = self.__strip_export_type \
@@ -261,6 +271,10 @@ class _GDriveFS(LoggingMixIn,Operations):
         except:
             logging.exception("Could not get clause from path [%s] (read)." % 
                               (path))
+            raise FuseOSError(ENOENT)
+
+        if not entry_clause:
+            logging.debug("Path [%s] does not exist for read()." % (path))
             raise FuseOSError(ENOENT)
 
         normalized_entry = entry_clause[0]
@@ -323,13 +337,75 @@ class _GDriveFS(LoggingMixIn,Operations):
                                   "path [%s]." % (temp_file_path))
                 raise
 
+    def mkdir(self, filepath, mode):
+        """Create the given directory."""
+
+        logging.info("========== mkdir() with [%s]." % (filepath))
+
+# TODO: Implement the "mode".
+        (path, filename) = os.path.split(filepath)
+
+        if path[0] != '/' or filename == '':
+            message = ("Could not create directory with badly-formatted "
+                       "file-path [%s]." % (filepath))
+
+            logging.error(message)
+            raise Exception(message)
+
+        path_relations = PathRelations.get_instance()
+
+        try:
+            parent_clause = path_relations.get_clause_from_path(path)
+        except:
+            logging.exception("Could not get clause from path [%s] "
+                              "(mkdir)." % (path))
+            raise FuseOSError(ENOENT)
+
+        if not parent_clause:
+            logging.debug("Path [%s] does not exist for mkdir()." % (path))
+            raise FuseOSError(ENOENT)
+
+        if filename[0] == '.':
+            is_hidden = True
+            filename = filename[1:]
+
+        else:
+            is_hidden = False
+
+        logging.debug("Creating directory [%s] under [%s]." % (filename, path))
+
+        try:
+            entry = drive_proxy('create_directory', filename=filename, 
+                        parent_id=parent_clause[0].id, is_hidden=is_hidden)
+        except:
+            logging.exception("Could not localize displaced file with entry "
+                              "having ID [%s]." % (self.normalized_entry.id))
+            raise
+
+        logging.info("Directory [%s] created as ID [%s]." % (filepath, 
+                     entry.id))
+
+        #parent_clause[4] = False
+
+        path_relations = PathRelations.get_instance()
+
+        try:
+            path_relations.register_entry(entry)
+        except:
+            logging.exception("Could not register new directory in cache.")
+            raise
+
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
+
+        atexit.register(Timers.get_instance().cancel_all)
 
         get_change_manager().mount_init()
 
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /."""
+
+        Timers.get_instance().cancel_all()
 
         get_change_manager().mount_destroy()
 

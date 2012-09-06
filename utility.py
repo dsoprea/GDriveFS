@@ -38,7 +38,7 @@ class _DriveUtility(object):
             'video/x-flv':                      'flv'
         }
 
-    mimetype_directory = u'application/vnd.google-apps.folder'
+    _mimetype_directory = u'application/vnd.google-apps.folder'
     local_character_set = getfilesystemencoding()
 
     def __init__(self):
@@ -68,7 +68,7 @@ class _DriveUtility(object):
             logging.info("No extension-mapping was found.")
 
     def is_directory(self, entry):
-        return (entry.mime_type == self.mimetype_directory)
+        return (entry.mime_type == self._mimetype_directory)
 
     def get_first_mime_type_by_extension(self, extension):
 
@@ -169,6 +169,10 @@ class _DriveUtility(object):
         """Convert the given filename to the correct character set."""
         
         return original_filename.encode(self.local_character_set)
+
+    @property
+    def mimetype_directory(self):
+        return self._mimetype_directory
 
 def get_utility():
     if get_utility.__instance == None:

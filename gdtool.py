@@ -759,6 +759,65 @@ class _GdriveManager(object):
 
         return (temp_filepath, len(data))
 
+    def __insert_entry(self, filename, parent_id=None, modified_datetime=None, 
+                     mime_type=None, is_hidden=False, description='', 
+                     data_filepath=None):
+
+        logging.info("Creating file with filename [%s] under parent with ID "
+                     "[%s]." % (filename, parent_id))
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (insert_entry).")
+            raise
+
+        parents = [ parent_id ] if parent_id else None
+
+        body = { 
+                'title': filename, 
+                'parents': parents, 
+                'modifiedDate': modified_datetime, 
+                'mimeType': mime_type, 
+                'labels': { "hidden": is_hidden }, 
+                'description': description 
+            }
+
+        try:
+            result = client.files().insert(body=body,media_body=data_filepath).execute()
+        except:
+            logging.exception("Could not insert file [%s]." % (filename))
+            raise
+
+        try:
+            normalized_entry = NormalEntry('insert_entry', result)
+        except:
+            logging.exception("Could not normalize created entry.")
+            raise
+
+        logging.info("New entry created with ID [%s]." % (normalized_entry.id))
+
+        return normalized_entry
+
+    def create_directory(self, **kwargs):
+
+        mimetype_directory = get_utility().mimetype_directory
+
+        return self.__insert_entry(mime_type=mimetype_directory, **kwargs)
+
+    def create_file(self, filename, data_filepath, **kwargs):
+
+        if filename.rfind('.') == -1:
+            message = ("Filename [%s] to create must have an extension." % 
+                       (filename))
+
+            logging.error(message)
+            raise Exception(message)
+
+        return self.__insert_entry(filename=filename, 
+                                   data_filepath=data_filepath, **kwargs)
+
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
     automatically refresh our authorization credentials when the need arises. 
