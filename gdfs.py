@@ -58,7 +58,8 @@ def _strip_export_type(path, set_mime=True):
             extension_rx = re.compile('\.([a-zA-Z0-9]+)$')
             matched = extension_rx.search(path.encode('ASCII'))
 
-            extension = matched.group(1)
+            if matched:
+                extension = matched.group(1)
 
         if extension:
             logging.info("User wants to export to extension [%s]." % 
@@ -847,7 +848,7 @@ class _GDriveFS(LoggingMixIn,Operations):
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = self.__split_path(filepath)
+             just_info) = _split_path(filepath)
         except _NotFoundError:
             logging.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
@@ -876,7 +877,7 @@ class _GDriveFS(LoggingMixIn,Operations):
                               "with ID [%s]." % (filename, parent_clause[3]))
             raise
 
-        logging.debug("Registering create file in cache.")
+        logging.debug("Registering created file in cache.")
 
         path_relations = PathRelations.get_instance()
 
@@ -889,7 +890,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         logging.debug("Building _OpenedFile object for created file.")
 
         try:
-            opened_file = _OpenedFile(entry.id, path, filename, is_hidden)
+            opened_file = _OpenedFile(entry.id, path, filename, is_hidden, mime_type)
         except:
             logging.exception("Could not create _OpenedFile object for "
                               "created file.")

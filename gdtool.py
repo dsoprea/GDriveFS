@@ -763,7 +763,7 @@ class _GdriveManager(object):
 
         return (temp_filepath, len(data))
 
-    def __insert_entry(self, filename, parent_id=None, modified_datetime=None, 
+    def __insert_entry(self, filename, parents=None, modified_datetime=None, 
                        mime_type=None, is_hidden=False, description='', 
                        data_filepath=None, update_on_id=None):
 
