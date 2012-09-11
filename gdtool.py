@@ -139,7 +139,7 @@ class _OauthAuthorize(object):
             
             self.__refresh_credentials()
             return self.credentials
-            
+
     def get_credentials(self):
         try:
             self.credentials = self.__step2_check_auth_cache()
@@ -153,10 +153,11 @@ class _OauthAuthorize(object):
         return self.credentials
     
     def __update_cache(self, credentials):
-        # Serialized credentials.
+
+        # Serialize credentials.
 
         logging.info("Serializing credentials for cache.")
-        
+
         credentials_serialized = None
         
         try:
@@ -168,14 +169,14 @@ class _OauthAuthorize(object):
         # Write cache file.
 
         logging.info("Writing credentials to cache.")
-        
+
         try:
             with open(self.cache_filepath, 'w') as cache:
                 cache.write(credentials_serialized)
         except:
             logging.exception("Could not write credentials to cache.")
             raise
-    
+
     def step2_doexchange(self, auth_code):
         # Do exchange.
 
@@ -650,7 +651,7 @@ class _GdriveManager(object):
 
         return entries
 
-    def download_to_local(self, normalized_entry, mime_type):
+    def download_to_local(self, normalized_entry, mime_type, force_output_filename=None):
         """Download the given file. If we've cached a previous download and the 
         mtime hasn't changed, re-use.
         """
@@ -681,10 +682,13 @@ class _GdriveManager(object):
         # the file, and we'll need the data at hand in order to page through 
         # it.
 
-        temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)). \
-                            encode('ascii')
-        temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
-        temp_filepath = ("%s/%s" % (temp_path, temp_filename))
+        if force_output_filename:
+            temp_filename = force_output_filename
+        else:
+            temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)). \
+                                encode('ascii')
+            temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
+            temp_filepath = ("%s/%s" % (temp_path, temp_filename))
 
         gd_date_obj = dateutil.parser.parse(normalized_entry.modified_date)
         gd_mtime_epoch = mktime(gd_date_obj.timetuple())
@@ -760,11 +764,15 @@ class _GdriveManager(object):
         return (temp_filepath, len(data))
 
     def __insert_entry(self, filename, parent_id=None, modified_datetime=None, 
-                     mime_type=None, is_hidden=False, description='', 
-                     data_filepath=None):
+                       mime_type=None, is_hidden=False, description='', 
+                       data_filepath=None, update_on_id=None):
 
-        logging.info("Creating file with filename [%s] under parent with ID "
-                     "[%s]." % (filename, parent_id))
+        if parents == None:
+            parents = [ ]
+
+        logging.info("Creating/updating file with filename [%s] under "
+                     "parent(s) [%s].  UPDATE_ID= [%s]" % 
+                     (filename, ', '.join(parents), update_on_id))
 
         try:
             client = self.get_client()
@@ -772,8 +780,6 @@ class _GdriveManager(object):
             logging.exception("There was an error while acquiring the Google "
                               "Drive client (insert_entry).")
             raise
-
-        parents = [ parent_id ] if parent_id else None
 
         body = { 
                 'title': filename, 
@@ -784,19 +790,37 @@ class _GdriveManager(object):
                 'description': description 
             }
 
-        try:
-            result = client.files().insert(body=body,media_body=data_filepath).execute()
-        except:
-            logging.exception("Could not insert file [%s]." % (filename))
-            raise
+        args = { 'body': body, 'media_body': data_filepath }
 
-        try:
-            normalized_entry = NormalEntry('insert_entry', result)
-        except:
-            logging.exception("Could not normalize created entry.")
-            raise
+        if update_on_id:
+            args['fileId'] = update_on_id
 
-        logging.info("New entry created with ID [%s]." % (normalized_entry.id))
+            try:
+                result = client.files().update(**args).execute()
+            except:
+                logging.exception("Could not send update for file [%s]." % 
+                                  (filename))
+                raise
+
+            try:
+                normalized_entry = NormalEntry('update_entry', result)
+            except:
+                logging.exception("Could not normalize updated entry.")
+                raise
+        else:
+            try:
+                result = client.files().insert(**args).execute()
+            except:
+                logging.exception("Could not insert file [%s]." % (filename))
+                raise
+
+            try:
+                normalized_entry = NormalEntry('insert_entry', result)
+            except:
+                logging.exception("Could not normalize created entry.")
+                raise
+            
+        logging.info("New entry created/updated with ID [%s]." % (normalized_entry.id))
 
         return normalized_entry
 
@@ -806,14 +830,11 @@ class _GdriveManager(object):
 
         return self.__insert_entry(mime_type=mimetype_directory, **kwargs)
 
-    def create_file(self, filename, data_filepath, **kwargs):
-
-        if filename.rfind('.') == -1:
-            message = ("Filename [%s] to create must have an extension." % 
-                       (filename))
-
-            logging.error(message)
-            raise Exception(message)
+    def create_file(self, filename, data_filepath=None, **kwargs):
+# TODO: It doesn't seem as if the created file is being registered.
+        # Even though we're supposed to provide an extension, we can get away 
+        # without having one. We don't want to impose this when acting like a 
+        # normal FS.
 
         return self.__insert_entry(filename=filename, 
                                    data_filepath=data_filepath, **kwargs)

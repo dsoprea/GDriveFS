@@ -10,6 +10,12 @@ from gdrivefs.conf import Conf
 from gdrivefs.report import Report
 from gdrivefs.timer import Timers
 
+CLAUSE_ENTRY            = 0
+CLAUSE_PARENT           = 1
+CLAUSE_CHILDREN         = 2
+CLAUSE_ID               = 3
+CLAUSE_CHILDREN_LOADED  = 4
+
 class CacheFault(Exception):
     pass
 
@@ -858,22 +864,22 @@ class PathRelations(object):
 
                 utility = get_utility()
 
-                if not normalized_entry.file_extension:
-                    # Append an extension to the bare filename, if available. If 
-                    # the file_extension property is available, the filename 
-                    # already has an extension.
-
-                    try:
-                        file_extension = utility.get_extension(normalized_entry)
-                    except:
-                        logging.exception("There was a problem trying to derive an "
-                                          "extension for entry with ID [%s]." %
-                                          (normalized_entry.id))
-                        raise
-            
-                    if file_extension:
-                        filename_base = ("%s.%s" % (filename_base, file_extension))
-                        logging.debug("File will be given extension [%s]." % (file_extension))
+#                if not normalized_entry.file_extension:
+#                    # Append an extension to the bare filename, if available. If 
+#                    # the file_extension property is available, the filename 
+#                    # already has an extension.
+#
+#                    try:
+#                        file_extension = utility.get_extension(normalized_entry)
+#                    except:
+#                        logging.exception("There was a problem trying to derive an "
+#                                          "extension for entry with ID [%s]." %
+#                                          (normalized_entry.id))
+#                        raise
+#
+#                    if file_extension:
+#                        filename_base = ("%s.%s" % (filename_base, file_extension))
+#                        logging.debug("File will be given extension [%s]." % (file_extension))
 
                 # Prepend a period if it's a hidden file.
 
@@ -1006,15 +1012,15 @@ class PathRelations(object):
 
         return children_filenames
 
-    def get_clause_from_path(self, path):
+    def get_clause_from_path(self, filepath):
 
-        logging.info("Getting clause for path [%s]." % (path))
+        logging.info("Getting clause for path [%s]." % (filepath))
 
         with PathRelations.rlock:
             try:
-                path_results = self.find_path_components_goandget(path)
+                path_results = self.find_path_components_goandget(filepath)
             except:
-                logging.exception("Could not resolve path [%s] to entry." % (path))
+                logging.exception("Could not resolve path [%s] to entry." % (filepath))
                 raise
 
             (entry_ids, path_parts, success) = path_results
@@ -1025,6 +1031,15 @@ class PathRelations(object):
             entry_id = path_results[0][-1]
         
             logging.info("Found entry with ID [%s]." % (entry_id))
+
+            # Make sure the entry is more than a placeholder.
+
+            try:
+                self.__get_entry_clause_by_id(entry_id)
+            except:
+                logging.exception("Clause was found for path, but entry could "
+                                  "not be retrieved.")
+                raise
 
             return self.entry_ll[entry_id]
 
