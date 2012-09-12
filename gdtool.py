@@ -8,6 +8,7 @@ import re
 import dateutil.parser
 
 from apiclient.discovery    import build
+from apiclient.http         import MediaFileUpload
 from oauth2client.client    import flow_from_clientsecrets
 from oauth2client.client    import OOB_CALLBACK_URN
 
@@ -18,6 +19,7 @@ from httplib2       import Http
 from sys            import exit
 from threading      import Thread, Event
 from collections    import OrderedDict
+from magic          import Magic
 
 from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
@@ -230,8 +232,10 @@ class NormalEntry(object):
             self.info['owner_names']                = raw_data[u'ownerNames']
             self.info['editable']                   = raw_data[u'editable']
             self.info['user_permission']            = raw_data[u'userPermission']
-            self.info['modified_date']              = raw_data[u'modifiedDate']
-            self.info['created_date']               = raw_data[u'createdDate']
+            self.info['modified_date']              = dateutil.parser.parse(raw_data[u'modifiedDate'])
+            self.info['modified_date_epoch']        = int(mktime(self.info['modified_date'].timetuple()))
+            self.info['created_date']               = dateutil.parser.parse(raw_data[u'createdDate'])
+            self.info['created_date_epoch']         = int(mktime(self.info['created_date'].timetuple()))
 
             self.info['download_links']         = raw_data[u'exportLinks']          if u'exportLinks'           in raw_data else { }
             self.info['link']                   = raw_data[u'embedLink']            if u'embedLink'             in raw_data else None
@@ -651,7 +655,7 @@ class _GdriveManager(object):
 
         return entries
 
-    def download_to_local(self, normalized_entry, mime_type, force_output_filename=None):
+    def download_to_local(self, normalized_entry, mime_type, force_output_filename=None, allow_cache=True):
         """Download the given file. If we've cached a previous download and the 
         mtime hasn't changed, re-use.
         """
@@ -690,13 +694,12 @@ class _GdriveManager(object):
             temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
             temp_filepath = ("%s/%s" % (temp_path, temp_filename))
 
-        gd_date_obj = dateutil.parser.parse(normalized_entry.modified_date)
-        gd_mtime_epoch = mktime(gd_date_obj.timetuple())
+        gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
 
         logging.info("File will be downloaded to [%s]." % (temp_filepath))
 
         use_cache = False
-        if os.path.isfile(temp_filepath):
+        if allow_cache and os.path.isfile(temp_filepath):
             # Determine if a local copy already exists that we can use.
             try:
                 stat = os.stat(temp_filepath)
@@ -763,16 +766,16 @@ class _GdriveManager(object):
 
         return (temp_filepath, len(data))
 
-    def __insert_entry(self, filename, parents=None, modified_datetime=None, 
-                       mime_type=None, is_hidden=False, description='', 
-                       data_filepath=None, update_on_id=None):
+    def __insert_entry(self, filename, mime_type, data_filepath=None, 
+                       parents=None, modified_datetime=None, is_hidden=False, 
+                       description='', update_on_id=None):
 
         if parents == None:
             parents = [ ]
 
         logging.info("Creating/updating file with filename [%s] under "
-                     "parent(s) [%s].  UPDATE_ID= [%s]" % 
-                     (filename, ', '.join(parents), update_on_id))
+                     "parent(s) [%s].  UPDATE-ID= [%s]  MIME-TYPE= [%s]" % 
+                     (filename, ', '.join(parents), update_on_id, mime_type))
 
         try:
             client = self.get_client()
@@ -780,6 +783,23 @@ class _GdriveManager(object):
             logging.exception("There was an error while acquiring the Google "
                               "Drive client (insert_entry).")
             raise
+
+        # If no mime-type was given but we have data, discover the mime-type 
+        # automatically.
+#        if not mime_type and data_filepath:
+#            logging.debug("Determining mime-type for data-to-upload [%s], "
+#                          "automatically." % (data_filepath))
+#
+#            try:
+#                mime_type = Magic(mime=True).from_file(data_filepath)
+#            except:
+#                logging.exception("Could not determine mime-type for data to be uploaded.")
+#                raise
+#
+#            logging.debug("Mime-type was determined to be [%s] for upload." % (mime_type))
+#
+#        else:
+        logging.debug("Mime-type for upload is [%s]." % (mime_type))
 
         body = { 
                 'title': filename, 
@@ -790,7 +810,7 @@ class _GdriveManager(object):
                 'description': description 
             }
 
-        args = { 'body': body, 'media_body': data_filepath }
+        args = { 'body': body, 'media_body': MediaFileUpload(data_filepath, mime_type) }
 
         if update_on_id:
             args['fileId'] = update_on_id
@@ -830,14 +850,20 @@ class _GdriveManager(object):
 
         return self.__insert_entry(mime_type=mimetype_directory, **kwargs)
 
-    def create_file(self, filename, data_filepath=None, **kwargs):
+    def create_file(self, filename, data_filepath, mime_type=None, **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.
         # Even though we're supposed to provide an extension, we can get away 
         # without having one. We don't want to impose this when acting like a 
         # normal FS.
 
-        return self.__insert_entry(filename=filename, 
-                                   data_filepath=data_filepath, **kwargs)
+        # If no data and no mime-type was given, default it to 
+        # "application/octet-stream".
+        if mime_type == None:
+            mime_type = 'application/octet-stream'
+            logging.debug("No mime-type was presented for file create/update. "
+                          "Defaulting to [%s]." % (mime_type))
+
+        return self.__insert_entry(filename=filename, data_filepath=data_filepath, mime_type=mime_type, **kwargs)
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
