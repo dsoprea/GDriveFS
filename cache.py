@@ -171,7 +171,7 @@ class _CacheAgent(object):
     fault_handler       = None
     cleanup_pretrigger  = None
 
-    report              = Report.get_instance()
+    report              = None
     report_source_name  = None
 
     def __init__(self, resource_name, max_age, fault_handler=None, 
@@ -187,6 +187,7 @@ class _CacheAgent(object):
         self.fault_handler = fault_handler
         self.cleanup_pretrigger = cleanup_pretrigger
 
+        self.report = Report.get_instance()
         self.report_source_name = ("cache-%s" % (self.resource_name))
 
         # Run a clean-up cycle to get it scheduled.

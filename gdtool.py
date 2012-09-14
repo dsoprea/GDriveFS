@@ -14,9 +14,7 @@ from oauth2client.client    import OOB_CALLBACK_URN
 
 from time           import mktime, time
 from datetime       import datetime
-from argparse       import ArgumentParser
 from httplib2       import Http
-from sys            import exit
 from threading      import Thread, Event
 from collections    import OrderedDict
 from magic          import Magic
@@ -26,9 +24,6 @@ from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
 from gdrivefs.errors import FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
-
-app_name = 'GDriveFS Tool'
-change_monitor_thread = None
 
 class _OauthAuthorize(object):
     """Manages authorization process."""
@@ -79,8 +74,10 @@ class _OauthAuthorize(object):
         try:
             self.credentials.refresh(http)
         except (Exception) as e:
-            logging.exception("Could not refresh credentials.")
-            raise AuthorizationFailureError
+            message = "Could not refresh credentials."
+
+            logging.exception(message)
+            raise AuthorizationFailureError(message)
 
         try:
             self.__update_cache(self.credentials)
@@ -146,11 +143,16 @@ class _OauthAuthorize(object):
         try:
             self.credentials = self.__step2_check_auth_cache()
         except:
-            logging.exception("Could not check cache for credentials.")
-            raise AuthorizationFailureError
+            message = "Could not check cache for credentials."
+
+            logging.exception(message)
+            raise AuthorizationFailureError(message)
     
         if self.credentials == None:
-            raise AuthorizationFaultError
+            message = "No credentials were established from the cache."
+
+            logging.exception(message)
+            raise AuthorizationFaultError(message)
 
         return self.credentials
     
@@ -187,8 +189,12 @@ class _OauthAuthorize(object):
         try:
             credentials = self.flow.step2_exchange(auth_code)
         except:
-            logging.exception("Could not do auth exchange.")
-            raise AuthorizationFailureError
+            message = "Could not do auth-exchange (this was either a legitimate" \
+                      " error, or the auth-exchange was attempted when not " \
+                      "necessary)."
+
+            logging.exception(message)
+            raise AuthorizationFailureError(message)
         
         logging.info("Credentials established.")
 
@@ -958,44 +964,4 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
         raise
     
 drive_proxy.gp = None
-
-def main():
-    parser = ArgumentParser(prog=app_name)
-    
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-u', '--url', help='Get an authorization URL.', 
-                       action='store_true')
-    group.add_argument('-a', '--auth', metavar=('authcode'), 
-                       help='Register an authorization-code from Google '
-                       'Drive.')
-
-    args = parser.parse_args()
-
-    if args.url:
-        try:
-            authorize = get_auth()
-            url = authorize.step1_get_auth_url()
-        except:
-            logging.exception("Could not produce auth-URL.")
-            exit()
-
-        print("To authorize %s to use your Google Drive account, visit the "
-              "following URL to produce an authorization code:\n\n%s\n" % 
-              (app_name, url))
-
-    if args.auth:
-        try:
-            authorize = get_auth()
-            authorize.step2_doexchange(args.auth)
-
-        except:
-            logging.exception("Exchange failed.")
-            exit()
-
-        print("Exchange okay.")
-
-    exit()
-
-if __name__ == "__main__":
-    main()
 

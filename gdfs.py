@@ -14,20 +14,19 @@ from errno          import *
 from time           import mktime
 from argparse       import ArgumentParser
 from fuse           import FUSE, Operations, LoggingMixIn, FuseOSError
-from sys            import argv
 from threading      import Lock, RLock
 from collections    import deque
+from argparse       import ArgumentParser
+from sys            import argv, exit, excepthook
 
 from gdrivefs.utility import get_utility
-from gdrivefs.gdtool import drive_proxy, NormalEntry
-from gdrivefs.errors import ExportFormatError
+from gdrivefs.gdtool import drive_proxy, NormalEntry, get_auth
+from gdrivefs.errors import ExportFormatError, AuthorizationFailureError
 from gdrivefs.change import get_change_manager
 from gdrivefs.timer import Timers
 from gdrivefs.cache import PathRelations, EntryCache, \
                            CLAUSE_ENTRY, CLAUSE_PARENT, CLAUSE_CHILDREN, \
                            CLAUSE_ID, CLAUSE_CHILDREN_LOADED
-
-app_name = 'GDriveFS Tool'
 
 class _NotFoundError(Exception):
     pass
@@ -1012,8 +1011,6 @@ class _GDriveFS(LoggingMixIn,Operations):
 
         self.__marker('init', { 'path': path })
 
-        atexit.register(Timers.get_instance().cancel_all)
-
         get_change_manager().mount_init()
 
     def destroy(self, path):
@@ -1021,18 +1018,66 @@ class _GDriveFS(LoggingMixIn,Operations):
 
         self.__marker('destroy', { 'path': path })
 
-        Timers.get_instance().cancel_all()
-
         get_change_manager().mount_destroy()
 
 def main():
+    parser = ArgumentParser()
 
-    if len(argv) != 2:
-        print 'usage: %s <mountpoint>' % argv[0]
-        exit(1)
+    subparsers = parser.add_subparsers(help='subcommand help')
+    parser_auth = subparsers.add_parser('auth', help='Authorization subcommand.')
+    
+    auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
+    auth_xor.add_argument('-u', '--url', help='Get an authorization URL.', 
+                       action='store_true')
+    auth_xor.add_argument('-a', '--auth', metavar=('authcode'), 
+                       help='Register an authorization-code from Google '
+                       'Drive.')
 
-    fuse = FUSE(_GDriveFS(), argv[1], foreground=True, nothreads=True)
+    mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
+
+    mount_auth.add_argument('mountpoint', help='Mount point')
+    mount_auth.add_argument('-d', '--debug', help='Mount point',
+                                  action='store_true', required=False)
+
+    args = parser.parse_args()
+
+    # An authorization URL was requested.
+    if 'url' in args and args.url:
+        try:
+            authorize = get_auth()
+            url = authorize.step1_get_auth_url()
+        except Exception as e:
+            print("Could not produce auth-URL: %s" % (e))
+            exit()
+
+        print("To authorize FUSE to use your Google Drive account, visit the "
+              "following URL to produce an authorization code:\n\n%s\n" % 
+              (url))
+
+    # An authorization from the URL needs to be submitted.
+    elif 'auth' in args and args.auth:
+        try:
+            authorize = get_auth()
+            authorize.step2_doexchange(args.auth)
+
+        except Exception as e:
+            print("Authorization failed: %s" % (e))
+            exit()
+
+        print("Authorization code recorded.")
+
+    # Mount the service.
+    elif 'mountpoint' in args and args.mountpoint:
+
+        foreground = args.debug
+        nothreads = args.debug
+
+        fuse = FUSE(_GDriveFS(), args.mountpoint, foreground=foreground, 
+                    nothreads=nothreads)
+
+atexit.register(Timers.get_instance().cancel_all)
 
 if __name__ == "__main__":
     main()
+
 
