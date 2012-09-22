@@ -10,8 +10,8 @@ involved.
 Design goals:
 
 > Cleanup thread to manage cleanup of aged cache items.
-x Thread for monitoring changes via "changes" functionality of API.
-x Complete stat() implementation.
+x Thread for monitoring changes via "changes" functionality of API. (DONE)
+x Complete stat() implementation. (DONE)
 x Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
 x Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
   not have a particular format). (DONE)
@@ -21,6 +21,55 @@ Also, a design choice of other implementations is to make the user get API keys
 for Google Drive, and this doesn't sense. Our implementation is built against 
 OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
+
+Usage
+=====
+
+Before you can mount the account, you must authorize GDriveFS to access it. 
+GDriveFS works by producing a URL that you must visit in a browser. Google will
+ask for your log-in information and authorization, and then give you an author-
+ization code. You then pass this code back to the GDriveFS utility along with
+a file-path of where you want it to store the authorization information ("auth
+storage file"). Then, you can mount it whenever you'd like.
+
+Since this is FUSE, you must be running as root to mount.
+
+1) To get the authorization URL:
+
+  gdfstool auth -u
+
+  Output:
+
+    To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
+
+    https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
+    
+2) To set the authorization-code, you must also provide the auth-storage file 
+   that you would like to save it as. The name and location of this file is 
+   arbitrary:
+
+  gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQCQStf9_NFAMMbRC.cj4LQYdXFdwfshQV0ieZDAqA-C7ecwI"
+
+  Output:
+
+    Authorization code recorded.
+
+3) There are two ways to mount the account:
+
+  a) Via script (either using the main script "gdfstool mount" or the helper 
+     scripts "gdfs"/"mount.gdfs"):
+
+    gdfs [-h] [-d] [-o OPT] auth_storage_file mountpoint
+
+  b) Via /etc/fstab:
+
+     /var/cache/gdfs/credcache /tmp/hello gdfs defaults 0 0
+
+Options
+=======
+
+Any of the configuration values in conf.Conf can be overwritten as "-o" 
+options. You may pass the full array of FUSE options this way, as well.
 
 Format Management
 =================
