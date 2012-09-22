@@ -892,7 +892,7 @@ class PathRelations(object):
                 # Register among the children of this parent, but make sure we have 
                 # a unique filename among siblings.
 
-                i = 1
+                i = 0
                 current_variation = filename_base
                 elected_variation = None
                 while i <= 255:
