@@ -105,8 +105,10 @@ class _ChangeManager(object):
 
         (entry_id, was_deleted, entry) = change_tuple
         
+        is_visible = entry.is_visible if entry else None
+
         logging.info("Applying change with change-ID (%d), entry-ID [%s], and "
-                     "is-visible of [%s]" % (change_id, entry_id, entry.is_visible))
+                     "is-visible of [%s]" % (change_id, entry_id, is_visible))
 
         # First, remove any current knowledge from the system.
 
@@ -123,7 +125,7 @@ class _ChangeManager(object):
 
         logging.debug("Registering changed entry with ID [%s]." % (entry_id))
 
-        if entry.is_visible:
+        if is_visible:
             path_relations = PathRelations.get_instance()
 
             try:
