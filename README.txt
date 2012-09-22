@@ -10,8 +10,8 @@ involved.
 Design goals:
 
 > Cleanup thread to manage cleanup of aged cache items.
-x Thread for monitoring changes via "changes" functionality of API.
-x Complete stat() implementation.
+x Thread for monitoring changes via "changes" functionality of API. (DONE)
+x Complete stat() implementation. (DONE)
 x Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
 x Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
   not have a particular format). (DONE)
@@ -54,7 +54,7 @@ Since this is FUSE, you must be running as root to mount.
 
     Authorization code recorded.
 
-3) There are two ways to mount the account.
+3) There are two ways to mount the account:
 
   a) Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs"):
