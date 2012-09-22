@@ -14,7 +14,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        mount(mountpoint=args.mountpoint, foreground=args.debug, 
+        mount(auth_storage_filepath=args.auth_storage_file, 
+              mountpoint=args.mountpoint, foreground=args.debug, 
               nothreads=args.debug, option_string=args.opt[0])
     except (Exception) as e:
         print("Could not do mount: %s" % (str(e)))

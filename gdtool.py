@@ -34,19 +34,9 @@ class _OauthAuthorize(object):
     
     def __init__(self):
         creds_filepath  = Conf.get('auth_secrets_filepath')
-        temp_path       = Conf.get('auth_temp_path')
-        cache_filename  = Conf.get('auth_cache_filename')
+        cache_filepath  = Conf.get('auth_cache_filepath')
 
-        if not os.path.exists(temp_path):
-            try:
-                os.makedirs(temp_path)
-            except:
-                logging.exception("Could not create temporary path [%s]." % 
-                                  (temp_path))
-                raise
-
-        self.cache_filepath = ("%s/%s" % (temp_path, cache_filename))
-
+        self.cache_filepath = cache_filepath
         self.flow = flow_from_clientsecrets(creds_filepath, scope='')
         self.flow.scope = self.__get_scopes()
         self.flow.redirect_uri = OOB_CALLBACK_URN

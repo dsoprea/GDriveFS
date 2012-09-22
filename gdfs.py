@@ -1055,7 +1055,10 @@ class _GDriveFS(LoggingMixIn,Operations):
 
         get_change_manager().mount_destroy()
 
-def mount(mountpoint, foreground=None, nothreads=None, option_string=None):
+def set_auth_cache_filepath(auth_storage_filepath):
+    Conf.set('auth_cache_filepath', auth_storage_filepath)
+
+def mount(auth_storage_filepath, mountpoint, foreground=None, nothreads=None, option_string=None):
 
     fuse_opts = { }
 
@@ -1094,10 +1097,13 @@ def mount(mountpoint, foreground=None, nothreads=None, option_string=None):
     # but there's no help support. The user is just going to have to know the
     # options.
 
+    set_auth_cache_filepath(auth_storage_filepath)
+
     fuse = FUSE(_GDriveFS(), mountpoint, foreground=foreground, 
                 nothreads=nothreads, **fuse_opts)
 
 def load_mount_parser_args(parser):
+    parser.add_argument('auth_storage_file', help='Authorization storage file')
     parser.add_argument('mountpoint', help='Mount point')
     parser.add_argument('-d', '--debug', help='Debug mode',
                         action='store_true', required=False)
@@ -1113,10 +1119,11 @@ def main():
     
     auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
     auth_xor.add_argument('-u', '--url', help='Get an authorization URL.', 
-                       action='store_true')
-    auth_xor.add_argument('-a', '--auth', metavar=('authcode'), 
-                       help='Register an authorization-code from Google '
-                       'Drive.')
+                          action='store_true')
+    auth_xor.add_argument('-a', '--auth', nargs=2,
+                          metavar=('auth_storage_file', 'authcode'), 
+                          help='Register an authorization-code from Google '
+                          'Drive.')
 
     mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
     load_mount_parser_args(mount_auth)
@@ -1138,9 +1145,13 @@ def main():
 
     # An authorization from the URL needs to be submitted.
     elif 'auth' in args and args.auth:
+        (auth_storage_file, authcode) = args.auth
+
+        set_auth_cache_filepath(auth_storage_file)
+
         try:
             authorize = get_auth()
-            authorize.step2_doexchange(args.auth)
+            authorize.step2_doexchange(authcode)
 
         except Exception as e:
             print("Authorization failed: %s" % (e))
@@ -1149,10 +1160,11 @@ def main():
         print("Authorization code recorded.")
 
     # Mount the service.
-    elif 'mountpoint' in args:
+    elif 'mountpoint' in args and args.mountpoint:
 
         try:
-            mount(mountpoint=args.mountpoint, foreground=args.debug, 
+            mount(auth_storage_filepath=args.auth_storage_file, 
+                  mountpoint=args.mountpoint, foreground=args.debug, 
                   nothreads=args.debug, option_string=args.opt[0])
         except:
             print("Could not do mount (2).")
