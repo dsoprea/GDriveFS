@@ -1072,10 +1072,6 @@ class _GDriveFS(LoggingMixIn,Operations):
 #        pass
 
 # TODO: Finish this.
-    def mkdir(self, path, mode):
-        pass
-
-# TODO: Finish this.
     def readlink(self, path):
         pass
 
@@ -1120,7 +1116,7 @@ class _GDriveFS(LoggingMixIn,Operations):
 def set_auth_cache_filepath(auth_storage_filepath):
     Conf.set('auth_cache_filepath', auth_storage_filepath)
 
-def mount(auth_storage_filepath, mountpoint, foreground=None, nothreads=None, option_string=None):
+def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, option_string=None):
 
     fuse_opts = { }
 
@@ -1161,7 +1157,7 @@ def mount(auth_storage_filepath, mountpoint, foreground=None, nothreads=None, op
 
     set_auth_cache_filepath(auth_storage_filepath)
 
-    fuse = FUSE(_GDriveFS(), mountpoint, foreground=foreground, 
+    fuse = FUSE(_GDriveFS(), mountpoint, debug=debug, foreground=debug, 
                 nothreads=nothreads, **fuse_opts)
 
 def load_mount_parser_args(parser):
@@ -1226,7 +1222,7 @@ def main():
 
         try:
             mount(auth_storage_filepath=args.auth_storage_file, 
-                  mountpoint=args.mountpoint, foreground=args.debug, 
+                  mountpoint=args.mountpoint, debug=args.debug, 
                   nothreads=args.debug, option_string=args.opt[0])
         except:
             print("Could not do mount (2).")
