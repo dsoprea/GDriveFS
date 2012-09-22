@@ -523,7 +523,7 @@ class _GdriveManager(object):
         return [ entry[u'id'] for entry in response[u'items'] ]
 
     def get_children_under_parent_id(self, parent_id, query_contains_string=None, \
-                                        query_is_string=None):
+                                        query_is_string=None, max_results=None):
 
         logging.info("Getting client for child-listing.")
 
@@ -551,8 +551,9 @@ class _GdriveManager(object):
                      "[%s]" % (parent_id, query))
 
         try:
-            response = client.children().list(q=query,folderId=parent_id). \
-                                            execute()
+            response = client.children().list(q=query, folderId=parent_id, \
+                                              maxResults=max_results). \
+                                              execute()
         except:
             logging.exception("Problem while listing files.")
             raise
@@ -860,6 +861,31 @@ class _GdriveManager(object):
                           "Defaulting to [%s]." % (mime_type))
 
         return self.__insert_entry(filename=filename, data_filepath=data_filepath, mime_type=mime_type, **kwargs)
+
+    def remove_entry(self, normalized_entry):
+
+        logging.info("Removing entry with ID [%s]." % (normalized_entry.id))
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (remove_entry).")
+            raise
+
+        args = { 'fileId': normalized_entry.id }
+
+        try:
+            result = client.files().update(**args).execute()
+        except:
+            logging.exception("Could not send delete for entry with ID [%s]." %
+                              (normalized_entry.id))
+            raise
+
+# TODO: We fail above when the record can't be deleted, right?
+
+        logging.info("Entry deleted successfully.")
+
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 

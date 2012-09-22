@@ -1006,6 +1006,65 @@ class _GDriveFS(LoggingMixIn,Operations):
             logging.exception("Could not flush local updates.")
             raise FuseOSError(EIO)
 
+    def rmdir(self, path):
+
+        path_relations = PathRelations.get_instance()
+
+        logging.debug("Removing directory [%s]." % (path))
+
+        try:
+            entry_clause = path_relations.get_clause_from_path(path)
+        except _NotFoundError:
+            logging.exception("Could not process [%s] (rmdir).")
+            raise FuseOSError(ENOENT)
+        except:
+            logging.exception("Could not get clause from path [%s] "
+                              "(rmdir)." % (path))
+            raise FuseOSError(EIO)
+
+        if not entry_clause:
+            logging.error("Path [%s] does not exist for rmdir()." % (path))
+            raise FuseOSError(ENOENT)
+
+        entry_id = entry_clause[CLAUSE_ID]
+        normalized_entry = entry_clause[CLAUSE_ENTRY]
+
+        # Check if a directory.
+
+        logging.debug("Checking if directory.")
+
+        if not normalized_entry.is_directory:
+            logging.error("Can not rmdir() non-directory [%s] with ID [%s].", path, entry_id)
+            raise FuseOSError(ENOTDIR)
+
+        # Ensure the folder is empty.
+
+        logging.debug("Checking if empty.")
+
+        try:
+            found = drive_proxy('get_children_under_parent_id', 
+                                parent_id=entry_id,
+                                max_results=1)
+        except:
+            logging.exception("Could not determine if directory to be removed "
+                              "has children." % (entry_id))
+            raise FuseOSError(EIO)
+
+        if found:
+            raise FuseOSError(ENOTEMPTY)
+
+        logging.debug("Doing remove of directory [%s] with ID [%s]." % 
+                      (path, entry_id))
+
+        try:
+            drive_proxy('remove_entry', normalized_entry=normalized_entry)
+        except:
+            logging.exception("Could not remove directory [%s] with ID [%s]." % 
+                              (path, entry_id))
+            raise FuseOSError(EIO)
+
+        logging.debug("Directory removal complete.")
+
 #    def chmod(self, path, mode):
 #        pass
 
@@ -1033,8 +1092,11 @@ class _GDriveFS(LoggingMixIn,Operations):
         pass
 
 # TODO: Finish this.
-    def unlink(self, path):
-        pass
+#    def unlink(self, path):
+# errno.EISDIR
+#        get_parents_containing_id(self, child_id, max_results=None):
+#
+#        pass
 
 # TODO: Finish this.
     def utimens(self, path, times=None):
