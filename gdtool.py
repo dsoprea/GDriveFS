@@ -367,6 +367,15 @@ class AccountInfo(LiveReader):
     def largest_change_id(self):
         return int(self[u'largestChangeId'])
 
+    @property
+    def quota_bytes_total(self):
+        return int(self[u'quotaBytesTotal'])
+
+    @property
+    def quota_bytes_used(self):
+        return int(self[u'quotaBytesUsed'])
+
+
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
     try to invoke only one call, or make sure they handle authentication 

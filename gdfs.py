@@ -8,18 +8,17 @@ import json
 import os
 import atexit
 import resource
-import time
 
 from errno          import *
-from time           import mktime
+from time           import mktime, time
 from argparse       import ArgumentParser
-from fuse           import FUSE, Operations, LoggingMixIn, FuseOSError
+from fuse           import FUSE, Operations, LoggingMixIn, FuseOSError, c_statvfs
 from threading      import Lock, RLock
 from collections    import deque
 from sys            import argv, exit, excepthook
 
 from gdrivefs.utility   import get_utility
-from gdrivefs.gdtool    import drive_proxy, NormalEntry, get_auth
+from gdrivefs.gdtool    import drive_proxy, NormalEntry, get_auth, AccountInfo
 from gdrivefs.errors    import ExportFormatError, AuthorizationFailureError
 from gdrivefs.change    import get_change_manager
 from gdrivefs.timer     import Timers
@@ -361,7 +360,7 @@ class _OpenedFile(object):
         except:
             logging.exception("Could not try to get clause from path [%s] "
                               "(_OpenedFile)." % (filepath))
-            raise FuseOSError(ENOENT)
+            raise FuseOSError(EIO)
 
         if not entry_clause:
             logging.debug("Path [%s] does not exist for stat()." % (path))
@@ -1065,22 +1064,71 @@ class _GDriveFS(LoggingMixIn,Operations):
 
         logging.debug("Directory removal complete.")
 
-#    def chmod(self, path, mode):
-#        pass
+    # Not supported. Google Drive doesn't fit within this model.
+    def chmod(self, path, mode):
+        raise FuseOSError(EPERM)
 
-#    def chown(self, path, uid, gid):
-#        pass
+    # Not supported. Google Drive doesn't fit within this model.
+    def chown(self, path, uid, gid):
+        raise FuseOSError(EPERM)
 
-# TODO: Finish this.
+    # Not supported.
+    def symlink(self, target, source):
+        raise FuseOSError(EPERM)
+
+    # Not supported.
     def readlink(self, path):
-        pass
+        raise FuseOSError(EPERM)
+
+    def statfs(self, path):
+        """Return filesystem metrics.
+
+        REF: http://www.ibm.com/developerworks/linux/library/l-fuse/
+        REF: http://stackoverflow.com/questions/4965355/converting-statvfs-to-percentage-free-correctly
+        """
+
+        block_size = 512
+
+        try:
+            account_info = AccountInfo.get_instance()
+            total = account_info.quota_bytes_total / block_size
+            used = account_info.quota_bytes_used / block_size
+            free = total - used
+
+            logging.debug("Bytes Used: %s  Free: %s  Total: %s" % (used, free, total))
+        except:
+            logging.exception("Could not get account-info.")
+            raise FuseOSError(EIO)
+
+#        return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
+        return {
+            # Optimal transfer block size.
+            'f_bsize': block_size,
+
+            # Total data blocks in file system.
+            'f_blocks': used,
+
+            # Fragment size.
+#            'f_frsize': block_size,
+
+            # Free blocks in filesystem.
+#            'f_bfree': free,
+
+            # Free blocks avail to non-superuser.
+            'f_bavail': free
+
+            # Total file nodes in filesystem.
+#            'f_files': 7,
+
+            # Free file nodes in filesystem.
+#            'f_ffree': 13,
+
+            # Free inodes for unprivileged users.
+#            'f_favail': 13
+        }
 
 # TODO: Finish this.
     def rename(self, old, new):
-        pass
-
-# TODO: Finish this.
-    def statfs(self, path):
         pass
 
 # TODO: Finish this.
@@ -1097,7 +1145,9 @@ class _GDriveFS(LoggingMixIn,Operations):
 # TODO: Finish this.
     def utimens(self, path, times=None):
         """Set the file times."""
-        pass
+        
+        now = time()
+        atime, mtime = times if times else (now, now)
 
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
@@ -1157,8 +1207,11 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, option_
 
     set_auth_cache_filepath(auth_storage_filepath)
 
+    # How we'll appear in diskfree, mtab, etc..
+    name = ("gdfs(%s)" % (auth_storage_filepath))
+
     fuse = FUSE(_GDriveFS(), mountpoint, debug=debug, foreground=debug, 
-                nothreads=nothreads, **fuse_opts)
+                nothreads=nothreads, fsname=name, **fuse_opts)
 
 def load_mount_parser_args(parser):
     parser.add_argument('auth_storage_file', help='Authorization storage file')
