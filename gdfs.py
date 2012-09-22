@@ -1005,35 +1005,38 @@ class _GDriveFS(LoggingMixIn,Operations):
             logging.exception("Could not flush local updates.")
             raise FuseOSError(EIO)
 
-    def rmdir(self, path):
+    def rmdir(self, filepath):
+        """Remove a directory."""
+
+        self.__marker('rmdir', { 'filepath': filepath })
 
         path_relations = PathRelations.get_instance()
 
-        logging.debug("Removing directory [%s]." % (path))
+        logging.debug("Removing directory [%s]." % (filepath))
 
         try:
-            entry_clause = path_relations.get_clause_from_path(path)
+            entry_clause = path_relations.get_clause_from_path(filepath)
         except _NotFoundError:
             logging.exception("Could not process [%s] (rmdir).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not get clause from path [%s] "
-                              "(rmdir)." % (path))
+            logging.exception("Could not get clause from file-path [%s] "
+                              "(rmdir)." % (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.error("Path [%s] does not exist for rmdir()." % (path))
+            logging.error("Path [%s] does not exist for rmdir()." % (filepath))
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
         normalized_entry = entry_clause[CLAUSE_ENTRY]
 
-        # Check if a directory.
+        # Check if not a directory.
 
-        logging.debug("Checking if directory.")
+        logging.debug("Ensuring it is a directory.")
 
         if not normalized_entry.is_directory:
-            logging.error("Can not rmdir() non-directory [%s] with ID [%s].", path, entry_id)
+            logging.error("Can not rmdir() non-directory [%s] with ID [%s].", filepath, entry_id)
             raise FuseOSError(ENOTDIR)
 
         # Ensure the folder is empty.
@@ -1053,39 +1056,53 @@ class _GDriveFS(LoggingMixIn,Operations):
             raise FuseOSError(ENOTEMPTY)
 
         logging.debug("Doing remove of directory [%s] with ID [%s]." % 
-                      (path, entry_id))
+                      (filepath, entry_id))
 
         try:
             drive_proxy('remove_entry', normalized_entry=normalized_entry)
+        except (NameError):
+            raise FuseOSError(ENOENT)
         except:
             logging.exception("Could not remove directory [%s] with ID [%s]." % 
-                              (path, entry_id))
+                              (filepath, entry_id))
             raise FuseOSError(EIO)
-
+# TODO: Remove from cache.
         logging.debug("Directory removal complete.")
 
     # Not supported. Google Drive doesn't fit within this model.
-    def chmod(self, path, mode):
+    def chmod(self, filepath, mode):
+        
+        self.__marker('chmod', { 'filepath': filepath })
         raise FuseOSError(EPERM)
 
     # Not supported. Google Drive doesn't fit within this model.
-    def chown(self, path, uid, gid):
+    def chown(self, filepath, uid, gid):
+
+        self.__marker('chown', { 'filepath': filepath })
         raise FuseOSError(EPERM)
 
     # Not supported.
     def symlink(self, target, source):
+
+        self.__marker('symlink', { 'target': target, 'source': source })
         raise FuseOSError(EPERM)
 
     # Not supported.
-    def readlink(self, path):
+    def readlink(self, filepath):
+
+        self.__marker('readlink', { 'filepath': filepath })
         raise FuseOSError(EPERM)
 
-    def statfs(self, path):
+    def statfs(self, filepath):
         """Return filesystem metrics.
+
+        The given file-path seems to always be '/'.
 
         REF: http://www.ibm.com/developerworks/linux/library/l-fuse/
         REF: http://stackoverflow.com/questions/4965355/converting-statvfs-to-percentage-free-correctly
         """
+
+        self.__marker('statfs', { 'filepath': filepath })
 
         block_size = 512
 
@@ -1094,13 +1111,10 @@ class _GDriveFS(LoggingMixIn,Operations):
             total = account_info.quota_bytes_total / block_size
             used = account_info.quota_bytes_used / block_size
             free = total - used
-
-            logging.debug("Bytes Used: %s  Free: %s  Total: %s" % (used, free, total))
         except:
             logging.exception("Could not get account-info.")
             raise FuseOSError(EIO)
 
-#        return dict(f_bsize=512, f_blocks=4096, f_bavail=2048)
         return {
             # Optimal transfer block size.
             'f_bsize': block_size,
@@ -1118,13 +1132,13 @@ class _GDriveFS(LoggingMixIn,Operations):
             'f_bavail': free
 
             # Total file nodes in filesystem.
-#            'f_files': 7,
+#            'f_files': 0,
 
             # Free file nodes in filesystem.
-#            'f_ffree': 13,
+#            'f_ffree': 0,
 
             # Free inodes for unprivileged users.
-#            'f_favail': 13
+#            'f_favail': 0
         }
 
 # TODO: Finish this.
@@ -1135,19 +1149,63 @@ class _GDriveFS(LoggingMixIn,Operations):
     def truncate(self, path, length, fh=None):
         pass
 
-# TODO: Finish this.
-#    def unlink(self, path):
-# errno.EISDIR
-#        get_parents_containing_id(self, child_id, max_results=None):
-#
-#        pass
+    def unlink(self, filepath):
+        """Remove a file."""
+
+        self.__marker('unlink', { 'filepath': filepath })
+
+        path_relations = PathRelations.get_instance()
+
+        logging.debug("Removing file [%s]." % (filepath))
+
+        try:
+            entry_clause = path_relations.get_clause_from_path(filepath)
+        except _NotFoundError:
+            logging.exception("Could not process [%s] (unlink).")
+            raise FuseOSError(ENOENT)
+        except:
+            logging.exception("Could not get clause from file-path [%s] "
+                              "(unlink)." % (filepath))
+            raise FuseOSError(EIO)
+
+        if not entry_clause:
+            logging.error("Path [%s] does not exist for unlink()." % (filepath))
+            raise FuseOSError(ENOENT)
+
+        entry_id = entry_clause[CLAUSE_ID]
+        normalized_entry = entry_clause[CLAUSE_ENTRY]
+
+        # Check if a directory.
+
+        logging.debug("Ensuring it is a file (not a directory).")
+
+        if normalized_entry.is_directory:
+            logging.error("Can not unlink() directory [%s] with ID [%s]. Must be file.", filepath, entry_id)
+            raise FuseOSError(errno.EISDIR)
+
+        logging.debug("Doing remove of directory [%s] with ID [%s]." % 
+                      (filepath, entry_id))
+
+        try:
+            drive_proxy('remove_entry', normalized_entry=normalized_entry)
+        except (NameError):
+            raise FuseOSError(ENOENT)
+        except:
+            logging.exception("Could not remove file [%s] with ID [%s]." % 
+                              (filepath, entry_id))
+            raise FuseOSError(EIO)
+
+# TODO: Remove from cache.
+
+        logging.debug("File removal complete.")
 
 # TODO: Finish this.
     def utimens(self, path, times=None):
         """Set the file times."""
-        
-        now = time()
-        atime, mtime = times if times else (now, now)
+
+        pass
+#        now = time()
+#        atime, mtime = times if times else (now, now)
 
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
@@ -1210,7 +1268,7 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, option_
     # How we'll appear in diskfree, mtab, etc..
     name = ("gdfs(%s)" % (auth_storage_filepath))
 
-    fuse = FUSE(_GDriveFS(), mountpoint, debug=debug, foreground=debug, 
+    fuse = FUSE(_GDriveFS(), mountpoint, debug=False, foreground=debug, 
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def load_mount_parser_args(parser):
@@ -1264,8 +1322,11 @@ def main():
             authorize = get_auth()
             authorize.step2_doexchange(authcode)
 
-        except Exception as e:
-            print("Authorization failed: %s" % (e))
+        except (Exception) as e:
+            message = ("Authorization failed: %s" % (str(e)))
+
+            logging.exception(message)
+            print(message)
             exit()
 
         print("Authorization code recorded.")
@@ -1273,12 +1334,17 @@ def main():
     # Mount the service.
     elif 'mountpoint' in args and args.mountpoint:
 
+        option_string = args.opt[0] if args.opt else None
+
         try:
             mount(auth_storage_filepath=args.auth_storage_file, 
                   mountpoint=args.mountpoint, debug=args.debug, 
-                  nothreads=args.debug, option_string=args.opt[0])
-        except:
-            print("Could not do mount (2).")
+                  nothreads=args.debug, option_string=option_string)
+        except (Exception) as e:
+            message = ("Mount failed: %s" % (str(e)))
+
+            logging.exception(message)
+            print(message)
             exit()
 
 atexit.register(Timers.get_instance().cancel_all)

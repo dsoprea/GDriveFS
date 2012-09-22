@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+import logging
+
 from gdrivefs.gdfs  import main
 from sys            import argv
 from os.path        import basename
@@ -13,12 +15,16 @@ def main():
 
     args = parser.parse_args()
 
+    option_string = args.opt[0] if args.opt else None
+
     try:
         mount(auth_storage_filepath=args.auth_storage_file, 
               mountpoint=args.mountpoint, debug=args.debug, 
-              nothreads=args.debug, option_string=args.opt[0])
+              nothreads=args.debug, option_string=option_string)
     except (Exception) as e:
-        print("Could not do mount: %s" % (str(e)))
+        message = ("Could not do mount [%s]: %s" % (e.__class__.__name__, str(e)))
+        logging.exception(message)
+        print(message)
 
 if __name__ == '__main__':
     main()

@@ -885,16 +885,17 @@ class _GdriveManager(object):
         args = { 'fileId': normalized_entry.id }
 
         try:
-            result = client.files().update(**args).execute()
-        except:
+            result = client.files().delete(**args).execute()
+        except (Exception) as e:
+            if e.__class__.__name__ == 'HttpError' and \
+               str(e).find('File not found') != -1:
+                raise NameError(normalized_entry.id)
+
             logging.exception("Could not send delete for entry with ID [%s]." %
                               (normalized_entry.id))
             raise
 
-# TODO: We fail above when the record can't be deleted, right?
-
         logging.info("Entry deleted successfully.")
-
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
@@ -937,6 +938,8 @@ class _GoogleProxy(object):
                                       "proxied action [%s], and we were told "
                                       "to NOT auto-refresh." % (action))
                     raise
+            except (NameError):
+                raise
             except:
                 logging.exception("There was an unhandled exception during the"
                                   " execution of the Drive logic for action "
@@ -984,6 +987,8 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
     try:    
         method = getattr(drive_proxy.gp, action)
         return method(auto_refresh, **kwargs)
+    except (NameError):
+        raise
     except:
         logging.exception("There was an exception while invoking proxy action.")
         raise
