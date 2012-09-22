@@ -1,3 +1,5 @@
+import logging
+
 class Conf(object):
     """Manages options."""
 
@@ -16,7 +18,7 @@ class Conf(object):
     hidden_flags_list_local             = [u'trashed', u'restricted']
     hidden_flags_list_remote            = [u'trashed']
     cache_cleanup_check_frequency_s     = 60
-    cache_entries_max_age               = 60#8 * 60 * 60
+    cache_entries_max_age               = 8 * 60 * 60
     cache_status_post_frequency_s       = 10
     report_emit_frequency_s             = 60
 
@@ -32,9 +34,13 @@ class Conf(object):
         except:
             logging.exception("Could not retrieve config value with key "
                               "[%s]." % (key))
-            raise Exception
+            raise
 
     @staticmethod
     def set(key, value):
+        if key not in Conf.__dict__:
+            logging.error("Can not set invalid configuration item [%s]." % (key))
+            raise KeyError(key)
+
         setattr(Conf, key, value)
 

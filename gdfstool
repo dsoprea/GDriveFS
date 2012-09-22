@@ -1,0 +1,6 @@
+#!/usr/bin/python
+
+from gdrivefs.gdfs import main
+
+main()
+

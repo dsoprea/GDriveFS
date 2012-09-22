@@ -1,6 +1,24 @@
 #!/usr/bin/python
 
-from gdrivefs.gdfs import main
+from gdrivefs.gdfs  import main
+from sys            import argv
+from os.path        import basename
+from argparse       import ArgumentParser
 
-main()
+from gdrivefs.gdfs  import mount, load_mount_parser_args
+
+def main():
+    parser = ArgumentParser()
+    load_mount_parser_args(parser)
+
+    args = parser.parse_args()
+
+    try:
+        mount(mountpoint=args.mountpoint, foreground=args.debug, 
+              nothreads=args.debug, option_string=args.opt[0])
+    except (Exception) as e:
+        print("Could not do mount: %s" % (str(e)))
+
+if __name__ == '__main__':
+    main()
 

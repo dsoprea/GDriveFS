@@ -16,17 +16,17 @@ from argparse       import ArgumentParser
 from fuse           import FUSE, Operations, LoggingMixIn, FuseOSError
 from threading      import Lock, RLock
 from collections    import deque
-from argparse       import ArgumentParser
 from sys            import argv, exit, excepthook
 
-from gdrivefs.utility import get_utility
-from gdrivefs.gdtool import drive_proxy, NormalEntry, get_auth
-from gdrivefs.errors import ExportFormatError, AuthorizationFailureError
-from gdrivefs.change import get_change_manager
-from gdrivefs.timer import Timers
-from gdrivefs.cache import PathRelations, EntryCache, \
-                           CLAUSE_ENTRY, CLAUSE_PARENT, CLAUSE_CHILDREN, \
-                           CLAUSE_ID, CLAUSE_CHILDREN_LOADED
+from gdrivefs.utility   import get_utility
+from gdrivefs.gdtool    import drive_proxy, NormalEntry, get_auth
+from gdrivefs.errors    import ExportFormatError, AuthorizationFailureError
+from gdrivefs.change    import get_change_manager
+from gdrivefs.timer     import Timers
+from gdrivefs.cache     import PathRelations, EntryCache, \
+                               CLAUSE_ENTRY, CLAUSE_PARENT, CLAUSE_CHILDREN, \
+                               CLAUSE_ID, CLAUSE_CHILDREN_LOADED
+from gdrivefs.conf      import Conf
 
 class _NotFoundError(Exception):
     pass
@@ -1006,6 +1006,41 @@ class _GDriveFS(LoggingMixIn,Operations):
             logging.exception("Could not flush local updates.")
             raise FuseOSError(EIO)
 
+#    def chmod(self, path, mode):
+#        pass
+
+#    def chown(self, path, uid, gid):
+#        pass
+
+# TODO: Finish this.
+    def mkdir(self, path, mode):
+        pass
+
+# TODO: Finish this.
+    def readlink(self, path):
+        pass
+
+# TODO: Finish this.
+    def rename(self, old, new):
+        pass
+
+# TODO: Finish this.
+    def statfs(self, path):
+        pass
+
+# TODO: Finish this.
+    def truncate(self, path, length, fh=None):
+        pass
+
+# TODO: Finish this.
+    def unlink(self, path):
+        pass
+
+# TODO: Finish this.
+    def utimens(self, path, times=None):
+        """Set the file times."""
+        pass
+
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
 
@@ -1019,6 +1054,56 @@ class _GDriveFS(LoggingMixIn,Operations):
         self.__marker('destroy', { 'path': path })
 
         get_change_manager().mount_destroy()
+
+def mount(mountpoint, foreground=None, nothreads=None, option_string=None):
+
+    fuse_opts = { }
+
+    if option_string:
+        for opt_parts in [ opt.split('=', 1) for opt in option_string.split(',') ]:
+            k = opt_parts[0]
+
+            # We need to present a bool type for on/off flags. Since all we
+            # have are strings, we'll convert anything with a 'True' or 'False'
+            # to a bool, or anything with just a key to True.
+            if len(opt_parts) == 2:
+                v = opt_parts[1]
+
+                if v == 'True':
+                    v = True
+                elif v == 'False':
+                    v = False
+            else:
+                v = True
+
+            # We have a list of provided options. See which match against our 
+            # application options.
+
+            logging.info("Setting option [%s] to [%s]." % (k, v))
+
+            try:
+                Conf.set(k, v)
+            except (KeyError) as e:
+                fuse_opts[k] = v
+            except:
+                logging.exception("Could not set option [%s]. It is probably invalid." % (k))
+                raise
+
+    # Assume that any option that wasn't an application option is a FUSE 
+    # option. The Python-FUSE interface that we're using is beautiful/elegant,
+    # but there's no help support. The user is just going to have to know the
+    # options.
+
+    fuse = FUSE(_GDriveFS(), mountpoint, foreground=foreground, 
+                nothreads=nothreads, **fuse_opts)
+
+def load_mount_parser_args(parser):
+    parser.add_argument('mountpoint', help='Mount point')
+    parser.add_argument('-d', '--debug', help='Debug mode',
+                        action='store_true', required=False)
+    parser.add_argument('-o', '--opt', help='Mount options',
+                        action='store', required=False,
+                        nargs=1)
 
 def main():
     parser = ArgumentParser()
@@ -1034,10 +1119,7 @@ def main():
                        'Drive.')
 
     mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
-
-    mount_auth.add_argument('mountpoint', help='Mount point')
-    mount_auth.add_argument('-d', '--debug', help='Mount point',
-                                  action='store_true', required=False)
+    load_mount_parser_args(mount_auth)
 
     args = parser.parse_args()
 
@@ -1067,13 +1149,14 @@ def main():
         print("Authorization code recorded.")
 
     # Mount the service.
-    elif 'mountpoint' in args and args.mountpoint:
+    elif 'mountpoint' in args:
 
-        foreground = args.debug
-        nothreads = args.debug
-
-        fuse = FUSE(_GDriveFS(), args.mountpoint, foreground=foreground, 
-                    nothreads=nothreads)
+        try:
+            mount(mountpoint=args.mountpoint, foreground=args.debug, 
+                  nothreads=args.debug, option_string=args.opt[0])
+        except:
+            print("Could not do mount (2).")
+            exit()
 
 atexit.register(Timers.get_instance().cancel_all)
 
