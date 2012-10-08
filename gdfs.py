@@ -565,11 +565,9 @@ class _OpenedFile(object):
                                                       self.temp_file_path))
 
             try:
-                entry = drive_proxy('create_file', filename=self.filename, 
-                                    parents=entry.parents,
-                                    is_hidden=self.is_hidden, 
-                                    update_on_id=entry.id,
-                                    data_filepath=self.temp_file_path)
+                entry = drive_proxy('update_entry', entry, filename, 
+                                    (self.temp_file_path, entry.mime_type),
+                                    entry.parents, is_hidden=self.is_hidden)
             except:
                 logging.exception("Could not localize displaced file with "
                                   "entry having ID [%s]." % 

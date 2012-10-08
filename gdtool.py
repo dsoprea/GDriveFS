@@ -3,9 +3,9 @@
 import logging
 import os
 import pickle
-import json
 import re
 import dateutil.parser
+import json
 
 from apiclient.discovery    import build
 from apiclient.http         import MediaFileUpload
@@ -17,7 +17,7 @@ from datetime       import datetime
 from httplib2       import Http
 from threading      import Thread, Event
 from collections    import OrderedDict
-from magic          import Magic
+from tempfile       import NamedTemporaryFile
 
 from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
@@ -33,13 +33,21 @@ class _OauthAuthorize(object):
     cache_filepath  = None
     
     def __init__(self):
-        creds_filepath  = Conf.get('auth_secrets_filepath')
         cache_filepath  = Conf.get('auth_cache_filepath')
+        api_credentials = Conf.get('api_credentials')
 
         self.cache_filepath = cache_filepath
-        self.flow = flow_from_clientsecrets(creds_filepath, scope='')
-        self.flow.scope = self.__get_scopes()
-        self.flow.redirect_uri = OOB_CALLBACK_URN
+
+        with NamedTemporaryFile() as f:
+            json.dump(api_credentials, f)
+            f.flush()
+
+            self.flow = flow_from_clientsecrets(f.name, 
+                                                scope=self.__get_scopes(), 
+                                                redirect_uri=OOB_CALLBACK_URN)
+        
+        #self.flow.scope = self.__get_scopes()
+        #self.flow.redirect_uri = OOB_CALLBACK_URN
 
     def __get_scopes(self):
         scopes = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file"
@@ -48,7 +56,11 @@ class _OauthAuthorize(object):
         return scopes
 
     def step1_get_auth_url(self):
-        return self.flow.step1_get_authorize_url()
+        try:
+            return self.flow.step1_get_authorize_url()
+        except (Exception) as e:
+            logging.exception("Could not get authorization URL: %s" % (e))
+            raise        
 
     def __clear_cache(self):
         try:
@@ -772,16 +784,16 @@ class _GdriveManager(object):
 
         return (temp_filepath, len(data))
 
-    def __insert_entry(self, filename, mime_type, data_filepath=None, 
-                       parents=None, modified_datetime=None, is_hidden=False, 
-                       description='', update_on_id=None):
+    def __insert_entry(self, filename, mime_type, data_filepath=None, parents=None, 
+                       modified_datetime=None, is_hidden=False, 
+                       description=None):
 
-        if parents == None:
-            parents = [ ]
+        if not parents:
+            parents = []
 
-        logging.info("Creating/updating file with filename [%s] under "
-                     "parent(s) [%s].  UPDATE-ID= [%s]  MIME-TYPE= [%s]" % 
-                     (filename, ', '.join(parents), update_on_id, mime_type))
+        logging.info("Creating file with filename [%s] under "
+                     "parent(s) [%s] with mime-type [%s]." % 
+                     (filename, ', '.join(parents), mime_type))
 
         try:
             client = self.get_client()
@@ -789,23 +801,6 @@ class _GdriveManager(object):
             logging.exception("There was an error while acquiring the Google "
                               "Drive client (insert_entry).")
             raise
-
-        # If no mime-type was given but we have data, discover the mime-type 
-        # automatically.
-#        if not mime_type and data_filepath:
-#            logging.debug("Determining mime-type for data-to-upload [%s], "
-#                          "automatically." % (data_filepath))
-#
-#            try:
-#                mime_type = Magic(mime=True).from_file(data_filepath)
-#            except:
-#                logging.exception("Could not determine mime-type for data to be uploaded.")
-#                raise
-#
-#            logging.debug("Mime-type was determined to be [%s] for upload." % (mime_type))
-#
-#        else:
-        logging.debug("Mime-type for upload is [%s]." % (mime_type))
 
         body = { 
                 'title': filename, 
@@ -816,45 +811,91 @@ class _GdriveManager(object):
                 'description': description 
             }
 
-        args = { 'body': body, 'media_body': MediaFileUpload(data_filepath, mime_type) }
+        args = { 'body': body }
 
-        if update_on_id:
-            args['fileId'] = update_on_id
+        if data_filepath:
+            args['media_body'] = MediaFileUpload(data_filepath, mime_type)
 
-            try:
-                result = client.files().update(**args).execute()
-            except:
-                logging.exception("Could not send update for file [%s]." % 
-                                  (filename))
-                raise
+        try:
+            result = client.files().insert(**args).execute()
+        except:
+            logging.exception("Could not insert file [%s]." % (filename))
+            raise
 
-            try:
-                normalized_entry = NormalEntry('update_entry', result)
-            except:
-                logging.exception("Could not normalize updated entry.")
-                raise
-        else:
-            try:
-                result = client.files().insert(**args).execute()
-            except:
-                logging.exception("Could not insert file [%s]." % (filename))
-                raise
-
-            try:
-                normalized_entry = NormalEntry('insert_entry', result)
-            except:
-                logging.exception("Could not normalize created entry.")
-                raise
+        try:
+            normalized_entry = NormalEntry('insert_entry', result)
+        except:
+            logging.exception("Could not normalize created entry.")
+            raise
             
-        logging.info("New entry created/updated with ID [%s]." % (normalized_entry.id))
+        logging.info("New entry created with ID [%s]." % (normalized_entry.id))
 
         return normalized_entry
 
-    def create_directory(self, **kwargs):
+    def truncate_entry(self, normalized_entry):
+
+        logging.info("Truncating entry [%s]." % (normalized_entry.id))
+
+        try:
+            self.update_entry(normalized_entry, data_filepath='/dev/null')
+        except:
+            logging.exception("Could not truncate entry with ID [%s]." % (normalized_enty.id))
+            raise
+
+    def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
+                     mime_type=None, parents=None, modified_datetime=None, 
+                     is_hidden=False, description=None):
+
+        if not mime_type:
+            mime_type = normalized_entry.mime_type
+
+        logging.info("Updating file with filename [%s] under "
+                     "parent(s) [%s].  UPDATE-ID= [%s]" % 
+                     (filename, ', '.join(parents), normalized_entry.id))
+
+        try:
+            client = self.get_client()
+        except:
+            logging.exception("There was an error while acquiring the Google "
+                              "Drive client (update_entry).")
+            raise
+
+        body = { 
+                'title': filename, 
+                'parents': parents, 
+                'modifiedDate': modified_datetime, 
+                'mimeType': mime_type, 
+                'labels': { "hidden": is_hidden }, 
+                'description': description 
+            }
+
+        args = { 'fileId': normalized_entry.id, 'body': body }
+
+        if data_filepath:
+            args['media_body'] = MediaFileUpload(data_filepath, mime_type)
+
+        try:
+            result = client.files().update(**args).execute()
+        except:
+            logging.exception("Could not send update for file [%s]." % 
+                              (filename))
+            raise
+
+        try:
+            normalized_entry = NormalEntry('update_entry', result)
+        except:
+            logging.exception("Could not normalize updated entry.")
+            raise
+            
+        logging.info("Entry with ID [%s] updated." % (normalized_entry.id))
+
+        return normalized_entry
+
+    def create_directory(self, filename, **kwargs):
 
         mimetype_directory = get_utility().mimetype_directory
 
-        return self.__insert_entry(mime_type=mimetype_directory, **kwargs)
+        return self.__insert_entry(filename, mime_type, **kwargs)
 
     def create_file(self, filename, data_filepath, mime_type=None, **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.
@@ -862,10 +903,23 @@ class _GdriveManager(object):
         # without having one. We don't want to impose this when acting like a 
         # normal FS.
 
-        # If no data and no mime-type was given, default it to 
-        # "application/octet-stream".
+        # If no data and no mime-type was given, default it.
         if mime_type == None:
-            mime_type = 'application/octet-stream'
+            mime_type = Conf.get('file_default_mime_type')
+            logging.debug("No mime-type was presented for file create/update. "
+                          "Defaulting to [%s]." % (mime_type))
+
+        return self.__insert_entry(filename, mime_type, data_filepath, **kwargs)
+
+    def rename(self, normalized_entry, new_filename):
+# TODO: It doesn't seem as if the created file is being registered.
+        # Even though we're supposed to provide an extension, we can get away 
+        # without having one. We don't want to impose this when acting like a 
+        # normal FS.
+
+        # If no data and no mime-type was given, default it.
+        if mime_type == None:
+            mime_type = Conf.get('file_default_mime_type')
             logging.debug("No mime-type was presented for file create/update. "
                           "Defaulting to [%s]." % (mime_type))
 
