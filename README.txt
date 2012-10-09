@@ -1,7 +1,10 @@
 GDriveFS
 ========
 
-An innovative FUSE wrapper for Google Drive.
+An innovative FUSE wrapper for Google Drive developed under Python 2.7 . Work
+has been done to start making GDriveFS compatible with Python 3, but most of
+this will probably be completed only after initial development has been 
+finished.
 
 **This project is under active development**. It is currently incomplete. To 
 the outsider, it is only sufficient as a working example of the concepts 
