@@ -14,6 +14,7 @@ class Conf(object):
     file_chunk_size_kb                  = 1024
     file_download_temp_path             = '/tmp/gdrivefs'
     file_download_temp_max_age_s        = 86400
+    file_default_mime_type              = 'application/octet-stream'
     change_check_frequency_s            = 10
     hidden_flags_list_local             = [u'trashed', u'restricted']
     hidden_flags_list_remote            = [u'trashed']

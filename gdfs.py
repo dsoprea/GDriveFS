@@ -434,6 +434,7 @@ class _OpenedFile(object):
             logging.debug("Checking state of current write-cache file.")
 
             update_cached_file = True
+# TODO: Deprecate this. .buffer is only referenced from read().
             if not self.buffer:
                 try:
                     stat = os.stat(self.temp_file_path)
@@ -523,30 +524,34 @@ class _OpenedFile(object):
                 logging.debug("Flush will be skipped due to empty write-"
                               "queue.")
                 return
-
-            logging.debug("Checking write-cache file (flush).")
-
-            try:
-                self.__load_base_from_remote()
-            except:
-                logging.exception("Could not load write-cache file [%s]." % 
-                                  (self.temp_file_path))
-                raise
+# We no longer apply the updates to the existing data. We suspect that we're
+# always fed complete data, or we'd never be able to determine truncation.
+#            logging.debug("Checking write-cache file (flush).")
+#
+#            try:
+#                self.__load_base_from_remote()
+#            except:
+#                logging.exception("Could not load write-cache file [%s]." % 
+#                                  (self.temp_file_path))
+#                raise
 
             # Apply updates to the data.
 
             logging.debug("Applying (%d) updates." % (len(self.updates)))
 
             i = 0
+            buffer = ''
             while self.updates:
                 (offset, data) = self.updates.popleft()
                 logging.debug("Applying update (%d) at offset (%d) with data-"
                               "length (%d)." % (i, offset, len(data)))
 
                 right_fragment_start = offset + len(data)
-                    
-                self.buffer = self.buffer[0:offset] + data + \
-                                self.buffer[right_fragment_start:]
+
+#                self.buffer = self.buffer[0:offset] + data + \
+#                                self.buffer[right_fragment_start:]
+                buffer = buffer[0:offset] + data + \
+                                buffer[right_fragment_start:]
 
                 i += 1
 
@@ -555,21 +560,22 @@ class _OpenedFile(object):
             logging.debug("Writing buffer to temporary file.")
 
             with open(self.temp_file_path, 'w') as f:
-                f.write(self.buffer)
+                f.write(buffer)
 
             # Push to GD.
 
             logging.debug("Pushing (%d) bytes for entry with ID from [%s] to "
-                          "GD for file-path [%s]." % (len(self.buffer), 
+                          "GD for file-path [%s]." % (len(buffer), 
                                                       entry.id, 
                                                       self.temp_file_path))
 
             try:
-                entry = drive_proxy('create_file', filename=self.filename, 
-                                    parents=entry.parents,
-                                    is_hidden=self.is_hidden, 
-                                    update_on_id=entry.id,
-                                    data_filepath=self.temp_file_path)
+                entry = drive_proxy('update_entry', normalized_entry=entry, 
+                                    filename=entry.title, 
+                                    data_filepath=self.temp_file_path, 
+                                    mime_type=entry.mime_type, 
+                                    parents=entry.parents, 
+                                    is_hidden=self.is_hidden)
             except:
                 logging.exception("Could not localize displaced file with "
                                   "entry having ID [%s]." % 
@@ -666,7 +672,7 @@ class _GDriveFS(LoggingMixIn,Operations):
 
     def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
-
+# TODO: Implement handle.
         self.__marker('getattr', { 'raw_path': raw_path, 'fh': fh })
 
         try:
@@ -692,7 +698,7 @@ class _GDriveFS(LoggingMixIn,Operations):
             logging.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
-        effective_permission = 0444
+        effective_permission = 0o444
         normalized_entry = entry_clause[0]
 
         entry = entry_clause[0]
@@ -702,7 +708,7 @@ class _GDriveFS(LoggingMixIn,Operations):
         is_folder = get_utility().is_directory(entry) and not just_info
 
         if entry.editable:
-            effective_permission |= 0222
+            effective_permission |= 0o222
 
         stat_result = { "st_mtime": entry.modified_date_epoch }
         
@@ -712,7 +718,7 @@ class _GDriveFS(LoggingMixIn,Operations):
                                     else entry.file_size
 
         if is_folder:
-            effective_permission |= 0111
+            effective_permission |= 0o111
             stat_result["st_mode"] = (stat.S_IFDIR | effective_permission)
 
             stat_result["st_nlink"] = 2
@@ -855,9 +861,13 @@ class _GDriveFS(LoggingMixIn,Operations):
             raise FuseOSError(EIO)
 
     def create(self, filepath, mode):
-        """Create a new file. This always precedes a write."""
-# TODO: Implement mode. Fail if it already exists.
-# TODO: Test with all open modes.
+        """Create a new file. This always precedes a write.
+        
+        We don't implement "mode" (permissions) because the model doesn't agree 
+        with GD.
+        """
+# TODO: Fail if it already exists.
+
         self.__marker('create', { 'filepath': filepath, 'mode': oct(mode) })
 
         logging.debug("Splitting file-path [%s] for create." % (filepath))

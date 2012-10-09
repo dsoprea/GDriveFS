@@ -22,6 +22,18 @@ for Google Drive, and this doesn't sense. Our implementation is built against
 OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
 
+Installation
+============
+
+1) The source-files must be in a directory named "gdrivefs" under a directory 
+   in the Python path. If you're not going to place the project directory 
+   directly into one of the directories in the Python path, either drop a 
+   symlink or PTH file that references the project directory.
+
+2) Install all dependencies by running:
+
+  sudo pip install -r requirements.txt
+
 Usage
 =====
 
@@ -54,7 +66,7 @@ Since this is FUSE, you must be running as root to mount.
 
     Authorization code recorded.
 
-3) There are two ways to mount the account:
+3) There are three ways to mount the account:
 
   a) Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs"):
@@ -64,6 +76,10 @@ Since this is FUSE, you must be running as root to mount.
   b) Via /etc/fstab:
 
      /var/cache/gdfs/credcache /tmp/hello gdfs defaults 0 0
+
+  c) Directly via gdfstool:
+
+    gdfstool mount /var/cache/gdfs/credcache /tmp/hello
 
 Options
 =======
