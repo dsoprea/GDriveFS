@@ -3,9 +3,16 @@ import logging
 class Conf(object):
     """Manages options."""
 
+    api_credentials = {
+        "web": { "client_id": "626378760250.apps.googleusercontent.com",
+                 "client_secret": "Moq_EFOt6bKXVmKnVak3jepV",
+                 "redirect_uris": [],
+                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                 "token_uri": "https://accounts.google.com/o/oauth2/token"
+               }}
+    
     auth_temp_path                      = '/var/cache/gdfs'
     auth_cache_filepath                 = None #'credcache'
-    auth_secrets_filepath               = '/etc/gdfs/client_secrets.json'
     gd_to_normal_mapping_filepath       = '/etc/gdfs/mime_mapping.json'
     extension_mapping_filepath          = '/etc/gdfs/extension_mapping.json'
     change_check_interval_s             = .5

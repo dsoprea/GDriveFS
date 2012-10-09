@@ -3,9 +3,9 @@
 import logging
 import os
 import pickle
-import json
 import re
 import dateutil.parser
+import json
 
 from apiclient.discovery    import build
 from apiclient.http         import MediaFileUpload
@@ -17,7 +17,7 @@ from datetime       import datetime
 from httplib2       import Http
 from threading      import Thread, Event
 from collections    import OrderedDict
-from magic          import Magic
+from tempfile       import NamedTemporaryFile
 
 from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
@@ -33,13 +33,21 @@ class _OauthAuthorize(object):
     cache_filepath  = None
     
     def __init__(self):
-        creds_filepath  = Conf.get('auth_secrets_filepath')
         cache_filepath  = Conf.get('auth_cache_filepath')
+        api_credentials = Conf.get('api_credentials')
 
         self.cache_filepath = cache_filepath
-        self.flow = flow_from_clientsecrets(creds_filepath, scope='')
-        self.flow.scope = self.__get_scopes()
-        self.flow.redirect_uri = OOB_CALLBACK_URN
+
+        with NamedTemporaryFile() as f:
+            json.dump(api_credentials, f)
+            f.flush()
+
+            self.flow = flow_from_clientsecrets(f.name, 
+                                                scope=self.__get_scopes(), 
+                                                redirect_uri=OOB_CALLBACK_URN)
+        
+        #self.flow.scope = self.__get_scopes()
+        #self.flow.redirect_uri = OOB_CALLBACK_URN
 
     def __get_scopes(self):
         scopes = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file"
@@ -48,7 +56,11 @@ class _OauthAuthorize(object):
         return scopes
 
     def step1_get_auth_url(self):
-        return self.flow.step1_get_authorize_url()
+        try:
+            return self.flow.step1_get_authorize_url()
+        except (Exception) as e:
+            logging.exception("Could not get authorization URL: %s" % (e))
+            raise        
 
     def __clear_cache(self):
         try:
