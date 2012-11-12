@@ -2,12 +2,11 @@
 
 import logging
 
-from gdrivefs.gdfs  import main
 from sys            import argv
 from os.path        import basename
 from argparse       import ArgumentParser
 
-from gdrivefs.gdfs  import mount, load_mount_parser_args
+from gdrivefs.gdfs  import main, mount, load_mount_parser_args
 
 def main():
     parser = ArgumentParser()
