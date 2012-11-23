@@ -629,7 +629,7 @@ class _OpenedFile(object):
 # TODO: make sureto finish the opened-file helper factory.
 
 
-class _GDriveFS(LoggingMixIn,Operations):
+class _GDriveFS(Operations):#LoggingMixIn,
     """The main filesystem class."""
 
     def __marker(self, name, data=None):
