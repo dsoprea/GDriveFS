@@ -12,7 +12,7 @@ import resource
 from errno          import *
 from time           import mktime, time
 from argparse       import ArgumentParser
-from fuse           import FUSE, Operations, LoggingMixIn, FuseOSError, c_statvfs
+from fuse           import FUSE, Operations, FuseOSError, c_statvfs #, LoggingMixIn
 from threading      import Lock, RLock
 from collections    import deque
 from sys            import argv, exit, excepthook
@@ -508,6 +508,8 @@ class _OpenedFile(object):
     def flush(self):
         """The OS wants to effect any changes made to the file."""
 
+#        print("Flushing (%d) updates." % (len(self.updates)))
+
         self.__marker('flush', { 'waiting': len(self.updates) })
 
         logging.debug("Retrieving entry for write-flush.")
@@ -542,6 +544,8 @@ class _OpenedFile(object):
             i = 0
             buffer = ''
             while self.updates:
+#                print("Applying update (%d)." % (i))
+            
                 (offset, data) = self.updates.popleft()
                 logging.debug("Applying update (%d) at offset (%d) with data-"
                               "length (%d)." % (i, offset, len(data)))
@@ -568,6 +572,8 @@ class _OpenedFile(object):
                           "GD for file-path [%s]." % (len(buffer), 
                                                       entry.id, 
                                                       self.temp_file_path))
+
+#            print("Sending updates.")
 
             try:
                 entry = drive_proxy('update_entry', normalized_entry=entry, 
@@ -843,8 +849,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
             entry = drive_proxy('create_directory', filename=filename, 
                         parents=[parent_clause[0].id], is_hidden=is_hidden)
         except:
-            logging.exception("Could not localize displaced file with entry "
-                              "having ID [%s]." % (self.normalized_entry.id))
+            logging.exception("Could not create directory with name [%s] and "
+                              "parent with ID [%s]." % (filename, 
+                                                        parent_clause[0].id))
             raise FuseOSError(EIO)
 
         logging.info("Directory [%s] created as ID [%s]." % (filepath, 
