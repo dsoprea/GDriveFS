@@ -896,7 +896,7 @@ class _GdriveManager(object):
 
         mimetype_directory = get_utility().mimetype_directory
 
-        return self.__insert_entry(filename, mime_type, **kwargs)
+        return self.__insert_entry(filename, mimetype_directory, **kwargs)
 
     def create_file(self, filename, data_filepath, mime_type=None, **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.

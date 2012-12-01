@@ -1,39 +1,15 @@
 import logging
+import logging.handlers
 
-from getpass import getuser
-from os import environ
-from os.path import dirname, exists
+from syslog import LOG_LOCAL0
 
-import gdrivefs
-app_path = dirname(gdrivefs.__file__)
+default_logger = logging.getLogger()
+default_logger.setLevel(logging.DEBUG)
 
-log_paths = [('%s/logs' % (app_path)), 
-             '/var/log/gdrivefs', 
-            ]
+log_syslog = logging.handlers.SysLogHandler('/dev/log', facility=LOG_LOCAL0)
 
-log_filename = 'gdrivefs.log'
+log_format = 'GD: %(levelname)s %(message)s'
+log_syslog.setFormatter(logging.Formatter(log_format))
 
-format = '%(asctime)s  %(levelname)s %(message)s'
-
-for log_path in log_paths:
-    if exists(log_path):
-        logging.basicConfig(
-                level       = logging.DEBUG,
-                format      = format,
-                filename    = ('%s/%s' % (log_path, log_filename))
-            )
-
-        break
-
-# Hook console logging.
-#if ('SW_DEBUG' in environ and environ['SW_DEBUG'] or
-#    'RI_DEBUG' in environ and environ['RI_DEBUG']
-#   ) and 'RI_CONSOLE_LOG_ACTIVE' not in environ:
-#    log_console = logging.StreamHandler()
-#    log_console.setLevel(logging.DEBUG)
-#    log_console.setFormatter(logging.Formatter(format))
-#
-#    logging.getLogger('').addHandler(log_console)
-#
-#    environ['RI_CONSOLE_LOG_ACTIVE'] = '1'
+default_logger.addHandler(log_syslog)
 
