@@ -44,26 +44,20 @@ class _ChangeManager(object):
 
         logging.debug("Change destroy.")
 
-    def __get_updates(self):
-
-        try:
-            return drive_proxy('list_changes', start_change_id=(self.at_change_id + 1))
-        except:
-            logging.exception("Could not get changes since change with ID "
-                              "(%d)." % (self.at_change_id))
-            raise
-
     def process_updates(self):
         """Process any changes to our files. Return True if everything is up to
         date or False if we need to be run again.
         """
 
+        start_at_id = (self.at_change_id + 1)
+
         try:
-            (largest_change_id, next_page_token, changes) = \
-                self.__get_updates()
+            result = drive_proxy('list_changes', start_change_id=start_at_id)
         except:
             logging.exception("Could not retrieve updates. Skipped.")
-            raise
+            return True
+
+        (largest_change_id, next_page_token, changes) = result
 
         logging.debug("The latest reported change-ID is (%d) and we're "
                       "currently at change-ID (%d)." % (largest_change_id, 

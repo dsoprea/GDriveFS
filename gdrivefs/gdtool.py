@@ -485,13 +485,14 @@ class _GdriveManager(object):
             response = client.changes().list(pageToken=page_token, \
                             startChangeId=start_change_id).execute()
         except:
-            logging.exception("Problem while listing changes.")
+            logging.exception("Problem while listing changes. Reverting to "
+                              "saying that there were NO changes.")
             raise
 
-        largest_change_id   = int(response[u'largestChangeId'])
-        items               = response[u'items']
-        next_page_token     = response[u'nextPageToken'] if u'nextPageToken' \
-                                in response else None
+        items             = response[u'items']
+        largest_change_id = int(response[u'largestChangeId'])
+        next_page_token   = response[u'nextPageToken'] if u'nextPageToken' \
+                                                       in response else None
 
         changes = OrderedDict()
         last_change_id = None

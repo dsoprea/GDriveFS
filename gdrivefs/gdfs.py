@@ -125,7 +125,7 @@ def _split_path(filepath):
 
     if filename[0] == '.':
         is_hidden = True
-        filename = filename[1:]
+#        filename = filename[1:]
 
     else:
         is_hidden = False
@@ -309,6 +309,47 @@ class _OpenedManager(object):
 
             return self.opened[fh]
 
+def _annotate(argument_names=[], excluded=[], prefix=''):
+    """A decorator for the VFS functions. Displays prefix and suffix 
+    information in the logs.
+    """
+
+    prefix = ("%s: " % (prefix)) if prefix else ''
+
+    def real_decorator(f):
+        def wrapper(*args, **kwargs):
+        
+            logging.info("%s>>>>>>>>>> %s >>>>>>>>>>" % (prefix, f.__name__))
+        
+            if args or kwargs:
+                condensed = {}
+                for i in xrange(len(args)):
+                    # Skip the 'self' argument.
+                    if i == 0:
+                        continue
+                
+                    if i - 1 >= len(argument_names):
+                        break
+
+                    condensed[argument_names[i - 1]] = args[i]
+
+                for k, v in kwargs.iteritems():
+                    condensed[k] = v
+
+                values_nice = [("%s= [%s]" % (k, v)) for k, v \
+                                                     in condensed.iteritems() \
+                                                     if k not in excluded]
+                values_string = '  '.join(values_nice)
+
+                logging.debug("DATA: %s" % (values_string))
+
+            result = f(*args, **kwargs)
+            logging.info("%s<<<<<<<<<< %s" % (prefix, f.__name__))
+            
+            return result
+        return wrapper
+    return real_decorator
+
 _OpenedManager.instance = None
 _OpenedManager.singleton_lock = Lock()
 
@@ -389,17 +430,6 @@ class _OpenedFile(object):
         self.mime_type  = mime_type
         self.cache      = EntryCache.get_instance().cache
 
-    def __marker(self, name, data=None):
-        if data == None:
-            data = [ ]
-
-        logging.info("OPEN: %s ========== %s, %s" % 
-                     (name, self.entry_id, self.path))
-
-        if data:
-            phrases = [ ("%s= [%s]" % (k, v)) for k, v in data.iteritems() ]
-            logging.debug("%s" % (', '.join(phrases)))
-
     def __get_entry_or_raise(self):
         """We can never be sure that the entry will still be known to the 
         system. Grab it and throw an error if it's not available.
@@ -415,10 +445,9 @@ class _OpenedFile(object):
                               "opened-file." % (self.entry_id))
             raise 
 
+    @_annotate(prefix='OF')
     def __load_base_from_remote(self):
         """Download the data for the file that we represent."""
-
-        self.__marker('load_base_from_remote')
 
         logging.debug("Retrieving entry for load_base_from_remote.")
 
@@ -496,6 +525,7 @@ class _OpenedFile(object):
                     logging.exception("Could not read current cached file into buffer.")
                     raise
 
+    @_annotate(['offset', 'data'], ['data'], 'OF')
     def add_update(self, offset, data):
         """Queue an update to this file."""
 
@@ -507,12 +537,11 @@ class _OpenedFile(object):
 
         logging.debug("(%d) updates have been queued." % (len(self.updates)))
 
+    @_annotate(prefix='OF')
     def flush(self):
         """The OS wants to effect any changes made to the file."""
 
         #print("Flushing (%d) updates." % (len(self.updates)))
-
-        self.__marker('flush', { 'waiting': len(self.updates) })
 
         logging.debug("Retrieving entry for write-flush.")
 
@@ -630,6 +659,7 @@ class _OpenedFile(object):
 
         logging.info("Update complete on entry with ID [%s]." % (entry.id))
 
+    @_annotate(['offset', 'length'], prefix='OF')
     def read(self, offset, length):
         
         logging.debug("Checking write-cache file (flush).")
@@ -645,21 +675,10 @@ class _OpenedFile(object):
 
 # TODO: make sure strip_extension and split_path are used when each are relevant
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
-# TODO: make sureto finish the opened-file helper factory.
-
+# TODO: make sure to finish the opened-file helper factory.
 
 class _GDriveFS(Operations):#LoggingMixIn,
     """The main filesystem class."""
-
-    def __marker(self, name, data=None):
-        if data == None:
-            data = [ ]
-
-        logging.info("========== %s ==========" % (name))
-
-        if data:
-            phrases = [ ("%s= [%s]" % (k, v)) for k, v in data.iteritems() ]
-            logging.debug("%s" % (', '.join(phrases)))
 
     def __register_open_file(self, fh, path, entry_id):
 
@@ -689,10 +708,10 @@ class _GDriveFS(Operations):#LoggingMixIn,
                                   "(%d)." % (fh))
                 raise
 
+    @_annotate(['raw_path', 'fh'])
     def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
 # TODO: Implement handle.
-        self.__marker('getattr', { 'raw_path': raw_path, 'fh': fh })
 
         try:
             (path, extension, just_info, mime_type) = _strip_export_type \
@@ -747,10 +766,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         return stat_result
 
+    @_annotate(['path', 'offset'])
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
-
-        self.__marker('readdir', { 'path': path, 'offset': offset })
 
         # We expect "offset" to always be (0).
         if offset != 0:
@@ -792,10 +810,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
         for filename in filenames:
             yield filename
 
+    @_annotate(['raw_path', 'length', 'offset', 'fh'])
     def read(self, raw_path, length, offset, fh):
 
-        self.__marker('read', { 'raw_path': raw_path, 'length': length, 
-                                'offset': offset, 'fh': fh })
 #
 #        # Fetch the file to a local, temporary file.
 #
@@ -838,10 +855,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
             logging.exception("Could not read data.")
             raise FuseOSError(EIO)
 
+    @_annotate(['filepath', 'mode'])
     def mkdir(self, filepath, mode):
         """Create the given directory."""
-
-        self.__marker('mkdir', { 'filepath': filepath, 'mode': oct(mode) })
 
 # TODO: Implement the "mode".
 
@@ -880,6 +896,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
             logging.exception("Could not register new directory in cache.")
             raise FuseOSError(EIO)
 
+    @_annotate(['filepath', 'mode'])
     def create(self, filepath, mode):
         """Create a new file. This always precedes a write.
         
@@ -887,8 +904,6 @@ class _GDriveFS(Operations):#LoggingMixIn,
         with GD.
         """
 # TODO: Fail if it already exists.
-
-        self.__marker('create', { 'filepath': filepath, 'mode': oct(mode) })
 
         logging.debug("Splitting file-path [%s] for create." % (filepath))
 
@@ -958,9 +973,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         return fh
 
+    @_annotate(['filepath', 'flags'])
     def open(self, filepath, flags):
 # TODO: Fail if does not exist and the mode is read only.
-        self.__marker('open', { 'filepath': filepath })
 
         logging.debug("Building _OpenedFile object for file being opened.")
 
@@ -988,10 +1003,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         return fh
 
+    @_annotate(['filepath', 'fh'])
     def release(self, filepath, fh):
         """Close a file."""
-
-        self.__marker('release', { 'filepath': filepath, 'fh': fh })
 
         try:
             _OpenedManager.get_instance().remove_by_fh(fh)
@@ -1000,10 +1014,8 @@ class _GDriveFS(Operations):#LoggingMixIn,
                               "(%d) (release)." % (fh))
             raise FuseOSError(EIO)
 
+    @_annotate(['filepath', 'data', 'offset', 'fh'], ['data'])
     def write(self, filepath, data, offset, fh):
-
-        self.__marker('write', { 'path': filepath, '#data': len(data), 
-                                 'offset': offset, 'fh': fh })
 
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh=fh)
@@ -1019,10 +1031,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         return len(data)
 
+    @_annotate(['filepath', 'fh'])
     def flush(self, filepath, fh):
         
-        self.__marker('flush', { 'fh': fh })
-
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh=fh)
         except:
@@ -1035,10 +1046,9 @@ class _GDriveFS(Operations):#LoggingMixIn,
             logging.exception("Could not flush local updates.")
             raise FuseOSError(EIO)
 
+    @_annotate(['filepath'])
     def rmdir(self, filepath):
         """Remove a directory."""
-
-        self.__marker('rmdir', { 'filepath': filepath })
 
         path_relations = PathRelations.get_instance()
 
@@ -1100,29 +1110,30 @@ class _GDriveFS(Operations):#LoggingMixIn,
         logging.debug("Directory removal complete.")
 
     # Not supported. Google Drive doesn't fit within this model.
+    @_annotate(['filepath', 'mode'])
     def chmod(self, filepath, mode):
-        
-        self.__marker('chmod', { 'filepath': filepath })
+
         raise FuseOSError(EPERM)
 
     # Not supported. Google Drive doesn't fit within this model.
+    @_annotate(['filepath', 'uid', 'gid'])
     def chown(self, filepath, uid, gid):
 
-        self.__marker('chown', { 'filepath': filepath })
         raise FuseOSError(EPERM)
 
     # Not supported.
+    @_annotate(['target', 'source'])
     def symlink(self, target, source):
 
-        self.__marker('symlink', { 'target': target, 'source': source })
         raise FuseOSError(EPERM)
 
     # Not supported.
+    @_annotate(['filepath'])
     def readlink(self, filepath):
 
-        self.__marker('readlink', { 'filepath': filepath })
         raise FuseOSError(EPERM)
 
+    @_annotate(['filepath'])
     def statfs(self, filepath):
         """Return filesystem metrics.
 
@@ -1131,8 +1142,6 @@ class _GDriveFS(Operations):#LoggingMixIn,
         REF: http://www.ibm.com/developerworks/linux/library/l-fuse/
         REF: http://stackoverflow.com/questions/4965355/converting-statvfs-to-percentage-free-correctly
         """
-
-        self.__marker('statfs', { 'filepath': filepath })
 
         block_size = 512
 
@@ -1172,17 +1181,18 @@ class _GDriveFS(Operations):#LoggingMixIn,
         }
 
 # TODO: Finish this.
+    @_annotate(['old', 'new'])
     def rename(self, old, new):
         pass
 
 # TODO: Finish this.
+    @_annotate(['path', 'length', 'fh'])
     def truncate(self, path, length, fh=None):
         pass
 
+    @_annotate(['filepath'])
     def unlink(self, filepath):
         """Remove a file."""
-
-        self.__marker('unlink', { 'filepath': filepath })
 
         path_relations = PathRelations.get_instance()
 
@@ -1230,6 +1240,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
         logging.debug("File removal complete.")
 
 # TODO: Finish this.
+    @_annotate(['path', 'times'])
     def utimens(self, path, times=None):
         """Set the file times."""
 
@@ -1237,17 +1248,15 @@ class _GDriveFS(Operations):#LoggingMixIn,
 #        now = time()
 #        atime, mtime = times if times else (now, now)
 
+    @_annotate(['path'])
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
 
-        self.__marker('init', { 'path': path })
-
         get_change_manager().mount_init()
 
+    @_annotate(['path'])
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /."""
-
-        self.__marker('destroy', { 'path': path })
 
         get_change_manager().mount_destroy()
 

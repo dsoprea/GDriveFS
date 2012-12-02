@@ -173,6 +173,17 @@ Cache/Change Management
 
 No cache is maintained. Updates are performed frequently.
 
+Misc Notes
+==========
+
+A file will be marked as hidden on Google Drive if it has a prefixing dot. 
+However, Linux/Unix doesn't care about the "hidden" attribute. If you create a 
+file on Google Drive, somewhere else, and want it to truly be hidden via this 
+software, make sure you add the prefixing dot.
+
+Me
+==
+
 Dustin Oprea
 myselfasunder, gmail.com
 

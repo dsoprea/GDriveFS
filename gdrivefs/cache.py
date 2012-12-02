@@ -882,13 +882,6 @@ class PathRelations(object):
 #                        filename_base = ("%s.%s" % (filename_base, file_extension))
 #                        logging.debug("File will be given extension [%s]." % (file_extension))
 
-                # Prepend a period if it's a hidden file.
-
-                if u'hidden' in normalized_entry.labels \
-                        and normalized_entry.labels[u'hidden']:
-                    filename_base = utility. \
-                        translate_filename_charset(".%s" % (filename_base))
-
                 # Register among the children of this parent, but make sure we have 
                 # a unique filename among siblings.
 
