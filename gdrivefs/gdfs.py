@@ -16,6 +16,8 @@ from fuse           import FUSE, Operations, FuseOSError, c_statvfs #, LoggingMi
 from threading      import Lock, RLock
 from collections    import deque
 from sys            import argv, exit, excepthook
+from tempfile       import NamedTemporaryFile
+from os             import unlink
 
 from gdrivefs.utility   import get_utility
 from gdrivefs.gdtool    import drive_proxy, NormalEntry, get_auth, AccountInfo
@@ -508,7 +510,7 @@ class _OpenedFile(object):
     def flush(self):
         """The OS wants to effect any changes made to the file."""
 
-#        print("Flushing (%d) updates." % (len(self.updates)))
+        #print("Flushing (%d) updates." % (len(self.updates)))
 
         self.__marker('flush', { 'waiting': len(self.updates) })
 
@@ -562,23 +564,31 @@ class _OpenedFile(object):
             # Write back out to the temporary file.
 
             logging.debug("Writing buffer to temporary file.")
+# TODO: Make sure to uncache the temp data if self.temp_file_path is not None.
 
-            with open(self.temp_file_path, 'w') as f:
-                f.write(buffer)
+            if self.temp_file_path:
+                is_temp = False
+                write_file_path = self.temp_file_path
+            else:
+                is_temp = True
+            
+                with NamedTemporaryFile(delete=False) as f:
+                    write_file_path = f.name
+                    f.write(buffer)
 
             # Push to GD.
 
             logging.debug("Pushing (%d) bytes for entry with ID from [%s] to "
                           "GD for file-path [%s]." % (len(buffer), 
                                                       entry.id, 
-                                                      self.temp_file_path))
+                                                      write_file_path))
 
 #            print("Sending updates.")
 
             try:
                 entry = drive_proxy('update_entry', normalized_entry=entry, 
                                     filename=entry.title, 
-                                    data_filepath=self.temp_file_path, 
+                                    data_filepath=write_file_path, 
                                     mime_type=entry.mime_type, 
                                     parents=entry.parents, 
                                     is_hidden=self.is_hidden)
@@ -588,20 +598,23 @@ class _OpenedFile(object):
                                   (entry.id))
                 raise
 
-            # Update the write-cache file to the official mtime. We won't 
-            # redownload it on the next flush if it wasn't changed, elsewhere.
+            if not is_temp:
+                unlink(write_file_path)
+            else:
+                # Update the write-cache file to the official mtime. We won't 
+                # redownload it on the next flush if it wasn't changed, elsewhere.
 
-            logging.debug("Updating local write-cache file to official mtime "
-                          "[%s]." % (entry.modified_date_epoch))
+                logging.debug("Updating local write-cache file to official mtime "
+                              "[%s]." % (entry.modified_date_epoch))
 
-            try:
-                os.utime(self.temp_file_path, (entry.modified_date_epoch, 
+                try:
+                    os.utime(write_file_path, (entry.modified_date_epoch, 
                                                entry.modified_date_epoch))
-            except:
-                logging.exception("Could not update mtime of write-cache [%s] "
-                                  "for entry with ID [%s], post-flush." % 
-                                  (entry.modified_date_epoch, entry.id))
-                raise
+                except:
+                    logging.exception("Could not update mtime of write-cache [%s] "
+                                      "for entry with ID [%s], post-flush." % 
+                                      (entry.modified_date_epoch, entry.id))
+                    raise
 
         # Immediately update our current cached entry.
 
