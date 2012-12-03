@@ -28,11 +28,15 @@ from gdrivefs.utility import get_utility
 class _OauthAuthorize(object):
     """Manages authorization process."""
 
+    __log = None
+
     flow            = None
     credentials     = None
     cache_filepath  = None
     
     def __init__(self):
+        self.__log = logging.getLogger().getChild('OauthAuth')
+
         cache_filepath  = Conf.get('auth_cache_filepath')
         api_credentials = Conf.get('api_credentials')
 
@@ -59,7 +63,7 @@ class _OauthAuthorize(object):
         try:
             return self.flow.step1_get_authorize_url()
         except (Exception) as e:
-            logging.exception("Could not get authorization URL: %s" % (e))
+            self.__log.exception("Could not get authorization URL: %s" % (e))
             raise        
 
     def __clear_cache(self):
@@ -69,7 +73,7 @@ class _OauthAuthorize(object):
             pass
     
     def __refresh_credentials(self):
-        logging.info("Doing credentials refresh.")
+        self.__log.info("Doing credentials refresh.")
 
         http = Http()
 
@@ -78,17 +82,17 @@ class _OauthAuthorize(object):
         except (Exception) as e:
             message = "Could not refresh credentials."
 
-            logging.exception(message)
+            self.__log.exception(message)
             raise AuthorizationFailureError(message)
 
         try:
             self.__update_cache(self.credentials)
         except:
-            logging.exception("Could not update cache. We've nullified the "
+            self.__log.exception("Could not update cache. We've nullified the "
                               "in-memory credentials.")
             raise
             
-        logging.info("Credentials have been refreshed.")
+        self.__log.info("Credentials have been refreshed.")
             
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
@@ -96,7 +100,7 @@ class _OauthAuthorize(object):
         if self.credentials != None:
             return self.credentials
         
-        logging.info("Checking for cached credentials.")
+        self.__log.info("Checking for cached credentials.")
 
         try:
             with open(self.cache_filepath, 'r') as cache:
@@ -106,7 +110,7 @@ class _OauthAuthorize(object):
 
         # If we're here, we have serialized credentials information.
 
-        logging.info("Raw credentials retrieved from cache.")
+        self.__log.info("Raw credentials retrieved from cache.")
         
         try:
             credentials = pickle.loads(credentials_serialized)
@@ -114,14 +118,14 @@ class _OauthAuthorize(object):
             # We couldn't decode the credentials. Kill the cache.
             self.__clear_cache()
 
-            logging.exception("Could not deserialize credentials. Ignoring.")
+            self.__log.exception("Could not deserialize credentials. Ignoring.")
             return None
 
         self.credentials = credentials
             
         # Credentials restored. Check expiration date.
             
-        logging.info("Cached credentials found with expire-date [%s]." % 
+        self.__log.info("Cached credentials found with expire-date [%s]." % 
                      (credentials.token_expiry.strftime('%Y%m%d-%H%M%S')))
         
         self.credentials = credentials
@@ -135,7 +139,7 @@ class _OauthAuthorize(object):
         such as refreshing when we expire.
         """
         if(datetime.today() >= self.credentials.token_expiry):
-            logging.info("Credentials have expired. Attempting to refresh "
+            self.__log.info("Credentials have expired. Attempting to refresh "
                          "them.")
             
             self.__refresh_credentials()
@@ -147,13 +151,13 @@ class _OauthAuthorize(object):
         except:
             message = "Could not check cache for credentials."
 
-            logging.exception(message)
+            self.__log.exception(message)
             raise AuthorizationFailureError(message)
     
         if self.credentials == None:
             message = "No credentials were established from the cache."
 
-            logging.exception(message)
+            self.__log.exception(message)
             raise AuthorizationFaultError(message)
 
         return self.credentials
@@ -162,31 +166,31 @@ class _OauthAuthorize(object):
 
         # Serialize credentials.
 
-        logging.info("Serializing credentials for cache.")
+        self.__log.info("Serializing credentials for cache.")
 
         credentials_serialized = None
         
         try:
             credentials_serialized = pickle.dumps(credentials)
         except:
-            logging.exception("Could not serialize credentials.")
+            self.__log.exception("Could not serialize credentials.")
             raise
 
         # Write cache file.
 
-        logging.info("Writing credentials to cache.")
+        self.__log.info("Writing credentials to cache.")
 
         try:
             with open(self.cache_filepath, 'w') as cache:
                 cache.write(credentials_serialized)
         except:
-            logging.exception("Could not write credentials to cache.")
+            self.__log.exception("Could not write credentials to cache.")
             raise
 
     def step2_doexchange(self, auth_code):
         # Do exchange.
 
-        logging.info("Doing exchange.")
+        self.__log.info("Doing exchange.")
         
         try:
             credentials = self.flow.step2_exchange(auth_code)
@@ -195,15 +199,15 @@ class _OauthAuthorize(object):
                       " error, or the auth-exchange was attempted when not " \
                       "necessary)."
 
-            logging.exception(message)
+            self.__log.exception(message)
             raise AuthorizationFailureError(message)
         
-        logging.info("Credentials established.")
+        self.__log.info("Credentials established.")
 
         try:
             self.__update_cache(credentials)
         except:
-            logging.exception("Could not update cache. Process cancelled.")
+            self.__log.exception("Could not update cache. Process cancelled.")
             raise
         
         self.credentials = credentials
@@ -221,11 +225,15 @@ def get_auth():
 get_auth.__instance = None
 
 class NormalEntry(object):
+    __log = None
     raw_data = None
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
         #                reusing the reference between objects.
+
+        self.__log = logging.getLogger().getChild('NormalEntry')
+
         self.info = { }
         self.parents = [ ]
         self.raw_data = raw_data
@@ -263,10 +271,10 @@ class NormalEntry(object):
             for parent in raw_data[u'parents']:
                 self.parents.append(parent[u'id'])
 
-            logging.debug("Entry with ID [%s] is visible? %s" % (self.id, self.is_visible))
+            self.__log.debug("Entry with ID [%s] is visible? %s" % (self.id, self.is_visible))
 
         except (KeyError) as e:
-            logging.exception("Could not normalize entry on raw key [%s]. Does not exist in source." % (str(e)))
+            self.__log.exception("Could not normalize entry on raw key [%s]. Does not exist in source." % (str(e)))
             raise
 
     def __getattr__(self, key):
@@ -306,19 +314,21 @@ class NormalEntry(object):
         try:
             return get_utility().get_normalized_mime_type(self)
         except:
-            logging.exception("Could not render a mime-type for entry with"
+            self.__log.exception("Could not render a mime-type for entry with"
                               " ID [%s], for read." % (self.id))
             raise
 
 class LiveReader(object):
     """A base object for data that can be retrieved on demand."""
 
+    __log = None
     data = None
 
     def __getitem__(self, key):
+        self.__log = logging.getLogger().getChild('LiveReader')
         child_name = self.__class__.__name__
 
-        logging.debug("Key [%s] requested on LiveReader type [%s]." % (key, child_name))
+        self.__log.debug("Key [%s] requested on LiveReader type [%s]." % (key, child_name))
 
         try:
             return self.data[key]
@@ -328,13 +338,13 @@ class LiveReader(object):
         try:
             self.data = self.get_data(key)
         except:
-            logging.exception("Could not retrieve data for live-updater wrapping [%s]." % (child_name))
+            self.__log.exception("Could not retrieve data for live-updater wrapping [%s]." % (child_name))
             raise
 
         try:
             return self.data[key]
         except:
-            logging.exception("We just updated live-updater wrapping [%s], but"
+            self.__log.exception("We just updated live-updater wrapping [%s], but"
                               " we must've not been able to find entry [%s]." % 
                               (child_name, key))
             raise
@@ -364,11 +374,18 @@ class LiveReader(object):
 class AccountInfo(LiveReader):
     """Encapsulates our account info."""
 
+    __log = None
+
+    def __init__(self):
+        LiveReader.__init__(self)
+
+        self.__log = logging.getLogger().getChild('AccountInfo')
+
     def get_data(self, key):
         try:
             return drive_proxy('get_about_info')
         except:
-            logging.exception("get_about_info() call failed.")
+            self.__log.exception("get_about_info() call failed.")
             raise
 
     @property
@@ -394,6 +411,8 @@ class _GdriveManager(object):
     refreshing when necessary.
     """
 
+    __log = None
+
     authorize   = None
     credentials = None
     client      = None
@@ -402,8 +421,8 @@ class _GdriveManager(object):
     conf_service_version    = 'v2'
     
     def __init__(self):
+        self.__log = logging.getLogger().getChild('GdManager')
         self.authorize = get_auth()
-
         self.check_authorization()
 
     def check_authorization(self):
@@ -413,14 +432,14 @@ class _GdriveManager(object):
 
         self.check_authorization()
     
-        logging.info("Getting authorized HTTP tunnel.")
+        self.__log.info("Getting authorized HTTP tunnel.")
             
         http = Http()
 
         try:
             self.credentials.authorize(http)
         except:
-            logging.exception("Could not get authorized HTTP client for Google"
+            self.__log.exception("Could not get authorized HTTP client for Google"
                               " Drive client.")
             raise
 
@@ -434,10 +453,10 @@ class _GdriveManager(object):
         try:
             authed_http = self.get_authed_http()
         except:
-            logging.exception("Could not get authed Http instance.")
+            self.__log.exception("Could not get authed Http instance.")
             raise
 
-        logging.info("Building authorized client from Http.  TYPE= [%s]" % (type(authed_http)))
+        self.__log.info("Building authorized client from Http.  TYPE= [%s]" % (type(authed_http)))
     
         # Build a client from the passed discovery document path
         client = build(self.conf_service_name, self.conf_service_version, 
@@ -452,14 +471,14 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_about).")
             raise
 
         try:
             response = client.about().get().execute()
         except:
-            logging.exception("Problem while getting 'about' information.")
+            self.__log.exception("Problem while getting 'about' information.")
             raise
         
         return response
@@ -471,13 +490,13 @@ class _GdriveManager(object):
         back. Change-IDs are integers, but are not necessarily sequential.
         """
 
-        logging.info("Listing changes starting at ID [%s] with page_token "
+        self.__log.info("Listing changes starting at ID [%s] with page_token "
                      "[%s]." % (start_change_id, page_token))
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (list_changes).")
             raise
 
@@ -485,7 +504,7 @@ class _GdriveManager(object):
             response = client.changes().list(pageToken=page_token, \
                             startChangeId=start_change_id).execute()
         except:
-            logging.exception("Problem while listing changes. Reverting to "
+            self.__log.exception("Problem while listing changes. Reverting to "
                               "saying that there were NO changes.")
             raise
 
@@ -507,14 +526,14 @@ class _GdriveManager(object):
                           " change-ID (%d) to be processed." % \
                           (change_id, last_change_id)
 
-                logging.error(message)
+                self.__log.error(message)
                 raise Exception(message)
 
             try:
                 normalized_entry = None if was_deleted \
                                         else NormalEntry('list_changes', entry)
             except:
-                logging.exception("Could not normalize entry embedded in "
+                self.__log.exception("Could not normalize entry embedded in "
                                   "change with ID (%d)." % (change_id))
                 raise
 
@@ -525,21 +544,21 @@ class _GdriveManager(object):
 
     def get_parents_containing_id(self, child_id, max_results=None):
         
-        logging.info("Getting client for parent-listing.")
+        self.__log.info("Getting client for parent-listing.")
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_parents_containing_id).")
             raise
 
-        logging.info("Listing entries over child with ID [%s]." % (child_id))
+        self.__log.info("Listing entries over child with ID [%s]." % (child_id))
 
         try:
             response = client.parents().list(fileId=child_id).execute()
         except:
-            logging.exception("Problem while listing files.")
+            self.__log.exception("Problem while listing files.")
             raise
 
         return [ entry[u'id'] for entry in response[u'items'] ]
@@ -547,17 +566,17 @@ class _GdriveManager(object):
     def get_children_under_parent_id(self, parent_id, query_contains_string=None, \
                                         query_is_string=None, max_results=None):
 
-        logging.info("Getting client for child-listing.")
+        self.__log.info("Getting client for child-listing.")
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_children_under_parent_id).")
             raise
 
         if query_contains_string and query_is_string:
-            logging.exception("The query_contains_string and query_is_string "
+            self.__log.exception("The query_contains_string and query_is_string "
                               "parameters are mutually exclusive.")
             raise
 
@@ -569,7 +588,7 @@ class _GdriveManager(object):
         else:
             query = None
 
-        logging.info("Listing entries under parent with ID [%s].  QUERY= "
+        self.__log.info("Listing entries under parent with ID [%s].  QUERY= "
                      "[%s]" % (parent_id, query))
 
         try:
@@ -577,7 +596,7 @@ class _GdriveManager(object):
                                               maxResults=max_results). \
                                               execute()
         except:
-            logging.exception("Problem while listing files.")
+            self.__log.exception("Problem while listing files.")
             raise
 
         return [ entry[u'id'] for entry in response[u'items'] ]
@@ -589,13 +608,13 @@ class _GdriveManager(object):
             try:
                 entry = drive_proxy('get_entry', entry_id=entry_id)
             except:
-                logging.exception("Could not retrieve entry with ID [%s]." % 
+                self.__log.exception("Could not retrieve entry with ID [%s]." % 
                                   (entry_id))
                 raise
 
             retrieved[entry_id] = entry
 
-        logging.debug("(%d) entries were retrieved." % (len(retrieved)))
+        self.__log.debug("(%d) entries were retrieved." % (len(retrieved)))
 
         return retrieved
 
@@ -604,33 +623,33 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_entry).")
             raise
 
         try:
             entry_raw = client.files().get(fileId=entry_id).execute()
         except:
-            logging.exception("Could not get the file with ID [%s]." % 
+            self.__log.exception("Could not get the file with ID [%s]." % 
                               (entry_id))
             raise
 
         try:
             entry = NormalEntry('direct_read', entry_raw)
         except:
-            logging.exception("Could not normalize raw-data for entry with ID [%s]." % (entry_id))
+            self.__log.exception("Could not normalize raw-data for entry with ID [%s]." % (entry_id))
             raise
 
         return entry
 
     def list_files(self, query_contains_string=None, query_is_string=None, parent_id=None):
         
-        logging.info("Listing all files.")
+        self.__log.info("Listing all files.")
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (list_files).")
             raise
 
@@ -658,7 +677,7 @@ class _GdriveManager(object):
         try:
             result = client.files().list(q=query).execute()
         except:
-            logging.exception("Could not get the list of files.")
+            self.__log.exception("Could not get the list of files.")
             raise
 
         entries = []
@@ -666,7 +685,7 @@ class _GdriveManager(object):
             try:
                 entry = NormalEntry('list_files', entry_raw)
             except:
-                logging.exception("Could not normalize raw-data for entry with"
+                self.__log.exception("Could not normalize raw-data for entry with"
                                   " ID [%s]." % (entry_raw[u'id']))
                 raise
 
@@ -679,7 +698,7 @@ class _GdriveManager(object):
         mtime hasn't changed, re-use.
         """
 
-        logging.info("Downloading entry with ID [%s] and mime-type [%s]." % 
+        self.__log.info("Downloading entry with ID [%s] and mime-type [%s]." % 
                      (normalized_entry.id, mime_type))
 
         if mime_type != normalized_entry.mime_type and \
@@ -687,7 +706,7 @@ class _GdriveManager(object):
             message = ("Entry with ID [%s] can not be exported to type [%s]. The available types are: %s" % 
                        (normalized_entry.id, mime_type, ', '.join(normalized_entry.download_links.keys())))
 
-            logging.warning(message)
+            self.__log.warning(message)
             raise ExportFormatError(message)
 
         temp_path = Conf.get('file_download_temp_path')
@@ -696,7 +715,7 @@ class _GdriveManager(object):
             try:
                 os.makedirs(temp_path)
             except:
-                logging.exception("Could not create temporary download path "
+                self.__log.exception("Could not create temporary download path "
                                   "[%s]." % (temp_path))
                 raise
 
@@ -715,7 +734,7 @@ class _GdriveManager(object):
 
         gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
 
-        logging.info("File will be downloaded to [%s]." % (temp_filepath))
+        self.__log.info("File will be downloaded to [%s]." % (temp_filepath))
 
         use_cache = False
         if allow_cache and os.path.isfile(temp_filepath):
@@ -723,7 +742,7 @@ class _GdriveManager(object):
             try:
                 stat = os.stat(temp_filepath)
             except:
-                logging.exception("Could not retrieve stat() information for "
+                self.__log.exception("Could not retrieve stat() information for "
                                   "temp download file [%s]." % (temp_filepath))
                 raise
 
@@ -733,7 +752,7 @@ class _GdriveManager(object):
         if use_cache:
             # Use the cache. It's fine.
 
-            logging.info("File retrieved from the previously downloaded, still-current file.")
+            self.__log.info("File retrieved from the previously downloaded, still-current file.")
             return (temp_filepath, stat.st_size)
 
         # Go and get the file.
@@ -741,17 +760,17 @@ class _GdriveManager(object):
         try:
             authed_http = self.get_authed_http()
         except:
-            logging.exception("Could not get authed Http instance for download.")
+            self.__log.exception("Could not get authed Http instance for download.")
             raise
 
         url = normalized_entry.download_links[mime_type]
 
-        logging.debug("Downloading file from [%s]." % (url))
+        self.__log.debug("Downloading file from [%s]." % (url))
 
         try:
             data_tuple = authed_http.request(url)
         except:
-            logging.exception("Could not download entry with ID [%s], type "
+            self.__log.exception("Could not download entry with ID [%s], type "
                               "[%s], and URL [%s]." % (normalized_entry.id, mime_type, url))
             raise
 
@@ -766,21 +785,21 @@ class _GdriveManager(object):
         if range_found:
             logger.info("GD has returned Range-related headers: %s" % (", ".join(found)))
 
-        logging.info("Downloaded file is (%d) bytes. Writing to [%s]." % (len(data), temp_filepath))
+        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % (len(data), temp_filepath))
 
         try:
             with open(temp_filepath, 'wb') as f:
                 f.write(data)
         except:
-            logging.exception("Could not cached downloaded file. Skipped.")
+            self.__log.exception("Could not cached downloaded file. Skipped.")
 
         else:
-            logging.info("File written to cache successfully.")
+            self.__log.info("File written to cache successfully.")
 
         try:
             os.utime(temp_filepath, (time(), gd_mtime_epoch))
         except:
-            logging.exception("Could not set time on [%s]." % (temp_filepath))
+            self.__log.exception("Could not set time on [%s]." % (temp_filepath))
             raise
 
         return (temp_filepath, len(data))
@@ -792,14 +811,14 @@ class _GdriveManager(object):
         if not parents:
             parents = []
 
-        logging.info("Creating file with filename [%s] under "
+        self.__log.info("Creating file with filename [%s] under "
                      "parent(s) [%s] with mime-type [%s]." % 
                      (filename, ', '.join(parents), mime_type))
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (insert_entry).")
             raise
 
@@ -821,27 +840,27 @@ class _GdriveManager(object):
         try:
             result = client.files().insert(**args).execute()
         except:
-            logging.exception("Could not insert file [%s]." % (filename))
+            self.__log.exception("Could not insert file [%s]." % (filename))
             raise
 
         try:
             normalized_entry = NormalEntry('insert_entry', result)
         except:
-            logging.exception("Could not normalize created entry.")
+            self.__log.exception("Could not normalize created entry.")
             raise
             
-        logging.info("New entry created with ID [%s]." % (normalized_entry.id))
+        self.__log.info("New entry created with ID [%s]." % (normalized_entry.id))
 
         return normalized_entry
 
     def truncate_entry(self, normalized_entry):
 
-        logging.info("Truncating entry [%s]." % (normalized_entry.id))
+        self.__log.info("Truncating entry [%s]." % (normalized_entry.id))
 
         try:
             self.update_entry(normalized_entry, data_filepath='/dev/null')
         except:
-            logging.exception("Could not truncate entry with ID [%s]." % (normalized_enty.id))
+            self.__log.exception("Could not truncate entry with ID [%s]." % (normalized_enty.id))
             raise
 
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
@@ -851,14 +870,14 @@ class _GdriveManager(object):
         if not mime_type:
             mime_type = normalized_entry.mime_type
 
-        logging.info("Updating file with filename [%s] under "
+        self.__log.info("Updating file with filename [%s] under "
                      "parent(s) [%s].  UPDATE-ID= [%s]" % 
                      (filename, ', '.join(parents), normalized_entry.id))
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (update_entry).")
             raise
 
@@ -879,17 +898,17 @@ class _GdriveManager(object):
         try:
             result = client.files().update(**args).execute()
         except:
-            logging.exception("Could not send update for file [%s]." % 
+            self.__log.exception("Could not send update for file [%s]." % 
                               (filename))
             raise
 
         try:
             normalized_entry = NormalEntry('update_entry', result)
         except:
-            logging.exception("Could not normalize updated entry.")
+            self.__log.exception("Could not normalize updated entry.")
             raise
             
-        logging.info("Entry with ID [%s] updated." % (normalized_entry.id))
+        self.__log.info("Entry with ID [%s] updated." % (normalized_entry.id))
 
         return normalized_entry
 
@@ -908,7 +927,7 @@ class _GdriveManager(object):
         # If no data and no mime-type was given, default it.
         if mime_type == None:
             mime_type = Conf.get('file_default_mime_type')
-            logging.debug("No mime-type was presented for file create/update. "
+            self.__log.debug("No mime-type was presented for file create/update. "
                           "Defaulting to [%s]." % (mime_type))
 
         return self.__insert_entry(filename, mime_type, data_filepath, **kwargs)
@@ -922,19 +941,19 @@ class _GdriveManager(object):
         # If no data and no mime-type was given, default it.
         if mime_type == None:
             mime_type = Conf.get('file_default_mime_type')
-            logging.debug("No mime-type was presented for file create/update. "
+            self.__log.debug("No mime-type was presented for file create/update. "
                           "Defaulting to [%s]." % (mime_type))
 
         return self.__insert_entry(filename=filename, data_filepath=data_filepath, mime_type=mime_type, **kwargs)
 
     def remove_entry(self, normalized_entry):
 
-        logging.info("Removing entry with ID [%s]." % (normalized_entry.id))
+        self.__log.info("Removing entry with ID [%s]." % (normalized_entry.id))
 
         try:
             client = self.get_client()
         except:
-            logging.exception("There was an error while acquiring the Google "
+            self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (remove_entry).")
             raise
 
@@ -947,11 +966,11 @@ class _GdriveManager(object):
                str(e).find('File not found') != -1:
                 raise NameError(normalized_entry.id)
 
-            logging.exception("Could not send delete for entry with ID [%s]." %
+            self.__log.exception("Could not send delete for entry with ID [%s]." %
                               (normalized_entry.id))
             raise
 
-        logging.info("Entry deleted successfully.")
+        self.__log.info("Entry deleted successfully.")
 
 class _GoogleProxy(object):
     """A proxy class that invokes the specified Google Drive call. It will 
@@ -960,20 +979,23 @@ class _GoogleProxy(object):
     only external logic should invoke us.
     """
     
+    __log = None
+    
     authorize       = None
     gdrive_wrapper  = None
     
     def __init__(self):
+        self.__log = logging.getLogger().getChild('GoogleProxy')
         self.authorize      = get_auth()
         self.gdrive_wrapper = _GdriveManager()
 
     def __getattr__(self, action):
-        logging.info("Proxied action [%s] requested." % (action))
+        self.__log.info("Proxied action [%s] requested." % (action))
     
         try:
             method = getattr(self.gdrive_wrapper, action)
         except (AttributeError):
-            logging.exception("Action [%s] can not be proxied to Drive. "
+            self.__log.exception("Action [%s] can not be proxied to Drive. "
                               "Action is not valid." % (action))
             raise
 
@@ -983,47 +1005,47 @@ class _GoogleProxy(object):
             # authorization problem), fall through and attempt to fix it. Allow 
             # any other error to bubble up.
             
-            logging.debug("Attempting to invoke method for action [%s]." % 
+            self.__log.debug("Attempting to invoke method for action [%s]." % 
                           (action))
                 
             try:
                 return method(**kwargs)
             except (AuthorizationFaultError):
                 if not auto_refresh:
-                    logging.exception("There was an authorization fault under "
+                    self.__log.exception("There was an authorization fault under "
                                       "proxied action [%s], and we were told "
                                       "to NOT auto-refresh." % (action))
                     raise
             except (NameError):
                 raise
             except:
-                logging.exception("There was an unhandled exception during the"
+                self.__log.exception("There was an unhandled exception during the"
                                   " execution of the Drive logic for action "
                                   "[%s]." % (action))
                 raise
                 
             # We had a resolvable authorization problem.
 
-            logging.info("There was an authorization fault under action [%s]. "
+            self.__log.info("There was an authorization fault under action [%s]. "
                          "Attempting refresh." % (action))
             
             try:
                 authorize = get_auth()
                 authorize.check_credential_state()
             except:
-                logging.exception("There was an error while trying to fix an "
+                self.__log.exception("There was an error while trying to fix an "
                                   "authorization fault.")
                 raise
 
             # Re-attempt the action.
 
-            logging.info("Refresh seemed successful. Reattempting action "
+            self.__log.info("Refresh seemed successful. Reattempting action "
                          "[%s]." % (action))
             
             try:
                 return method(**kwargs)
             except:
-                logging.exception("There was an unhandled exception during "
+                self.__log.exception("There was an unhandled exception during "
                                   "the execution of the Drive logic for action"
                                   " [%s], and refreshing either didn't help it"
                                   " or wasn't sufficient." % (action))

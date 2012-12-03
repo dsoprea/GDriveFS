@@ -20,29 +20,32 @@ def _sched_check_changes():
     Timers.get_instance().register_timer('change', t)
 
 class _ChangeManager(object):
+    __log = None
     at_change_id = None
 
     def __init__(self):
+        self.__log = logging.getLogger().getChild('ChangeMan')
+
         try:
             self.at_change_id = AccountInfo.get_instance().largest_change_id
         except:
-            logging.exception("Could not get largest change-ID.")
+            self.__log.exception("Could not get largest change-ID.")
             raise
 
-        logging.info("Latest change-ID at startup is (%d)." % 
+        self.__log.info("Latest change-ID at startup is (%d)." % 
                      (self.at_change_id))
 
     def mount_init(self):
         """Called when filesystem is first mounted."""
 
-        logging.debug("Change init.")
+        self.__log.debug("Change init.")
 
         _sched_check_changes()
 
     def mount_destroy(self):
         """Called when the filesystem is unmounted."""
 
-        logging.debug("Change destroy.")
+        self.__log.debug("Change destroy.")
 
     def process_updates(self):
         """Process any changes to our files. Return True if everything is up to
@@ -54,32 +57,32 @@ class _ChangeManager(object):
         try:
             result = drive_proxy('list_changes', start_change_id=start_at_id)
         except:
-            logging.exception("Could not retrieve updates. Skipped.")
+            self.__log.exception("Could not retrieve updates. Skipped.")
             return True
 
         (largest_change_id, next_page_token, changes) = result
 
-        logging.debug("The latest reported change-ID is (%d) and we're "
+        self.__log.debug("The latest reported change-ID is (%d) and we're "
                       "currently at change-ID (%d)." % (largest_change_id, 
                                                         self.at_change_id))
 
         if largest_change_id == self.at_change_id:
-            logging.debug("No entries have changed.")
+            self.__log.debug("No entries have changed.")
             return True
 
-        logging.info("(%d) changes will now be applied." % (len(changes)))
+        self.__log.info("(%d) changes will now be applied." % (len(changes)))
 
         for change_id, change_tuple in changes.iteritems():
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
-            logging.info("Change with ID (%d) will now be applied." %
+            self.__log.info("Change with ID (%d) will now be applied." %
                          (change_id))
 
             try:
                 self.__apply_change(change_id, change_tuple)
             except:
-                logging.exception("There was a problem while processing change"
+                self.__log.exception("There was a problem while processing change"
                                   " with ID (%d). No more changes will be "
                                   "applied." % (change_id))
                 return False
@@ -101,23 +104,23 @@ class _ChangeManager(object):
         
         is_visible = entry.is_visible if entry else None
 
-        logging.info("Applying change with change-ID (%d), entry-ID [%s], and "
+        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], and "
                      "is-visible of [%s]" % (change_id, entry_id, is_visible))
 
         # First, remove any current knowledge from the system.
 
-        logging.debug("Removing all trace of entry with ID [%s]." % (entry_id))
+        self.__log.debug("Removing all trace of entry with ID [%s]." % (entry_id))
 
         try:
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
-            logging.exception("There was a problem remove entry with ID [%s] "
+            self.__log.exception("There was a problem remove entry with ID [%s] "
                               "from the caches." % (entry_id))
             raise
 
         # If it wasn't deleted, add it back.
 
-        logging.debug("Registering changed entry with ID [%s]." % (entry_id))
+        self.__log.debug("Registering changed entry with ID [%s]." % (entry_id))
 
         if is_visible:
             path_relations = PathRelations.get_instance()
@@ -125,7 +128,7 @@ class _ChangeManager(object):
             try:
                 path_relations.register_entry(entry)
             except:
-                logging.exception("Could not register changed entry with ID "
+                self.__log.exception("Could not register changed entry with ID "
                                   "[%s] with path-relations cache." % 
                                   (entry_id))
                 raise

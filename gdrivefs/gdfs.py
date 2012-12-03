@@ -12,7 +12,8 @@ import resource
 from errno          import *
 from time           import mktime, time
 from argparse       import ArgumentParser
-from fuse           import FUSE, Operations, FuseOSError, c_statvfs #, LoggingMixIn
+from fuse           import FUSE, Operations, FuseOSError, c_statvfs, \
+                           fuse_get_context #, LoggingMixIn
 from threading      import Lock, RLock
 from collections    import deque
 from sys            import argv, exit, excepthook
@@ -112,7 +113,7 @@ def _split_path(filepath):
     try:
         parent_clause = path_relations.get_clause_from_path(path)
     except:
-        logging.exception("Could not get clause from path [%s]." % (path))
+        logger.exception("Could not get clause from path [%s]." % (path))
         raise _NotFoundError()
 
     if not parent_clause:
@@ -140,11 +141,13 @@ def _split_path(filepath):
             just_info)
 
 class _DisplacedFile(object):
+    __log = None
     normalized_entry = None
-
     file_size = 1000
 
     def __init__(self, normalized_entry):
+        self.__log = logging.getLogger().getChild('DisFile')
+    
         if normalized_entry.__class__ != NormalEntry:
             raise Exception("_DisplacedFile can not wrap a non-NormalEntry object.")
 
@@ -164,14 +167,14 @@ class _DisplacedFile(object):
                                      normalized_entry=self.normalized_entry,
                                      mime_type=mime_type)
         except:
-            logging.exception("Could not localize displaced file with entry "
+            self.__log.exception("Could not localize displaced file with entry "
                               "having ID [%s]." % (self.normalized_entry.id))
             raise
 
         try:
             return self.get_stub(mime_type, length, temp_file_path)
         except:
-            logging.exception("Could not build stub.")
+            self.__log.exception("Could not build stub.")
             raise
 
     def get_stub(self, mime_type=None, file_size=0, file_path=None):
@@ -200,11 +203,12 @@ class _DisplacedFile(object):
 
             return ("%s%s\n" % (result, padding))
         except:
-            logging.exception("Could not serialize stub-data.")
+            self.__log.exception("Could not serialize stub-data.")
             raise
 
 
 class _OpenedManager(object):
+    __log = None
     opened = { }
     opened_lock = RLock()
     fh_counter = 1
@@ -216,11 +220,14 @@ class _OpenedManager(object):
                 try:
                     _OpenedManager.instance = _OpenedManager()
                 except:
-                    logging.exception("Could not create singleton instance of "
+                    self.__log.exception("Could not create singleton instance of "
                                       "_OpenedManager.")
                     raise
 
             return _OpenedManager.instance
+
+    def __init__(self):
+        self.__log = logging.getLogger().getChild('OpenMan')
 
     def __get_max_handles(self):
 
@@ -249,7 +256,7 @@ class _OpenedManager(object):
                 
         message = "Could not allocate new file handle. Safety breach."
 
-        logging.error(message)
+        self.__log.error(message)
         raise Exception(message)
 
     def add(self, opened_file, fh=None):
@@ -258,7 +265,7 @@ class _OpenedManager(object):
         if opened_file.__class__.__name__ != '_OpenedFile':
             message = "Can only register an _OpenedFile as an opened-file."
 
-            logging.error(message)
+            self.__log.error(message)
             raise Exception(message)
 
         with self.opened_lock:
@@ -266,7 +273,7 @@ class _OpenedManager(object):
                 try:
                     fh = self.get_new_handle()
                 except:
-                    logging.exception("Could not acquire handle for "
+                    self.__log.exception("Could not acquire handle for "
                                       "_OpenedFile to be registered.")
                     raise
 
@@ -274,7 +281,7 @@ class _OpenedManager(object):
                 message = ("Opened-file with file-handle (%d) has already been"
                            " registered." % (opened_file.fh))
 
-                logging.error(message)
+                self.__log.error(message)
                 raise Exception(message)
 
             self.opened[fh] = opened_file
@@ -285,13 +292,13 @@ class _OpenedManager(object):
         """Remove an opened-file, by the handle."""
 
         with self.opened_lock:
-            logging.debug("Closing opened-file with handle (%d)." % (fh))
+            self.__log.debug("Closing opened-file with handle (%d)." % (fh))
 
             if fh not in self.opened:
                 message = ("Opened-file with file-handle (%d) is not "
                           "registered (remove_by_fh)." % (fh))
 
-                logging.error(message)
+                self.__log.error(message)
                 raise Exception(message)
 
             del self.opened[fh]
@@ -304,7 +311,7 @@ class _OpenedManager(object):
                 message = ("Opened-file with file-handle (%d) is not "
                           "registered (get_by_fh)." % (fh))
 
-                logging.error(message)
+                self.__log.error(message)
                 raise Exception(message)
 
             return self.opened[fh]
@@ -314,12 +321,30 @@ def _annotate(argument_names=[], excluded=[], prefix=''):
     information in the logs.
     """
 
+    try:
+        log = _annotate.log
+    except:
+        log = logging.getLogger().getChild('VfsAction')
+        _annotate.log = log
+
+    # We use a serial-number so that we can eyeball corresponding pairs of
+    # beginning and ending statements in the logs.
+    sn = getattr(_annotate, 'sn', 0) + 1
+    _annotate.sn = sn
+
     prefix = ("%s: " % (prefix)) if prefix else ''
 
     def real_decorator(f):
         def wrapper(*args, **kwargs):
         
-            logging.info("%s>>>>>>>>>> %s >>>>>>>>>>" % (prefix, f.__name__))
+            try:
+                pid = fuse_get_context()[2]
+            except:
+                # Just in case.
+                pid = 0
+        
+            log.info("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)" % 
+                     (prefix, f.__name__, sn, pid))
         
             if args or kwargs:
                 condensed = {}
@@ -341,10 +366,18 @@ def _annotate(argument_names=[], excluded=[], prefix=''):
                                                      if k not in excluded]
                 values_string = '  '.join(values_nice)
 
-                logging.debug("DATA: %s" % (values_string))
+                log.debug("DATA: %s" % (values_string))
 
-            result = f(*args, **kwargs)
-            logging.info("%s<<<<<<<<<< %s" % (prefix, f.__name__))
+            suffix = ''
+
+            try:
+                result = f(*args, **kwargs)
+            except Exception as e:
+                suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
+                raise
+            finally:
+                log.info("%s<<<<<<<<<< %s(%d) (%d)%s" % 
+                         (prefix, f.__name__, sn, pid, suffix))
             
             return result
         return wrapper
@@ -355,6 +388,8 @@ _OpenedManager.singleton_lock = Lock()
 
 class _OpenedFile(object):
     """This class describes a single open file, and manages changes."""
+
+    __log = None
 
     entry_id        = None
     path            = None
@@ -379,7 +414,7 @@ class _OpenedFile(object):
         the information.
         """
 
-        logging.debug("Creating _OpenedFile for [%s]." % (filepath))
+        self.__log.debug("Creating _OpenedFile for [%s]." % (filepath))
 
         # Process/distill the requested file-path.
 
@@ -387,10 +422,10 @@ class _OpenedFile(object):
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
              just_info) = _split_path(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (create).")
+            self.__log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not split path [%s] (create)." % 
+            self.__log.exception("Could not split path [%s] (create)." % 
                               (filepath))
             raise
 
@@ -401,12 +436,12 @@ class _OpenedFile(object):
         try:
             entry_clause = path_relations.get_clause_from_path(filepath)
         except:
-            logging.exception("Could not try to get clause from path [%s] "
+            self.__log.exception("Could not try to get clause from path [%s] "
                               "(_OpenedFile)." % (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.debug("Path [%s] does not exist for stat()." % (path))
+            self.__log.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
         # Build the object.
@@ -414,13 +449,15 @@ class _OpenedFile(object):
         try:
             return _OpenedFile(entry_clause[CLAUSE_ID], path, filename, is_hidden, mime_type)
         except:
-            logging.exception("Could not create _OpenedFile for requested file"
+            self.__log.exception("Could not create _OpenedFile for requested file"
                               " [%s]." % (filepath))
             raise
 
     def __init__(self, entry_id, path, filename, is_hidden, mime_type):
 
-        logging.info("Opened-file object created for entry-ID [%s] and path "
+        self.__log = logging.getLogger().getChild('OpenFile')
+
+        self.__log.info("Opened-file object created for entry-ID [%s] and path "
                      "(%s)." % (entry_id, path))
 
         self.entry_id   = entry_id
@@ -435,13 +472,13 @@ class _OpenedFile(object):
         system. Grab it and throw an error if it's not available.
         """
 
-        logging.debug("Retrieving entry for opened-file with entry-ID [%s]." % 
+        self.__log.debug("Retrieving entry for opened-file with entry-ID [%s]." % 
                       (self.entry_id))
 
         try:
             return self.cache.get(self.entry_id)
         except:
-            logging.exception("Could not retrieve entry with ID [%s] for the "
+            self.__log.exception("Could not retrieve entry with ID [%s] for the "
                               "opened-file." % (self.entry_id))
             raise 
 
@@ -449,12 +486,12 @@ class _OpenedFile(object):
     def __load_base_from_remote(self):
         """Download the data for the file that we represent."""
 
-        logging.debug("Retrieving entry for load_base_from_remote.")
+        self.__log.debug("Retrieving entry for load_base_from_remote.")
 
         try:
             entry = self.__get_entry_or_raise()
         except:
-            logging.exception("Could not get entry with ID [%s] for "
+            self.__log.exception("Could not get entry with ID [%s] for "
                               "write-flush." % (self.entry_id))
             raise
 
@@ -462,7 +499,7 @@ class _OpenedFile(object):
             # Get the current version of the write-cache file, or note that we 
             # don't have it.
 
-            logging.debug("Checking state of current write-cache file.")
+            self.__log.debug("Checking state of current write-cache file.")
 
             update_cached_file = True
 # TODO: Deprecate this. .buffer is only referenced from read().
@@ -470,7 +507,8 @@ class _OpenedFile(object):
                 try:
                     stat = os.stat(self.temp_file_path)
                 except:
-                    logging.debug("Write-cache file does not seem to exist.")
+                    self.__log.debug("Write-cache file [%s] does not seem to"
+                                  "exist." % (self.temp_file_path))
                 else:
                     # Our buffer always matches the write-cache file, and 
                     # because our "entry" object is a reference to our cache 
@@ -485,11 +523,11 @@ class _OpenedFile(object):
             # someone else.
 
             if not update_cached_file:
-                logging.debug("Write-cache file [%s] is already up-to-date." %
+                self.__log.debug("Write-cache file [%s] is already up-to-date." %
                               (self.temp_file_path))
                 return
 
-            logging.info("Updating write-cache file for entry with ID [%s] and"
+            self.__log.info("Updating write-cache file for entry with ID [%s] and"
                          " mime-type [%s]." % (entry.id, self.mime_type))
 
             # The output path is predictable. It shouldn't change.
@@ -505,7 +543,7 @@ class _OpenedFile(object):
             except (ExportFormatError):
                 raise FuseOSError(ENOENT)
             except:
-                logging.exception("Could not localize file with entry having "
+                self.__log.exception("Could not localize file with entry having "
                                   "ID [%s]." % (self.entry_id))
                 raise
 
@@ -514,7 +552,7 @@ class _OpenedFile(object):
 
             # Load our buffer.
 
-            logging.debug("Reading write-cache file.")
+            self.__log.debug("Reading write-cache file.")
 
             with open(self.temp_file_path, 'rb') as f:
                 # Read the locally cached file in.
@@ -522,7 +560,7 @@ class _OpenedFile(object):
                 try:
                     self.buffer = f.read()
                 except:
-                    logging.exception("Could not read current cached file into buffer.")
+                    self.__log.exception("Could not read current cached file into buffer.")
                     raise
 
     @_annotate(['offset', 'data'], ['data'], 'OF')
@@ -535,7 +573,7 @@ class _OpenedFile(object):
         with self.update_lock:
             self.updates.append((offset, data))
 
-        logging.debug("(%d) updates have been queued." % (len(self.updates)))
+        self.__log.debug("(%d) updates have been queued." % (len(self.updates)))
 
     @_annotate(prefix='OF')
     def flush(self):
@@ -543,34 +581,34 @@ class _OpenedFile(object):
 
         #print("Flushing (%d) updates." % (len(self.updates)))
 
-        logging.debug("Retrieving entry for write-flush.")
+        self.__log.debug("Retrieving entry for write-flush.")
 
         try:
             entry = self.__get_entry_or_raise()
         except:
-            logging.exception("Could not get entry with ID [%s] for "
+            self.__log.exception("Could not get entry with ID [%s] for "
                               "write-flush." % (self.entry_id))
             raise
     
         with self.update_lock:
             if not self.updates:
-                logging.debug("Flush will be skipped due to empty write-"
+                self.__log.debug("Flush will be skipped due to empty write-"
                               "queue.")
                 return
 # We no longer apply the updates to the existing data. We suspect that we're
 # always fed complete data, or we'd never be able to determine truncation.
-#            logging.debug("Checking write-cache file (flush).")
+#            self.__log.debug("Checking write-cache file (flush).")
 #
 #            try:
 #                self.__load_base_from_remote()
 #            except:
-#                logging.exception("Could not load write-cache file [%s]." % 
+#                self.__log.exception("Could not load write-cache file [%s]." % 
 #                                  (self.temp_file_path))
 #                raise
 
             # Apply updates to the data.
 
-            logging.debug("Applying (%d) updates." % (len(self.updates)))
+            self.__log.debug("Applying (%d) updates." % (len(self.updates)))
 
             i = 0
             buffer = ''
@@ -578,7 +616,7 @@ class _OpenedFile(object):
 #                print("Applying update (%d)." % (i))
             
                 (offset, data) = self.updates.popleft()
-                logging.debug("Applying update (%d) at offset (%d) with data-"
+                self.__log.debug("Applying update (%d) at offset (%d) with data-"
                               "length (%d)." % (i, offset, len(data)))
 
                 right_fragment_start = offset + len(data)
@@ -592,7 +630,7 @@ class _OpenedFile(object):
 
             # Write back out to the temporary file.
 
-            logging.debug("Writing buffer to temporary file.")
+            self.__log.debug("Writing buffer to temporary file.")
 # TODO: Make sure to uncache the temp data if self.temp_file_path is not None.
 
             if self.temp_file_path:
@@ -607,7 +645,7 @@ class _OpenedFile(object):
 
             # Push to GD.
 
-            logging.debug("Pushing (%d) bytes for entry with ID from [%s] to "
+            self.__log.debug("Pushing (%d) bytes for entry with ID from [%s] to "
                           "GD for file-path [%s]." % (len(buffer), 
                                                       entry.id, 
                                                       write_file_path))
@@ -622,7 +660,7 @@ class _OpenedFile(object):
                                     parents=entry.parents, 
                                     is_hidden=self.is_hidden)
             except:
-                logging.exception("Could not localize displaced file with "
+                self.__log.exception("Could not localize displaced file with "
                                   "entry having ID [%s]." % 
                                   (entry.id))
                 raise
@@ -633,41 +671,41 @@ class _OpenedFile(object):
                 # Update the write-cache file to the official mtime. We won't 
                 # redownload it on the next flush if it wasn't changed, elsewhere.
 
-                logging.debug("Updating local write-cache file to official mtime "
+                self.__log.debug("Updating local write-cache file to official mtime "
                               "[%s]." % (entry.modified_date_epoch))
 
                 try:
                     os.utime(write_file_path, (entry.modified_date_epoch, 
                                                entry.modified_date_epoch))
                 except:
-                    logging.exception("Could not update mtime of write-cache [%s] "
+                    self.__log.exception("Could not update mtime of write-cache [%s] "
                                       "for entry with ID [%s], post-flush." % 
                                       (entry.modified_date_epoch, entry.id))
                     raise
 
         # Immediately update our current cached entry.
 
-        logging.debug("Update successful. Updating local cache.")
+        self.__log.debug("Update successful. Updating local cache.")
 
         path_relations = PathRelations.get_instance()
 
         try:
             path_relations.register_entry(entry)
         except:
-            logging.exception("Could not register updated file in cache.")
+            self.__log.exception("Could not register updated file in cache.")
             raise
 
-        logging.info("Update complete on entry with ID [%s]." % (entry.id))
+        self.__log.info("Update complete on entry with ID [%s]." % (entry.id))
 
     @_annotate(['offset', 'length'], prefix='OF')
     def read(self, offset, length):
         
-        logging.debug("Checking write-cache file (flush).")
+        self.__log.debug("Checking write-cache file (flush).")
 
         try:
             self.__load_base_from_remote()
         except:
-            logging.exception("Could not load write-cache file [%s]." % 
+            self.__log.exception("Could not load write-cache file [%s]." % 
                               (self.temp_file_path))
             raise
 
@@ -680,6 +718,13 @@ class _OpenedFile(object):
 class _GDriveFS(Operations):#LoggingMixIn,
     """The main filesystem class."""
 
+    __log = None
+
+    def __init__(self):
+        Operations.__init__(self)
+
+        self.__log = logging.getLogger().getChild('GD_VFS')
+
     def __register_open_file(self, fh, path, entry_id):
 
         with self.fh_lock:
@@ -691,7 +736,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
             try:
                 file_info = self.open_files[fh]
             except:
-                logging.exception("Could not deregister invalid file-handle "
+                self.__log.exception("Could not deregister invalid file-handle "
                                   "(%d)." % (fh))
                 raise
 
@@ -704,7 +749,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
             try:
                 return self.open_files[fh]
             except:
-                logging.exception("Could not retrieve on invalid file-handle "
+                self.__log.exception("Could not retrieve on invalid file-handle "
                                   "(%d)." % (fh))
                 raise
 
@@ -717,7 +762,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
             (path, extension, just_info, mime_type) = _strip_export_type \
                                                         (raw_path, True)
         except:
-            logging.exception("Could not process export-type directives.")
+            self.__log.exception("Could not process export-type directives.")
             raise FuseOSError(EIO)
 
         path_relations = PathRelations.get_instance()
@@ -725,15 +770,15 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (getattr).")
+            self.__log.exception("Could not process [%s] (getattr).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not try to get clause from path [%s] "
+            self.__log.exception("Could not try to get clause from path [%s] "
                               "(getattr)." % (path))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.debug("Path [%s] does not exist for stat()." % (path))
+            self.__log.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
         effective_permission = 0o444
@@ -772,7 +817,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         # We expect "offset" to always be (0).
         if offset != 0:
-            logging.warning("readdir() has been invoked for path [%s] and non-"
+            self.__log.warning("readdir() has been invoked for path [%s] and non-"
                             "zero offset (%d). This is not allowed." % 
                             (path, offset))
 
@@ -781,27 +826,27 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         path_relations = PathRelations.get_instance()
 
-        logging.debug("Listing files.")
+        self.__log.debug("Listing files.")
 
         try:
             entry_clause = path_relations.get_clause_from_path(path)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (readdir).")
+            self.__log.exception("Could not process [%s] (readdir).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not get clause from path [%s] "
+            self.__log.exception("Could not get clause from path [%s] "
                               "(readdir)." % (path))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.debug("Path [%s] does not exist for readdir()." % (path))
+            self.__log.debug("Path [%s] does not exist for readdir()." % (path))
             raise FuseOSError(ENOENT)
 
         try:
             filenames = path_relations.get_child_filenames_from_entry_id \
                             (entry_clause[3])
         except:
-            logging.exception("Could not render list of filenames under path "
+            self.__log.exception("Could not render list of filenames under path "
                              "[%s]." % (path))
             raise FuseOSError(EIO)
 
@@ -817,42 +862,42 @@ class _GDriveFS(Operations):#LoggingMixIn,
 #        # Fetch the file to a local, temporary file.
 #
 #        if normalized_entry.requires_displaceable or just_info:
-#            logging.info("Doing displaced-file download of entry with ID "
+#            self.__log.info("Doing displaced-file download of entry with ID "
 #                         "[%s]." % (entry_id))
 #
 #            try:
 #                displaced = _DisplacedFile(normalized_entry)
 #            except:
-#                logging.exception("Could not wrap entry in _DisplacedFile.")
+#                self.__log.exception("Could not wrap entry in _DisplacedFile.")
 #                raise
 #
 #            try:
 #                if just_info:
-#                    logging.debug("Info for file was requested, rather than "
+#                    self.__log.debug("Info for file was requested, rather than "
 #                                  "the file itself.")
 #                    return displaced.get_stub(mime_type)
 #                else:
-#                    logging.debug("A displaceable file was requested.")
+#                    self.__log.debug("A displaceable file was requested.")
 #                    return displaced.deposit_file(mime_type)
 #            except:
-#                logging.exception("Could not do displaced-file download.")
+#                self.__log.exception("Could not do displaced-file download.")
 #                raise
 #
 #        else:
-#            logging.info("Downloading entry with ID [%s] for path [%s]." % 
+#            self.__log.info("Downloading entry with ID [%s] for path [%s]." % 
 #                         (entry_id, path))
 
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh)
         except:
-            logging.exception("Could not retrieve _OpenedFile for handle with "
+            self.__log.exception("Could not retrieve _OpenedFile for handle with "
                               "ID (%d) (read)." % (fh))
             raise FuseOSError(EIO)
 
         try:
             return opened_file.read(offset, length)
         except:
-            logging.exception("Could not read data.")
+            self.__log.exception("Could not read data.")
             raise FuseOSError(EIO)
 
     @_annotate(['filepath', 'mode'])
@@ -865,25 +910,25 @@ class _GDriveFS(Operations):#LoggingMixIn,
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
              just_info) = _split_path(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (mkdir).")
+            self.__log.exception("Could not process [%s] (mkdir).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not split path [%s] (mkdir)." % 
+            self.__log.exception("Could not split path [%s] (mkdir)." % 
                               (filepath))
             raise FuseOSError(EIO)
 
-        logging.debug("Creating directory [%s] under [%s]." % (filename, path))
+        self.__log.debug("Creating directory [%s] under [%s]." % (filename, path))
 
         try:
             entry = drive_proxy('create_directory', filename=filename, 
                         parents=[parent_clause[0].id], is_hidden=is_hidden)
         except:
-            logging.exception("Could not create directory with name [%s] and "
+            self.__log.exception("Could not create directory with name [%s] and "
                               "parent with ID [%s]." % (filename, 
                                                         parent_clause[0].id))
             raise FuseOSError(EIO)
 
-        logging.info("Directory [%s] created as ID [%s]." % (filepath, 
+        self.__log.info("Directory [%s] created as ID [%s]." % (filepath, 
                      entry.id))
 
         #parent_clause[4] = False
@@ -893,7 +938,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             path_relations.register_entry(entry)
         except:
-            logging.exception("Could not register new directory in cache.")
+            self.__log.exception("Could not register new directory in cache.")
             raise FuseOSError(EIO)
 
     @_annotate(['filepath', 'mode'])
@@ -905,29 +950,29 @@ class _GDriveFS(Operations):#LoggingMixIn,
         """
 # TODO: Fail if it already exists.
 
-        logging.debug("Splitting file-path [%s] for create." % (filepath))
+        self.__log.debug("Splitting file-path [%s] for create." % (filepath))
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
              just_info) = _split_path(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (create).")
+            self.__log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not split path [%s] (create)." % 
+            self.__log.exception("Could not split path [%s] (create)." % 
                               (filepath))
             raise FuseOSError(EIO)
 
-        logging.debug("Acquiring file-handle.")
+        self.__log.debug("Acquiring file-handle.")
 
         try:
             fh = _OpenedManager.get_instance().get_new_handle()
         except:
-            logging.exception("Could not acquire file-handle for create of "
+            self.__log.exception("Could not acquire file-handle for create of "
                               "[%s]." % (filepath))
             raise FuseOSError(EIO)
 
-        logging.debug("Creating empty file [%s] under parent with ID [%s]." % 
+        self.__log.debug("Creating empty file [%s] under parent with ID [%s]." % 
                       (filename, parent_clause[3]))
 
         try:
@@ -936,40 +981,40 @@ class _GDriveFS(Operations):#LoggingMixIn,
                                 parents=[parent_clause[3]], 
                                 is_hidden=is_hidden)
         except:
-            logging.exception("Could not create empty file [%s] under parent "
+            self.__log.exception("Could not create empty file [%s] under parent "
                               "with ID [%s]." % (filename, parent_clause[3]))
             raise FuseOSError(EIO)
 
-        logging.debug("Registering created file in cache.")
+        self.__log.debug("Registering created file in cache.")
 
         path_relations = PathRelations.get_instance()
 
         try:
             path_relations.register_entry(entry)
         except:
-            logging.exception("Could not register created file in cache.")
+            self.__log.exception("Could not register created file in cache.")
             raise FuseOSError(EIO)
 
-        logging.debug("Building _OpenedFile object for created file.")
+        self.__log.debug("Building _OpenedFile object for created file.")
 
         try:
             opened_file = _OpenedFile(entry.id, path, filename, is_hidden, mime_type)
         except:
-            logging.exception("Could not create _OpenedFile object for "
+            self.__log.exception("Could not create _OpenedFile object for "
                               "created file.")
             raise FuseOSError(EIO)
 
-        logging.debug("Registering _OpenedFile object with handle (%d), path "
+        self.__log.debug("Registering _OpenedFile object with handle (%d), path "
                       "[%s], and ID [%s]." % (fh, filepath, entry.id))
 
         try:
             _OpenedManager.get_instance().add(opened_file, fh=fh)
         except:
-            logging.exception("Could not register _OpenedFile for created "
+            self.__log.exception("Could not register _OpenedFile for created "
                               "file.")
             raise FuseOSError(EIO)
 
-        logging.debug("File created, opened, and completely registered.")
+        self.__log.debug("File created, opened, and completely registered.")
 
         return fh
 
@@ -977,29 +1022,29 @@ class _GDriveFS(Operations):#LoggingMixIn,
     def open(self, filepath, flags):
 # TODO: Fail if does not exist and the mode is read only.
 
-        logging.debug("Building _OpenedFile object for file being opened.")
+        self.__log.debug("Building _OpenedFile object for file being opened.")
 
         try:
             opened_file = _OpenedFile.create_for_requested_filepath(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (open).")
+            self.__log.exception("Could not process [%s] (open).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not create _OpenedFile object for "
+            self.__log.exception("Could not create _OpenedFile object for "
                               "opened filepath.")
             raise FuseOSError(EIO)
 
-        logging.debug("_OpenedFile object with path [%s] and ID [%s]." % 
+        self.__log.debug("_OpenedFile object with path [%s] and ID [%s]." % 
                       (filepath, opened_file.entry_id))
 
         try:
             fh = _OpenedManager.get_instance().add(opened_file)
         except:
-            logging.exception("Could not register _OpenedFile for opened "
+            self.__log.exception("Could not register _OpenedFile for opened "
                               "file.")
             raise FuseOSError(EIO)
 
-        logging.debug("File opened.")
+        self.__log.debug("File opened.")
 
         return fh
 
@@ -1010,7 +1055,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             _OpenedManager.get_instance().remove_by_fh(fh)
         except:
-            logging.exception("Could not remove _OpenedFile for handle with ID"
+            self.__log.exception("Could not remove _OpenedFile for handle with ID"
                               "(%d) (release)." % (fh))
             raise FuseOSError(EIO)
 
@@ -1020,13 +1065,13 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh=fh)
         except:
-            logging.exception("Could not get _OpenedFile (write).")
+            self.__log.exception("Could not get _OpenedFile (write).")
             raise FuseOSError(EIO)
 
         try:
             opened_file.add_update(offset, data)
         except:
-            logging.exception("Could not queue file-update.")
+            self.__log.exception("Could not queue file-update.")
             raise FuseOSError(EIO)
 
         return len(data)
@@ -1037,13 +1082,13 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh=fh)
         except:
-            logging.exception("Could not get _OpenedFile (flush).")
+            self.__log.exception("Could not get _OpenedFile (flush).")
             raise FuseOSError(EIO)
 
         try:
             opened_file.flush()
         except:
-            logging.exception("Could not flush local updates.")
+            self.__log.exception("Could not flush local updates.")
             raise FuseOSError(EIO)
 
     @_annotate(['filepath'])
@@ -1052,20 +1097,20 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         path_relations = PathRelations.get_instance()
 
-        logging.debug("Removing directory [%s]." % (filepath))
+        self.__log.debug("Removing directory [%s]." % (filepath))
 
         try:
             entry_clause = path_relations.get_clause_from_path(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (rmdir).")
+            self.__log.exception("Could not process [%s] (rmdir).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not get clause from file-path [%s] "
+            self.__log.exception("Could not get clause from file-path [%s] "
                               "(rmdir)." % (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.error("Path [%s] does not exist for rmdir()." % (filepath))
+            self.__log.error("Path [%s] does not exist for rmdir()." % (filepath))
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
@@ -1073,29 +1118,29 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         # Check if not a directory.
 
-        logging.debug("Ensuring it is a directory.")
+        self.__log.debug("Ensuring it is a directory.")
 
         if not normalized_entry.is_directory:
-            logging.error("Can not rmdir() non-directory [%s] with ID [%s].", filepath, entry_id)
+            self.__log.error("Can not rmdir() non-directory [%s] with ID [%s].", filepath, entry_id)
             raise FuseOSError(ENOTDIR)
 
         # Ensure the folder is empty.
 
-        logging.debug("Checking if empty.")
+        self.__log.debug("Checking if empty.")
 
         try:
             found = drive_proxy('get_children_under_parent_id', 
                                 parent_id=entry_id,
                                 max_results=1)
         except:
-            logging.exception("Could not determine if directory to be removed "
+            self.__log.exception("Could not determine if directory to be removed "
                               "has children." % (entry_id))
             raise FuseOSError(EIO)
 
         if found:
             raise FuseOSError(ENOTEMPTY)
 
-        logging.debug("Doing remove of directory [%s] with ID [%s]." % 
+        self.__log.debug("Doing remove of directory [%s] with ID [%s]." % 
                       (filepath, entry_id))
 
         try:
@@ -1103,11 +1148,11 @@ class _GDriveFS(Operations):#LoggingMixIn,
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not remove directory [%s] with ID [%s]." % 
+            self.__log.exception("Could not remove directory [%s] with ID [%s]." % 
                               (filepath, entry_id))
             raise FuseOSError(EIO)
 # TODO: Remove from cache.
-        logging.debug("Directory removal complete.")
+        self.__log.debug("Directory removal complete.")
 
     # Not supported. Google Drive doesn't fit within this model.
     @_annotate(['filepath', 'mode'])
@@ -1151,7 +1196,7 @@ class _GDriveFS(Operations):#LoggingMixIn,
             used = account_info.quota_bytes_used / block_size
             free = total - used
         except:
-            logging.exception("Could not get account-info.")
+            self.__log.exception("Could not get account-info.")
             raise FuseOSError(EIO)
 
         return {
@@ -1196,20 +1241,20 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         path_relations = PathRelations.get_instance()
 
-        logging.debug("Removing file [%s]." % (filepath))
+        self.__log.debug("Removing file [%s]." % (filepath))
 
         try:
             entry_clause = path_relations.get_clause_from_path(filepath)
         except _NotFoundError:
-            logging.exception("Could not process [%s] (unlink).")
+            self.__log.exception("Could not process [%s] (unlink).")
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not get clause from file-path [%s] "
+            self.__log.exception("Could not get clause from file-path [%s] "
                               "(unlink)." % (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            logging.error("Path [%s] does not exist for unlink()." % (filepath))
+            self.__log.error("Path [%s] does not exist for unlink()." % (filepath))
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
@@ -1217,13 +1262,13 @@ class _GDriveFS(Operations):#LoggingMixIn,
 
         # Check if a directory.
 
-        logging.debug("Ensuring it is a file (not a directory).")
+        self.__log.debug("Ensuring it is a file (not a directory).")
 
         if normalized_entry.is_directory:
-            logging.error("Can not unlink() directory [%s] with ID [%s]. Must be file.", filepath, entry_id)
+            self.__log.error("Can not unlink() directory [%s] with ID [%s]. Must be file.", filepath, entry_id)
             raise FuseOSError(errno.EISDIR)
 
-        logging.debug("Doing remove of directory [%s] with ID [%s]." % 
+        self.__log.debug("Doing remove of directory [%s] with ID [%s]." % 
                       (filepath, entry_id))
 
         try:
@@ -1231,13 +1276,13 @@ class _GDriveFS(Operations):#LoggingMixIn,
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
-            logging.exception("Could not remove file [%s] with ID [%s]." % 
+            self.__log.exception("Could not remove file [%s] with ID [%s]." % 
                               (filepath, entry_id))
             raise FuseOSError(EIO)
 
 # TODO: Remove from cache.
 
-        logging.debug("File removal complete.")
+        self.__log.debug("File removal complete.")
 
 # TODO: Finish this.
     @_annotate(['path', 'times'])

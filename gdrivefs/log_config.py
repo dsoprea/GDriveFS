@@ -3,13 +3,13 @@ import logging.handlers
 
 from syslog import LOG_LOCAL0
 
-default_logger = logging.getLogger()
-default_logger.setLevel(logging.DEBUG)
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
 
 log_syslog = logging.handlers.SysLogHandler('/dev/log', facility=LOG_LOCAL0)
 
-log_format = 'GD: %(levelname)s %(message)s'
+log_format = 'GD: %(name)-12s %(levelname)-7s %(message)s'
 log_syslog.setFormatter(logging.Formatter(log_format))
 
-default_logger.addHandler(log_syslog)
+root_logger.addHandler(log_syslog)
 
