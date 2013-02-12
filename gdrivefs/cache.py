@@ -44,7 +44,8 @@ class _CacheRegistry(object):
 
     def set(self, resource_name, key, value):
 
-        self.__log.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, type(value)))
+        self.__log.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, 
+                                                          type(value)))
 
         with _CacheRegistry.rlock:
             try:
@@ -58,8 +59,8 @@ class _CacheRegistry(object):
 
     def remove(self, resource_name, key, cleanup_pretrigger=None):
 
-        self.__log.debug("CacheRegistry.remove(%s,%s,%s)" % (resource_name, key, 
-                      type(cleanup_pretrigger)))
+        self.__log.debug("CacheRegistry.remove(%s,%s,%s)" % 
+                         (resource_name, key, type(cleanup_pretrigger)))
 
         with _CacheRegistry.rlock:
             try:
@@ -78,8 +79,8 @@ class _CacheRegistry(object):
                                 if cleanup_pretrigger == None 
                                 else '<given>')
 
-        self.__log.debug("CacheRegistry.get(%s,%s,%s,%s)" % (resource_name, key, 
-                      max_age, trigger_given_phrase))
+        self.__log.debug("CacheRegistry.get(%s,%s,%s,%s)" % 
+                         (resource_name, key, max_age, trigger_given_phrase))
 
         with _CacheRegistry.rlock:
             try:
@@ -87,7 +88,8 @@ class _CacheRegistry(object):
             except:
                 raise CacheFault("NonExist")
 
-            if max_age != None and (datetime.now() - timestamp).seconds > max_age:
+            if max_age != None and \
+               (datetime.now() - timestamp).seconds > max_age:
                 self.__cleanup_entry(resource_name, key, False, 
                                      cleanup_pretrigger=cleanup_pretrigger)
                 raise CacheFault("Stale")
@@ -107,7 +109,8 @@ class _CacheRegistry(object):
                                   (resource_name))
                 raise
 
-    def exists(self, resource_name, key, max_age, cleanup_pretrigger=None, no_fault_check=False):
+    def exists(self, resource_name, key, max_age, cleanup_pretrigger=None, 
+               no_fault_check=False):
 
         self.__log.debug("CacheRegistry.exists(%s,%s,%s,%s)" % (resource_name, 
                       key, max_age, cleanup_pretrigger))
@@ -133,12 +136,12 @@ class _CacheRegistry(object):
     def __cleanup_entry(self, resource_name, key, force, 
                         cleanup_pretrigger=None):
 
-        self.__log.debug("Doing clean-up for resource_name [%s] and key [%s]." % 
-                      (resource_name, key))
+        self.__log.debug("Doing clean-up for resource_name [%s] and key "
+                         "[%s]." % (resource_name, key))
 
         if cleanup_pretrigger != None:
-            self.__log.debug("Running pre-cleanup trigger for resource_name [%s] "
-                          "and key [%s]." % (resource_name, key))
+            self.__log.debug("Running pre-cleanup trigger for resource_name "
+                             "[%s] and key [%s]." % (resource_name, key))
 
             try:
                 cleanup_pretrigger(resource_name, key, force)
@@ -203,16 +206,16 @@ class _CacheAgent(object):
         try:
             num_values = self.registry.count(self.resource_name)
         except:
-            self.__log.exception("Could not get count of values for resource with"
-                              " name [%s]." % (self.resource_name))
+            self.__log.exception("Could not get count of values for resource "
+                                 "with name [%s]." % (self.resource_name))
             raise
 
         try:
             self.report.set_values(self.report_source_name, 'count', 
                                    num_values)
         except:
-            self.__log.exception("Cache could not post status for resource with "
-                              "name [%s]." % (self.resource_name))
+            self.__log.exception("Cache could not post status for resource "
+                                 "with name [%s]." % (self.resource_name))
             raise
 
         status_post_interval_s = Conf.get('cache_status_post_frequency_s')
@@ -232,8 +235,8 @@ class _CacheAgent(object):
         try:
             cache_dict = self.registry.list_raw(self.resource_name)
         except:
-            self.__log.exception("Could not do clean-up check with resource-name "
-                              "[%s]." % (self.resource_name))
+            self.__log.exception("Could not do clean-up check with resource-"
+                                 "name [%s]." % (self.resource_name))
             raise
 
         total_keys = [ (key, value_tuple[1]) for key, value_tuple \
@@ -244,22 +247,25 @@ class _CacheAgent(object):
                             if (datetime.now() - value_tuple[1]).seconds > \
                                     self.max_age ]
 
-        self.__log.info("Found (%d) entries to clean-up from entry-cache." % (len(cleanup_keys)))
+        self.__log.info("Found (%d) entries to clean-up from entry-cache." % 
+                        (len(cleanup_keys)))
 
         if cleanup_keys:
             for key in cleanup_keys:
-                self.__log.debug("Cache entry [%s] under resource-name [%s] will "
-                              "be cleaned-up." % (key, self.resource_name))
+                self.__log.debug("Cache entry [%s] under resource-name [%s] "
+                                 "will be cleaned-up." % (key, 
+                                                          self.resource_name))
 
                 if self.exists(key, no_fault_check=True) == False:
-                    self.__log.debug("Entry with ID [%s] has already been cleaned-up." % (key))
+                    self.__log.debug("Entry with ID [%s] has already been "
+                                     "cleaned-up." % (key))
                 else:
                     try:
                         self.remove(key)
                     except:
-                        self.__log.exception("Cache entry [%s] under resource-name [%s] "
-                                          "could not be cleaned-up." % 
-                                          (key, self.resource_name))
+                        self.__log.exception("Cache entry [%s] under resource-"
+                                             "name [%s] could not be cleaned-"
+                                             "up." % (key, self.resource_name))
                         raise
 
             self.__log.debug("Scheduled clean-up complete.")
