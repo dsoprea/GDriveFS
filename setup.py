@@ -1,10 +1,12 @@
-from setuptools import setup, find_packages
-import sys, os
+from setuptools import find_packages
+from distutils import core
+from distutils.command.install import install
 
+from sys import exit
 from os import symlink
 from os.path import dirname
 
-import tools
+from gdrivefs import tools
 
 def pre_install():
 
@@ -21,13 +23,13 @@ def post_install():
     gdfstool_symlink_filepath = '/usr/sbin/gdfstool'
 
     print("Writing gdfs symlink.")
-    symlink(gdfs_symlink_filepath, gdfs_symlink_filepath)
+    symlink(gdfs_filepath, gdfs_symlink_filepath)
 
     print("Writing gdfstool symlink.")
     symlink(gdfstool_filepath, gdfstool_symlink_filepath)
 
 if not pre_install():
-    sys.exit(1)
+    exit(1)
 
 class custom_install(install):
     def run(self):
@@ -37,7 +39,7 @@ class custom_install(install):
 
 version = '0.1'
 
-setup(name='gdrivefs',
+core.setup(name='gdrivefs',
       version=version,
       description="A complete FUSE adapter for Google Drive.",
       long_description="""\
