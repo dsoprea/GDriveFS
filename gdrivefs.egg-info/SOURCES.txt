@@ -15,9 +15,9 @@ gdrivefs.egg-info/PKG-INFO
 gdrivefs.egg-info/SOURCES.txt
 gdrivefs.egg-info/dependency_links.txt
 gdrivefs.egg-info/entry_points.txt
-gdrivefs.egg-info/not-zip-safe
 gdrivefs.egg-info/requires.txt
 gdrivefs.egg-info/top_level.txt
+gdrivefs.egg-info/zip-safe
 gdrivefs/tools/__init__.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py

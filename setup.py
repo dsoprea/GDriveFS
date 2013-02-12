@@ -37,7 +37,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.1'
+version = '0.1.1'
 
 core.setup(name='gdrivefs',
       version=version,
@@ -63,7 +63,7 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       license='New BSD',
       packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
-      zip_safe=False,
+      zip_safe=True,
       install_requires=[
         'ez_setup',
         'google_appengine',
