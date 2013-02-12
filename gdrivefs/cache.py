@@ -31,18 +31,11 @@ class _CacheRegistry(object):
     @staticmethod
     def get_instance(resource_name):
     
-        self.__log.debug("CacheRegistry(%s)" % (resource_name))
-
         with _CacheRegistry.rlock:
             try:
                 _CacheRegistry.__instance;
             except:
-                try:
-                    _CacheRegistry.__instance = _CacheRegistry()
-                except:
-                    self.__log.exception("Could not manufacture singleton "
-                                     "CacheRegistry instance.")
-                    raise
+                _CacheRegistry.__instance = _CacheRegistry()
 
             if resource_name not in _CacheRegistry.__instance.cache:
                 _CacheRegistry.__instance.cache[resource_name] = { }
