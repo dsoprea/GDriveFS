@@ -18,12 +18,15 @@ from httplib2       import Http
 from threading      import Thread, Event
 from collections    import OrderedDict
 from tempfile       import NamedTemporaryFile
+from os.path        import isdir, isfile
 
 from gdrivefs.errors import AuthorizationError, AuthorizationFailureError
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
 from gdrivefs.errors import FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
+
+_static_log = logging.getLogger().getChild('(GDTOOL)')
 
 class _OauthAuthorize(object):
     """Manages authorization process."""
@@ -284,7 +287,11 @@ class NormalEntry(object):
         return self.info[key]
 
     def __str__(self):
-        return ("<Normalized entry object with ID [%s]: %s>" % (self.id, self.title))
+        return ("<NORMAL [%s] [%s] [%s]>" % (self.id, self.mime_type, 
+                                             self.title))
+
+    def __repr__(self):
+        return str(self)
 
     @property
     def is_directory(self):
@@ -693,13 +700,15 @@ class _GdriveManager(object):
 
         return entries
 
-    def download_to_local(self, normalized_entry, mime_type, force_output_filename=None, allow_cache=True):
+    def download_to_local(self, output_file_path, normalized_entry, mime_type, 
+                          allow_cache=True):
         """Download the given file. If we've cached a previous download and the 
-        mtime hasn't changed, re-use.
+        mtime hasn't changed, re-use. The third item returned reflects whether 
+        the data has changed since any prior attempts.
         """
 
         self.__log.info("Downloading entry with ID [%s] and mime-type [%s]." % 
-                     (normalized_entry.id, mime_type))
+                        (normalized_entry.id, mime_type))
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -711,7 +720,7 @@ class _GdriveManager(object):
 
         temp_path = Conf.get('file_download_temp_path')
 
-        if not os.path.isdir(temp_path):
+        if not isdir(temp_path):
             try:
                 os.makedirs(temp_path)
             except:
@@ -719,31 +728,20 @@ class _GdriveManager(object):
                                   "[%s]." % (temp_path))
                 raise
 
-        # Produce a file-path of a temporary file that we can store the data 
-        # to. More often than not, we'll be called when the OS wants to read 
-        # the file, and we'll need the data at hand in order to page through 
-        # it.
-
-        if force_output_filename:
-            temp_filename = force_output_filename
-        else:
-            temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)). \
-                                encode('ascii')
-            temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
-            temp_filepath = ("%s/%s" % (temp_path, temp_filename))
-
         gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
 
-        self.__log.info("File will be downloaded to [%s]." % (temp_filepath))
+        self.__log.info("File will be downloaded to [%s]." % 
+                        (output_file_path))
 
         use_cache = False
-        if allow_cache and os.path.isfile(temp_filepath):
+        if allow_cache and isfile(output_file_path):
             # Determine if a local copy already exists that we can use.
             try:
-                stat = os.stat(temp_filepath)
+                stat = os.stat(output_file_path)
             except:
-                self.__log.exception("Could not retrieve stat() information for "
-                                  "temp download file [%s]." % (temp_filepath))
+                self.__log.exception("Could not retrieve stat() information "
+                                     "for temp download file [%s]." % 
+                                     (output_file_path))
                 raise
 
             if gd_mtime_epoch == stat.st_mtime:
@@ -752,15 +750,17 @@ class _GdriveManager(object):
         if use_cache:
             # Use the cache. It's fine.
 
-            self.__log.info("File retrieved from the previously downloaded, still-current file.")
-            return (temp_filepath, stat.st_size)
+            self.__log.info("File retrieved from the previously downloaded, "
+                            "still-current file.")
+            return (stat.st_size, False)
 
         # Go and get the file.
 
         try:
             authed_http = self.get_authed_http()
         except:
-            self.__log.exception("Could not get authed Http instance for download.")
+            self.__log.exception("Could not get authed Http instance for "
+                                 "download.")
             raise
 
         url = normalized_entry.download_links[mime_type]
@@ -771,7 +771,8 @@ class _GdriveManager(object):
             data_tuple = authed_http.request(url)
         except:
             self.__log.exception("Could not download entry with ID [%s], type "
-                              "[%s], and URL [%s]." % (normalized_entry.id, mime_type, url))
+                              "[%s], and URL [%s]." % (normalized_entry.id, 
+                                                       mime_type, url))
             raise
 
         (response_headers, data) = data_tuple
@@ -781,14 +782,18 @@ class _GdriveManager(object):
         # download mechanics (resume, etc..).
 
         r = re.compile('Range')
-        range_found = [("%s: %s" % (k, v)) for k, v in response_headers.iteritems() if r.match(k)]
+        range_found = [("%s: %s" % (k, v)) for k, v 
+                                           in response_headers.iteritems() 
+                                           if r.match(k)]
         if range_found:
-            logger.info("GD has returned Range-related headers: %s" % (", ".join(found)))
+            logger.info("GD has returned Range-related headers: %s" % 
+                        (", ".join(found)))
 
-        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % (len(data), temp_filepath))
+        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
+                        (len(data), output_file_path))
 
         try:
-            with open(temp_filepath, 'wb') as f:
+            with open(output_file_path, 'wb') as f:
                 f.write(data)
         except:
             self.__log.exception("Could not cached downloaded file. Skipped.")
@@ -797,15 +802,16 @@ class _GdriveManager(object):
             self.__log.info("File written to cache successfully.")
 
         try:
-            os.utime(temp_filepath, (time(), gd_mtime_epoch))
+            os.utime(output_file_path, (time(), gd_mtime_epoch))
         except:
-            self.__log.exception("Could not set time on [%s]." % (temp_filepath))
+            self.__log.exception("Could not set time on [%s]." % 
+                                 (output_file_path))
             raise
 
-        return (temp_filepath, len(data))
+        return (len(data), True)
 
-    def __insert_entry(self, filename, mime_type, data_filepath=None, parents=None, 
-                       modified_datetime=None, is_hidden=False, 
+    def __insert_entry(self, filename, mime_type, data_filepath=None, 
+                       parents=None, modified_datetime=None, is_hidden=False, 
                        description=None):
 
         if not parents:

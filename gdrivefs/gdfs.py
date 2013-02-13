@@ -30,6 +30,8 @@ from gdrivefs.cache     import PathRelations, EntryCache, \
                                CLAUSE_ID, CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf      import Conf
 
+_static_log = logging.getLogger().getChild('(GDFS)')
+
 class _NotFoundError(Exception):
     pass
 
@@ -140,6 +142,19 @@ def _split_path(filepath):
     return (parent_clause, path, filename, extension, mime_type, is_hidden, 
             just_info)
 
+def _get_temp_filepath(normalized_entry, just_info, mime_type):
+    if mime_type is None:
+        mime_type = normalized_entry.normalized_mime_type
+
+    temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)).\
+                    encode('ascii')
+    temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
+
+    temp_path = Conf.get('file_download_temp_path')
+    suffix = '_temp' if just_info else ''
+    return ("%s/%s" % (temp_path, temp_filename, suffix))
+
+
 class _DisplacedFile(object):
     __log = None
     normalized_entry = None
@@ -155,29 +170,38 @@ class _DisplacedFile(object):
 
     def deposit_file(self, mime_type=None):
         """Write the file to a temporary path, and present a stub (JSON) to the 
-        user. This is the only way of getting files that don't have a definite 
-        filesize.
+        user. This is the only way of getting files that don't have a 
+        well-defined filesize without providing a type, ahead of time.
         """
 
         if not mime_type:
             mime_type = self.normalized_entry.normalized_mime_type
 
+        file_path = _get_temp_filepath(self.normalized_entry, True, mime_type)
+
         try:
-            (temp_file_path, length) = drive_proxy('download_to_local', 
-                                     normalized_entry=self.normalized_entry,
-                                     mime_type=mime_type)
+            length = drive_proxy('download_to_local', 
+                                 output_file_path=file_path, 
+                                 normalized_entry=self.normalized_entry,
+                                 mime_type=mime_type)
         except:
             self.__log.exception("Could not localize displaced file with entry "
                               "having ID [%s]." % (self.normalized_entry.id))
             raise
 
         try:
-            return self.get_stub(mime_type, length, temp_file_path)
+            return self.get_stub(mime_type, length, file_path)
         except:
-            self.__log.exception("Could not build stub.")
+            self.__log.exception("Could not build stub for [%s]." % 
+                                 (self.normalized_entry))
             raise
 
     def get_stub(self, mime_type=None, file_size=0, file_path=None):
+        """Return the content for an info ("stub") file."""
+
+        if file_size == 0 and \
+           self.normalized_entry.requires_displaceable is False:
+            file_size = self.normalized_entry.file_size
 
         if not mime_type:
             mime_type = self.normalized_entry.normalized_mime_type
@@ -220,8 +244,8 @@ class _OpenedManager(object):
                 try:
                     _OpenedManager.instance = _OpenedManager()
                 except:
-                    self.__log.exception("Could not create singleton instance of "
-                                      "_OpenedManager.")
+                    _static_log.exception("Could not create singleton "
+                                          "instance of _OpenedManager.")
                     raise
 
             return _OpenedManager.instance
@@ -383,25 +407,198 @@ def _annotate(argument_names=[], excluded=[], prefix=''):
         return wrapper
     return real_decorator
 
+            
+class BufferSegments(object):
+    """Describe a series of strings that, when concatenated, represent the 
+    whole file. This is used to try and contain the amount of the data that has
+    the be copied as updates are applied to the file.
+    """
+
+    __locker = Lock()
+
+    def __init__(self, data, block_size):
+        # An array of 2-tuples: (offset, string). We should allow data to be 
+        # empty. Thus, we should allow a segment to be empty (useful, in 
+        # general).
+        self.__segments = [(0, data)]
+
+        self.__block_size = block_size
+
+    def __repr__(self):
+        return ("<BSEGS  SEGS= (%(segs)d) BLKSIZE= (%(block_size)d)>" % 
+                { 'segs': len(self.__segments), 
+                  'block_size': self.__block_size })
+
+    def dump(self):
+        pprint(self.__segments)
+
+    def __find_segment(self, offset):
+
+        # Locate where to insert the data.
+        seg_index = 0
+        last_offset = None
+        while seg_index < len(self.__segments):
+            seg_offset = self.__segments[seg_index][0]
+        
+            if last_offset is None:
+                last_offset = seg_offset
+            elif seg_offset > offset:
+                break
+
+            last_offset = seg_offset
+            seg_index += 1
+
+        # Since we should always have a list of at least one item, we should 
+        # always have a proper insertion point, here.       
+
+        seg_index -= 1
+        
+        return seg_index
+
+    def __split(self, seg_index, offset):
+        """Split the given segment at the given offset. Offset is relative to 
+        the particular segment (an offset of '0' refers to the beginning of the 
+        segment). At finish, seg_index will represent the segment containing 
+        the first half of the original data (and segment with index 
+        (seg_index + 1) will contain the second).
+        """
+    
+        (seg_offset, seg_data) = self.__segments[seg_index]
+
+        first_half = seg_data[0:offset]
+        firsthalf_segment = (seg_offset, first_half)
+        self.__segments.insert(seg_index, firsthalf_segment)
+
+        second_half = seg_data[offset:]
+        if second_half == '':
+            raise IndexError("Can not use offset (%d) to split segment (%d) of length (%d)." % (offset, seg_index, len(seg_data)))
+        
+        secondhalf_segment = (seg_offset + offset, second_half)
+        self.__segments[seg_index + 1] = secondhalf_segment
+
+        return (firsthalf_segment, secondhalf_segment)
+
+    def apply_update(self, offset, data):
+        """Find the correct place to insert the data, splitting existing data 
+        segments into managable fragments ("segments"), overwriting a number of 
+        bytes equal in size to the incoming data. If the incoming data will
+        overflow the end of the list, grow the list.
+        """
+
+        with self.__locker:
+            seg_index = self.__find_segment(offset)
+            data_len = len(data)
+
+            # Split the existing segment(s) rather than doing any concatenation. 
+            # Theoretically, the effort of writing to an existing file should 
+            # shrink over time.
+
+            (seg_offset, seg_data) = self.__segments[seg_index]
+            seg_len = len(seg_data)
+            
+            # If our data is to be written into the middle of the segment, 
+            # split the segment such that the unnecessary prefixing bytes are 
+            # moved to a new segment preceding the current.
+            if seg_offset < offset:
+                prefix_len = offset - seg_offset
+                (_, (seg_offset, seg_data)) = self.__split(seg_index, 
+                                                           prefix_len)
+
+                seg_len = prefix_len
+                seg_index += 1
+
+            # Now, if the segment's length exceeds the update's length, split 
+            # -that- into a new segment that follows the current segment. The 
+            # new segment will be inserted at the current seg_index.
+
+            if seg_len > data_len:
+                ((seg_offset, seg_data), _) = self.__split(seg_index, data_len)
+
+            # Now, apply the update. Collect the number of segments that will 
+            # be affected, and reduce to two (at most): the data that we're 
+            # applying, and the second part of the last affected one (if 
+            # applicable). If the incoming data exceeds the length of the 
+            # existing data, it is a trivial consideration.
+
+            stop_offset = offset + data_len
+            seg_stop = seg_index
+            while self.__segments[seg_stop][0] < stop_offset:
+                seg_stop += 1
+                
+            seg_stop -= 1
+
+            # How much of the last segment that we touch will be affected?
+            (lastseg_offset, lastseg_data) = self.__segments[seg_stop] 
+
+            lastseg_len = len(lastseg_data)
+            affected_len = (offset + data_len) - lastseg_offset
+            if affected_len > 0 and affected_len < lastseg_len:
+                self.__split(seg_stop, affected_len)
+
+            # We now have a distinct range of segments to replace with the new 
+            # data. We are implicitly accounting for the situation in which our
+            # data is longer than the remaining number of bytes in the file.
+
+            self.__segments[seg_index:seg_stop + 1] = [(seg_offset, data)]        
+
+    def read(self, offset=0, length=None):
+        """A generator that returns data from the given offset in blocks no
+        greater than the block size.
+        """
+
+        with self.__locker:
+            if length is None:
+                length = self.size
+        
+            current_segindex = self.__find_segment(offset)
+            current_offset = offset
+
+            boundary_offset = offset + length
+
+            # The WHILE condition should only catch if the given length exceeds 
+            # the actual length. Else, the BREAK should always be sufficient.
+            last_segindex = None
+            (seg_offset, seg_data, seg_len) = (None, None, None)
+            while current_segindex < len(self.__segments):
+                if current_segindex != last_segindex:
+                    (seg_offset, seg_data) = self.__segments[current_segindex]
+                    seg_len = len(seg_data)
+                    last_segindex = current_segindex
+
+                grab_at = current_offset - seg_offset
+                remaining_bytes = boundary_offset - current_offset
+
+                # Determine how many bytes we're looking for, and how many we 
+                # can get from this segment.
+
+                grab_len = min(remaining_bytes,                         # Number of remaining, requested bytes.
+                               seg_len - (current_offset - seg_offset), # Number of available bytes in segment.
+                               self.__block_size)                       # Maximum block size.
+
+                grabbed = seg_data[grab_at:grab_at + grab_len]
+                current_offset += grab_len
+                yield grabbed
+
+                # current_offset should never exceed boundary_offset.
+                if current_offset >= boundary_offset:
+                    break
+
+                # Are we going to have to read from the next segment, next 
+                # time?
+                if current_offset >= (seg_offset + seg_len):
+                    current_segindex += 1
+
+    @property
+    def size(self):
+        last_segment = self.__segments[-1]
+        return last_segment[0] + len(last_segment[1])
+
+                
 _OpenedManager.instance = None
 _OpenedManager.singleton_lock = Lock()
 
 class _OpenedFile(object):
     """This class describes a single open file, and manages changes."""
-
-    __log = None
-
-    entry_id        = None
-    path            = None
-    filename        = None
-    is_hidden       = None
-    mime_type       = None
-
-    file_path       = None
-    cache           = None
-    temp_file_path  = None
-    last_file_size  = None
-    buffer          = None
 
     updates         = deque()
     update_lock     = Lock()
@@ -414,7 +611,7 @@ class _OpenedFile(object):
         the information.
         """
 
-        self.__log.debug("Creating _OpenedFile for [%s]." % (filepath))
+        _static_log.debug("Creating _OpenedFile for [%s]." % (filepath))
 
         # Process/distill the requested file-path.
 
@@ -422,69 +619,116 @@ class _OpenedFile(object):
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
              just_info) = _split_path(filepath)
         except _NotFoundError:
-            self.__log.exception("Could not process [%s] (create).")
+            _static_log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
         except:
-            self.__log.exception("Could not split path [%s] (create)." % 
-                              (filepath))
+            _static_log.exception("Could not split path [%s] (create)." % 
+                                  (filepath))
             raise
+
+        distilled_filepath = ("%s%s" % (path, filename))
 
         # Look-up the requested entry.
 
         path_relations = PathRelations.get_instance()
 
         try:
-            entry_clause = path_relations.get_clause_from_path(filepath)
+            entry_clause = path_relations.get_clause_from_path(distilled_filepath)
         except:
-            self.__log.exception("Could not try to get clause from path [%s] "
-                              "(_OpenedFile)." % (filepath))
+            _static_log.exception("Could not try to get clause from path [%s] "
+                                  "(_OpenedFile)." % (distilled_filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            self.__log.debug("Path [%s] does not exist for stat()." % (path))
+            _static_log.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
         # Build the object.
 
         try:
-            return _OpenedFile(entry_clause[CLAUSE_ID], path, filename, is_hidden, mime_type)
+            return _OpenedFile(entry_clause[CLAUSE_ID], path, filename, 
+                               is_hidden, mime_type, just_info)
         except:
-            self.__log.exception("Could not create _OpenedFile for requested file"
-                              " [%s]." % (filepath))
+            _static_log.exception("Could not create _OpenedFile for requested "
+                                  "file [%s]." % (distilled_filepath))
             raise
 
-    def __init__(self, entry_id, path, filename, is_hidden, mime_type):
+    def __init__(self, entry_id, path, filename, is_hidden, mime_type, 
+                 just_info=False):
 
         self.__log = logging.getLogger().getChild('OpenFile')
 
         self.__log.info("Opened-file object created for entry-ID [%s] and path "
                      "(%s)." % (entry_id, path))
+# TODO: Refactor this to being all obfuscated property names.
+        self.entry_id = entry_id
+        self.path = path
+        self.filename = filename
+        self.is_hidden = is_hidden
+        self.__mime_type = mime_type
+        self.cache = EntryCache.get_instance().cache
+        self.__just_info = just_info
+        self.buffer = None
+        self.__is_loaded = False
 
-        self.entry_id   = entry_id
-        self.path       = path
-        self.filename   = filename
-        self.is_hidden  = is_hidden
-        self.mime_type  = mime_type
-        self.cache      = EntryCache.get_instance().cache
+# TODO: !! Make sure the "changes" thread is still going.
 
     def __get_entry_or_raise(self):
         """We can never be sure that the entry will still be known to the 
-        system. Grab it and throw an error if it's not available.
+        system. Grab it and throw an error if it's not available. 
+        Simultaneously, this allows us to lazy-load the entry.
         """
 
-        self.__log.debug("Retrieving entry for opened-file with entry-ID [%s]." % 
-                      (self.entry_id))
+        self.__log.debug("Retrieving entry for opened-file with entry-ID "
+                         "[%s]." % (self.entry_id))
 
         try:
             return self.cache.get(self.entry_id)
         except:
-            self.__log.exception("Could not retrieve entry with ID [%s] for the "
-                              "opened-file." % (self.entry_id))
+            self.__log.exception("Could not retrieve entry with ID [%s] for "
+                                 "the opened-file." % (self.entry_id))
             raise 
+
+    @property
+    def mime_type(self):
+    
+        if self.__mime_type:
+            return self.__mime_type
+        
+        try:
+            entry = self.__get_entry_or_raise()
+        except:
+            self.__log.exception("Could not get entry with ID [%s] for "
+                                 "mime_type." % (self.entry_id))
+            raise
+
+        return entry.normalized_mime_type
+
+    @_annotate(prefix='OF')
+    def __write_stub_file(self, file_path, normalized_entry, mime_type):
+
+        try:
+            displaced = _DisplacedFile(normalized_entry)
+        except:
+            self.__log.exception("Could not wrap entry in _DisplacedFile.")
+            raise
+
+        try:
+            stub_data = displaced.get_stub(mime_type, file_path=file_path)
+        except:
+            self.__log.exception("Could not do displaced-file download.")
+            raise
+
+        with file(file_path, 'w') as f:
+            f.write(stub_data)
+
+        return len(stub_data)
 
     @_annotate(prefix='OF')
     def __load_base_from_remote(self):
-        """Download the data for the file that we represent."""
+        """Download the data for the entry that we represent. This is probably 
+        a file, but could also be a stub for -any- entry.
+        """
 
         self.__log.debug("Retrieving entry for load_base_from_remote.")
 
@@ -495,73 +739,72 @@ class _OpenedFile(object):
                               "write-flush." % (self.entry_id))
             raise
 
+        mime_type = self.mime_type
+        temp_file_path = _get_temp_filepath(entry, self.__just_info, mime_type)
+
         with self.download_lock:
             # Get the current version of the write-cache file, or note that we 
             # don't have it.
 
-            self.__log.debug("Checking state of current write-cache file.")
-
-            update_cached_file = True
-# TODO: Deprecate this. .buffer is only referenced from read().
-            if not self.buffer:
-                try:
-                    stat = os.stat(self.temp_file_path)
-                except:
-                    self.__log.debug("Write-cache file [%s] does not seem to"
-                                  "exist." % (self.temp_file_path))
-                else:
-                    # Our buffer always matches the write-cache file, and 
-                    # because our "entry" object is a reference to our cache 
-                    # and our cache is always going to be up to date because of
-                    # our change-management framework, we'll only do an update 
-                    # when one is needed, up to within the resolution of our 
-                    # change checks.
-                    if entry.modified_date_epoch == stat.st_mtime:
-                        update_cached_file = False
-
-            # We don't yet have a copy of the file, or it has been changed by 
-            # someone else.
-
-            if not update_cached_file:
-                self.__log.debug("Write-cache file [%s] is already up-to-date." %
-                              (self.temp_file_path))
-                return
-
-            self.__log.info("Updating write-cache file for entry with ID [%s] and"
-                         " mime-type [%s]." % (entry.id, self.mime_type))
+            self.__log.info("Attempting local cache update of file [%s] for "
+                            "entry [%s] and mime-type [%s]." % 
+                            (temp_file_path, entry, mime_type))
 
             # The output path is predictable. It shouldn't change.
 
-            mime_type = self.mime_type if self.mime_type else entry.normalized_mime_type
-
-            try:
-                (temp_file_path, length) = \
-                    drive_proxy('download_to_local', 
-                                    normalized_entry=entry,
-                                    mime_type=mime_type,
-                                    allow_cache=False)
-            except (ExportFormatError):
-                raise FuseOSError(ENOENT)
-            except:
-                self.__log.exception("Could not localize file with entry having "
-                                  "ID [%s]." % (self.entry_id))
-                raise
-
-            self.temp_file_path = temp_file_path
-            self.last_file_size = length
-
-            # Load our buffer.
-
-            self.__log.debug("Reading write-cache file.")
-
-            with open(self.temp_file_path, 'rb') as f:
-                # Read the locally cached file in.
-
+            if self.__just_info:
                 try:
-                    self.buffer = f.read()
+                    length = self.__write_stub_file(temp_file_path, 
+                                                    entry, 
+                                                    mime_type)
+                    cache_fault = True
                 except:
-                    self.__log.exception("Could not read current cached file into buffer.")
+                    self.__log.exception("Could not build info for entry "
+                                         "[%s] being read." % (entry))
                     raise
+            else:
+                try:
+                    result = drive_proxy('download_to_local', 
+                                         output_file_path=temp_file_path,
+                                         normalized_entry=entry,
+                                         mime_type=mime_type)
+                    (length, cache_fault) = result
+                except (ExportFormatError):
+                    raise FuseOSError(ENOENT)
+                except:
+                    self.__log.exception("Could not localize file with entry "
+                                         "[%s]." % (entry))
+                    raise
+
+            # We've either not loaded it, yet, or it has changed.
+            if cache_fault or not self.__is_loaded:
+                if cache_fault:
+                    with self.update_lock:
+                        if self.updates:
+                            self.__log.error("Entry [%s] has been changed. "
+                                             "Forcing buffer updates, and "
+                                             "clearing (%d) queued updates." % 
+                                             (entry, len(self.updates)))
+
+                            self.updates = []
+                        else:
+                            self.__log.debug("Entry [%s] has changed. "
+                                             "Updating buffers." % (entry))
+
+                self.__log.debug("Updating local cache file.")
+
+                with open(temp_file_path, 'rb') as f:
+                    # Read the locally cached file in.
+
+                    try:
+# TODO: Read in steps?
+                        self.buffer = f.read()
+                    except:
+                        self.__log.exception("Could not read current cached file "
+                                             "into buffer.")
+                        raise
+
+                self.__is_loaded = True
 
     @_annotate(['offset', 'data'], ['data'], 'OF')
     def add_update(self, offset, data):
@@ -570,10 +813,21 @@ class _OpenedFile(object):
         self.__marker('add_update', { 'offset': offset, 
                                     'actual_length': len(data) })
 
+        try:
+            self.__load_base_from_remote()
+        except:
+            self.__log.exception("Could not load write-cache file [%s]." % 
+                              (self.temp_file_path))
+            raise
+
+                
+
+# TODO: Immediately apply updates to buffer. Add a "dirty" flag.
         with self.update_lock:
             self.updates.append((offset, data))
 
-        self.__log.debug("(%d) updates have been queued." % (len(self.updates)))
+        self.__log.debug("(%d) updates have been queued." % 
+                         (len(self.updates)))
 
     @_annotate(prefix='OF')
     def flush(self):
@@ -616,8 +870,8 @@ class _OpenedFile(object):
 #                print("Applying update (%d)." % (i))
             
                 (offset, data) = self.updates.popleft()
-                self.__log.debug("Applying update (%d) at offset (%d) with data-"
-                              "length (%d)." % (i, offset, len(data)))
+                self.__log.debug("Applying update (%d) at offset (%d) with "
+                                 "data-length (%d)." % (i, offset, len(data)))
 
                 right_fragment_start = offset + len(data)
 
@@ -633,9 +887,17 @@ class _OpenedFile(object):
             self.__log.debug("Writing buffer to temporary file.")
 # TODO: Make sure to uncache the temp data if self.temp_file_path is not None.
 
-            if self.temp_file_path:
+            mime_type = self.mime_type
+
+            # If we've already opened a work file, use it. Else, use a 
+            # temporary file that we'll close at the end of the method.
+            if self.__is_loaded:
                 is_temp = False
-                write_file_path = self.temp_file_path
+
+                temp_file_path = _get_temp_filepath(entry, 
+                                                    self.__just_info, 
+                                                    mime_type)
+                write_file_path = temp_file_path
             else:
                 is_temp = True
             
@@ -645,10 +907,10 @@ class _OpenedFile(object):
 
             # Push to GD.
 
-            self.__log.debug("Pushing (%d) bytes for entry with ID from [%s] to "
-                          "GD for file-path [%s]." % (len(buffer), 
-                                                      entry.id, 
-                                                      write_file_path))
+            self.__log.debug("Pushing (%d) bytes for entry with ID from [%s] "
+                             "to GD for file-path [%s]." % (len(buffer), 
+                                                            entry.id, 
+                                                            write_file_path))
 
 #            print("Sending updates.")
 
@@ -656,7 +918,7 @@ class _OpenedFile(object):
                 entry = drive_proxy('update_entry', normalized_entry=entry, 
                                     filename=entry.title, 
                                     data_filepath=write_file_path, 
-                                    mime_type=entry.mime_type, 
+                                    mime_type=mime_type, 
                                     parents=entry.parents, 
                                     is_hidden=self.is_hidden)
             except:
@@ -669,18 +931,20 @@ class _OpenedFile(object):
                 unlink(write_file_path)
             else:
                 # Update the write-cache file to the official mtime. We won't 
-                # redownload it on the next flush if it wasn't changed, elsewhere.
+                # redownload it on the next flush if it wasn't changed, 
+                # elsewhere.
 
-                self.__log.debug("Updating local write-cache file to official mtime "
-                              "[%s]." % (entry.modified_date_epoch))
+                self.__log.debug("Updating local write-cache file to official "
+                                 "mtime [%s]." % (entry.modified_date_epoch))
 
                 try:
                     os.utime(write_file_path, (entry.modified_date_epoch, 
                                                entry.modified_date_epoch))
                 except:
-                    self.__log.exception("Could not update mtime of write-cache [%s] "
-                                      "for entry with ID [%s], post-flush." % 
-                                      (entry.modified_date_epoch, entry.id))
+                    self.__log.exception("Could not update mtime of write-"
+                                         "cache [%s] for entry with ID [%s], "
+                                         "post-flush." % 
+                                         (entry.modified_date_epoch, entry.id))
                     raise
 
         # Immediately update our current cached entry.
@@ -708,6 +972,18 @@ class _OpenedFile(object):
             self.__log.exception("Could not load write-cache file [%s]." % 
                               (self.temp_file_path))
             raise
+
+# TODO: Refactor this into a paging mechanism.
+        buffer_len = len(self.buffer)
+        if offset >= buffer_len:
+            raise IndexError("Offset (%d) exceeds length of data (%d)." % 
+                             (offset, buffer_len))
+
+        if (offset + length) > buffer_len:
+            self.__log.debug("Requested length (%d) from offset (%d) exceeds "
+                             "file length (%d). Truncated." % (length, offset, 
+                                                               buffer_len)) 
+            return self.buffer[offset:]
 
         return self.buffer[offset:length]
 
@@ -858,35 +1134,6 @@ class _GDriveFS(Operations):#LoggingMixIn,
     @_annotate(['raw_path', 'length', 'offset', 'fh'])
     def read(self, raw_path, length, offset, fh):
 
-#
-#        # Fetch the file to a local, temporary file.
-#
-#        if normalized_entry.requires_displaceable or just_info:
-#            self.__log.info("Doing displaced-file download of entry with ID "
-#                         "[%s]." % (entry_id))
-#
-#            try:
-#                displaced = _DisplacedFile(normalized_entry)
-#            except:
-#                self.__log.exception("Could not wrap entry in _DisplacedFile.")
-#                raise
-#
-#            try:
-#                if just_info:
-#                    self.__log.debug("Info for file was requested, rather than "
-#                                  "the file itself.")
-#                    return displaced.get_stub(mime_type)
-#                else:
-#                    self.__log.debug("A displaceable file was requested.")
-#                    return displaced.deposit_file(mime_type)
-#            except:
-#                self.__log.exception("Could not do displaced-file download.")
-#                raise
-#
-#        else:
-#            self.__log.info("Downloading entry with ID [%s] for path [%s]." % 
-#                         (entry_id, path))
-
         try:
             opened_file = _OpenedManager.get_instance().get_by_fh(fh)
         except:
@@ -1027,11 +1274,12 @@ class _GDriveFS(Operations):#LoggingMixIn,
         try:
             opened_file = _OpenedFile.create_for_requested_filepath(filepath)
         except _NotFoundError:
-            self.__log.exception("Could not process [%s] (open).")
+            self.__log.exception("Could not create handle for requested [%s] "
+                                 "(open)." % (filepath))
             raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not create _OpenedFile object for "
-                              "opened filepath.")
+                                 "opened filepath [%s]." % (filepath))
             raise FuseOSError(EIO)
 
         self.__log.debug("_OpenedFile object with path [%s] and ID [%s]." % 
@@ -1225,12 +1473,12 @@ class _GDriveFS(Operations):#LoggingMixIn,
 #            'f_favail': 0
         }
 
-# TODO: Finish this.
+# TODO: !! Finish this.
     @_annotate(['old', 'new'])
     def rename(self, old, new):
         pass
 
-# TODO: Finish this.
+# TODO: !! Finish this.
     @_annotate(['path', 'length', 'fh'])
     def truncate(self, path, length, fh=None):
         pass

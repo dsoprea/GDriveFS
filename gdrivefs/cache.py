@@ -16,6 +16,8 @@ CLAUSE_CHILDREN         = 2
 CLAUSE_ID               = 3
 CLAUSE_CHILDREN_LOADED  = 4
 
+_static_log = logging.getLogger().getChild('(CACHE)')
+
 class CacheFault(Exception):
     pass
 
