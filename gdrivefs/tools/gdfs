@@ -6,7 +6,7 @@ from sys import argv
 from os.path import basename
 from argparse import ArgumentParser
 
-from gdrivefs.gdfs.gdfuse import main, mount, load_mount_parser_args
+from gdrivefs.gdfs.gdfuse import mount, load_mount_parser_args
 
 def main():
     parser = ArgumentParser()

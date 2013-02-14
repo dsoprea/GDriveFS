@@ -17,7 +17,7 @@ from sys import argv, exit, excepthook
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
 from gdrivefs.timer import Timers
-from gdrivefs.cache.volume import PathRelations, EntryCache, split_path, \
+from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_ENTRY, CLAUSE_PARENT, \
                                   CLAUSE_CHILDREN, CLAUSE_ID, \
                                   CLAUSE_CHILDREN_LOADED
@@ -30,54 +30,12 @@ from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
+from gdrivefs.gdfs.fsutility import strip_export_type, split_path
+from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
 
 
 _static_log = logging.getLogger().getChild('(GDFS)')
-
-
-def _strip_export_type(path, set_mime=True):
-
-    rx = re.compile('(#([a-zA-Z0-9]+))?(\$)?$')
-    matched = rx.search(path.encode('ASCII'))
-
-    extension = None
-    mime_type = None
-    just_info = None
-
-    if matched:
-        fragment = matched.group(0)
-        extension = matched.group(2)
-        just_info = (matched.group(3) == '$')
-
-        if fragment:
-            path = path[:-len(fragment)]
-
-        if not extension:
-            extension_rx = re.compile('\.([a-zA-Z0-9]+)$')
-            matched = extension_rx.search(path.encode('ASCII'))
-
-            if matched:
-                extension = matched.group(1)
-
-        if extension:
-            logging.info("User wants to export to extension [%s]." % 
-                         (extension))
-
-            if set_mime:
-                try:
-                    mime_type = get_utility().get_first_mime_type_by_extension \
-                                    (extension)
-                except:
-                    logging.warning("Could not render a mime-type for "
-                                    "prescribed extension [%s], for read." % 
-                                    (extension))
-
-                if mime_type:
-                    logging.info("We have been told to export using mime-type "
-                                 "[%s]." % (mime_type))
-
-    return (path, extension, just_info, mime_type)
 
 
 # TODO: make sure strip_extension and split_path are used when each are relevant
@@ -128,7 +86,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 # TODO: Implement handle.
 
         try:
-            (path, extension, just_info, mime_type) = _strip_export_type \
+            (path, extension, just_info, mime_type) = strip_export_type \
                                                         (raw_path, True)
         except:
             self.__log.exception("Could not process export-type directives.")
@@ -249,7 +207,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath)
+             just_info) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (mkdir).")
             raise FuseOSError(ENOENT)
@@ -295,7 +253,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath)
+             just_info) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)

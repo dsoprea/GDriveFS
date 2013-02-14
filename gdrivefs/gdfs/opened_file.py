@@ -10,10 +10,9 @@ from os import unlink, utime
 
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
 from gdrivefs.utility import dec_hint
-from gdrivefs.gdfs.gdfuse import split_path
 from gdrivefs.gdfs.displaced_file import DisplacedFile
-from gdrivefs.gdfs.fsutility import get_temp_filepath
-from gdrivefs.cache.volume import PathRelations, EntryCache, split_path
+from gdrivefs.gdfs.fsutility import get_temp_filepath, split_path
+from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver
 from gdrivefs.gdtool.drive import drive_proxy
 
 _static_log = logging.getLogger().getChild('(OF)')
@@ -152,7 +151,7 @@ class OpenedFile(object):
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath)
+             just_info) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             _static_log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)

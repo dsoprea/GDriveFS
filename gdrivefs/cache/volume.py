@@ -18,66 +18,20 @@ CLAUSE_CHILDREN         = 2
 CLAUSE_ID               = 3
 CLAUSE_CHILDREN_LOADED  = 4
 
-
-def split_path(filepath, pathresolver_cb):
-    """Completely process and distill the requested file-path. The filename can"
-    be padded to adjust what's being requested. This will remove all such 
-    information, and return the actual file-path along with the extra meta-
-    information. pathresolver_cb should expect a single parameter of a path,
-    nd return a NormalEntry object.
-    """
-
-    # Remove any export-type that this file-path might've been tagged with.
+def path_resolver(path):
+    path_relations = PathRelations.get_instance()
 
     try:
-        _initial_split_results = _strip_export_type(filepath)
-        (filepath, extension, just_info, mime_type) = _initial_split_results
+        parent_clause = path_relations.get_clause_from_path(path)
     except:
-        logging.exception("Could not process path [%s] for export-type." % 
-                          (filepath))
-        raise
-
-    # Split the file-path into a path and a filename.
-
-    (path, filename) = os.path.split(filepath)
-
-    if path[0] != '/' or filename == '':
-        message = ("Could not create directory with badly-formatted "
-                   "file-path [%s]." % (filepath))
-
-        logging.error(message)
-        raise ValueError(message)
-
-    # Lookup the file, as it was listed, in our cache.
-
-    try:
-        parent_entry = pathresolver_cb(path)
-    except:
-        logger.exception("Exception while getting entry from path [%s]." % 
-                         (path))
+        logger.exception("Could not get clause from path [%s]." % (path))
         raise GdNotFoundError()
 
-    if not parent_entry:
+    if not parent_clause:
         logging.debug("Path [%s] does not exist for split." % (path))
         raise GdNotFoundError()
 
-    # Strip a prefixing dot, if present.
-
-    if filename[0] == '.':
-        is_hidden = True
-#        filename = filename[1:]
-
-    else:
-        is_hidden = False
-
-    logging.debug("File-path [%s] dereferenced to parent with ID [%s], path "
-                  "[%s], filename [%s], extension [%s], mime-type [%s], "
-                  "is_hidden [%s], and just-info [%s]." % 
-                  (filepath, parent_entry.id, path, filename, extension, 
-                   mime_type, is_hidden, just_info))
-
-    return (parent_clause, path, filename, extension, mime_type, is_hidden, 
-            just_info)
+    return parent_clause[CLAUSE_ENTRY]
 
 
 class PathRelations(object):
