@@ -1,14 +1,16 @@
 import logging
 
-from collections    import OrderedDict, deque
-from threading      import RLock, Timer
+from collections    import deque
+from threading      import RLock
 from datetime       import datetime
 
 from gdrivefs.utility import get_utility
-from gdrivefs.gdtool import drive_proxy, NormalEntry, AccountInfo
 from gdrivefs.conf import Conf
-from gdrivefs.report import Report
-from gdrivefs.timer import Timers
+from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.account_info import AccountInfo
+from gdrivefs.gdtool.normal_entry import NormalEntry
+from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
+from gdrivefs.cache.cacheclient_base import CacheClientBase
 
 CLAUSE_ENTRY            = 0
 CLAUSE_PARENT           = 1
@@ -16,395 +18,74 @@ CLAUSE_CHILDREN         = 2
 CLAUSE_ID               = 3
 CLAUSE_CHILDREN_LOADED  = 4
 
-_static_log = logging.getLogger().getChild('(CACHE)')
 
-class CacheFault(Exception):
-    pass
-
-class _CacheRegistry(object):
-    """The main cache container."""
-
-    __log = None
-    cache = { }
-
-    def __init__(self):
-        self.__log = logging.getLogger().getChild('CacheReg')
-
-    @staticmethod
-    def get_instance(resource_name):
-    
-        with _CacheRegistry.rlock:
-            try:
-                _CacheRegistry.__instance;
-            except:
-                _CacheRegistry.__instance = _CacheRegistry()
-
-            if resource_name not in _CacheRegistry.__instance.cache:
-                _CacheRegistry.__instance.cache[resource_name] = { }
-
-        return _CacheRegistry.__instance
-
-    def set(self, resource_name, key, value):
-
-        self.__log.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, 
-                                                          type(value)))
-
-        with _CacheRegistry.rlock:
-            try:
-                old_tuple = self.cache[resource_name][key]
-            except:
-                old_tuple = None
-
-            self.cache[resource_name][key] = (value, datetime.now())
-
-        return old_tuple
-
-    def remove(self, resource_name, key, cleanup_pretrigger=None):
-
-        self.__log.debug("CacheRegistry.remove(%s,%s,%s)" % 
-                         (resource_name, key, type(cleanup_pretrigger)))
-
-        with _CacheRegistry.rlock:
-            try:
-                old_tuple = self.cache[resource_name][key]
-            except:
-                raise
-
-            self.__cleanup_entry(resource_name, key, True, 
-                                 cleanup_pretrigger=cleanup_pretrigger)
-
-        return old_tuple[0]
-
-    def get(self, resource_name, key, max_age, cleanup_pretrigger=None):
-        
-        trigger_given_phrase = ('None' 
-                                if cleanup_pretrigger == None 
-                                else '<given>')
-
-        self.__log.debug("CacheRegistry.get(%s,%s,%s,%s)" % 
-                         (resource_name, key, max_age, trigger_given_phrase))
-
-        with _CacheRegistry.rlock:
-            try:
-                (value, timestamp) = self.cache[resource_name][key]
-            except:
-                raise CacheFault("NonExist")
-
-            if max_age != None and \
-               (datetime.now() - timestamp).seconds > max_age:
-                self.__cleanup_entry(resource_name, key, False, 
-                                     cleanup_pretrigger=cleanup_pretrigger)
-                raise CacheFault("Stale")
-
-        return value
-
-    def list_raw(self, resource_name):
-        
-        self.__log.debug("CacheRegistry.list(%s)" % (resource_name))
-
-        with _CacheRegistry.rlock:
-            try:
-                return self.cache[resource_name]
-            except:
-                self.__log.exception("Could not list raw-entries under cache "
-                                  "labelled with resource-name [%s]." %
-                                  (resource_name))
-                raise
-
-    def exists(self, resource_name, key, max_age, cleanup_pretrigger=None, 
-               no_fault_check=False):
-
-        self.__log.debug("CacheRegistry.exists(%s,%s,%s,%s)" % (resource_name, 
-                      key, max_age, cleanup_pretrigger))
-        
-        with _CacheRegistry.rlock:
-            try:
-                (value, timestamp) = self.cache[resource_name][key]
-            except:
-                return False
-
-            if max_age != None and not no_fault_check and \
-                    (datetime.now() - timestamp).seconds > max_age:
-                self.__cleanup_entry(resource_name, key, False, 
-                                     cleanup_pretrigger=cleanup_pretrigger)
-                return False
-
-        return True
-
-    def count(self, resource_name):
-
-        return len(self.cache[resource_name])
-
-    def __cleanup_entry(self, resource_name, key, force, 
-                        cleanup_pretrigger=None):
-
-        self.__log.debug("Doing clean-up for resource_name [%s] and key "
-                         "[%s]." % (resource_name, key))
-
-        if cleanup_pretrigger != None:
-            self.__log.debug("Running pre-cleanup trigger for resource_name "
-                             "[%s] and key [%s]." % (resource_name, key))
-
-            try:
-                cleanup_pretrigger(resource_name, key, force)
-            except:
-                self.__log.exception("Cleanup-trigger failed.")
-                raise
-
-        try:
-            del self.cache[resource_name][key]
-        except:
-            self.__log.exception("Could not clean-up entry with resource_name "
-                              "[%s] and key [%s]." % (resource_name, key))
-            raise
-
-_CacheRegistry.rlock = RLock()
-
-class _CacheAgent(object):
-    """A particular namespace within the cache."""
-
-    __log = None
-
-    registry        = None
-    resource_name   = None
-    max_age         = None
-
-    fault_handler       = None
-    cleanup_pretrigger  = None
-
-    report              = None
-    report_source_name  = None
-
-    def __init__(self, resource_name, max_age, fault_handler=None, 
-                 cleanup_pretrigger=None):
-        self.__log = logging.getLogger().getChild('CacheAgent')
-
-        self.__log.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
-                                                   type(fault_handler), 
-                                                   cleanup_pretrigger))
-
-        self.registry = _CacheRegistry.get_instance(resource_name)
-        self.resource_name = resource_name
-        self.max_age = max_age
-
-        self.fault_handler = fault_handler
-        self.cleanup_pretrigger = cleanup_pretrigger
-
-        self.report = Report.get_instance()
-        self.report_source_name = ("cache-%s" % (self.resource_name))
-
-        # Run a clean-up cycle to get it scheduled.
-#        self.__cleanup_check()
-        self.__post_status()
-
-    def __del__(self):
-
-        if self.report.is_source(self.report_source_name):
-            self.report.remove_all_values(self.report_source_name)
-
-    def __post_status(self):
-        """Send the current status to our reporting tool."""
-
-        try:
-            num_values = self.registry.count(self.resource_name)
-        except:
-            self.__log.exception("Could not get count of values for resource "
-                                 "with name [%s]." % (self.resource_name))
-            raise
-
-        try:
-            self.report.set_values(self.report_source_name, 'count', 
-                                   num_values)
-        except:
-            self.__log.exception("Cache could not post status for resource "
-                                 "with name [%s]." % (self.resource_name))
-            raise
-
-        status_post_interval_s = Conf.get('cache_status_post_frequency_s')
-        status_timer = Timer(status_post_interval_s, self.__post_status)
-        status_timer.start()
-
-        Timers.get_instance().register_timer('status', status_timer)
-
-    def __cleanup_check(self):
-        """Scan the current cache and determine items old-enough to be 
-        removed.
-        """
-
-        self.__log.debug("Doing clean-up for cache resource with name [%s]." % 
-                      (self.resource_name))
-
-        try:
-            cache_dict = self.registry.list_raw(self.resource_name)
-        except:
-            self.__log.exception("Could not do clean-up check with resource-"
-                                 "name [%s]." % (self.resource_name))
-            raise
-
-        total_keys = [ (key, value_tuple[1]) for key, value_tuple \
-                            in cache_dict.iteritems() ]
-
-        cleanup_keys = [ key for key, value_tuple \
-                            in cache_dict.iteritems() \
-                            if (datetime.now() - value_tuple[1]).seconds > \
-                                    self.max_age ]
-
-        self.__log.info("Found (%d) entries to clean-up from entry-cache." % 
-                        (len(cleanup_keys)))
-
-        if cleanup_keys:
-            for key in cleanup_keys:
-                self.__log.debug("Cache entry [%s] under resource-name [%s] "
-                                 "will be cleaned-up." % (key, 
-                                                          self.resource_name))
-
-                if self.exists(key, no_fault_check=True) == False:
-                    self.__log.debug("Entry with ID [%s] has already been "
-                                     "cleaned-up." % (key))
-                else:
-                    try:
-                        self.remove(key)
-                    except:
-                        self.__log.exception("Cache entry [%s] under resource-"
-                                             "name [%s] could not be cleaned-"
-                                             "up." % (key, self.resource_name))
-                        raise
-
-            self.__log.debug("Scheduled clean-up complete.")
-
-        cleanup_interval_s = Conf.get('cache_cleanup_check_frequency_s')
-        cleanup_timer = Timer(cleanup_interval_s, self.__cleanup_check)
-        cleanup_timer.start()
-
-        Timers.get_instance().register_timer('cleanup', cleanup_timer)
-
-    def set(self, key, value):
-        self.__log.debug("CacheAgent.set(%s,%s)" % (key, type(value)))
-
-        return self.registry.set(self.resource_name, key, value)
-
-    def remove(self, key):
-        self.__log.debug("CacheAgent.remove(%s)" % (key))
-
-        return self.registry.remove(self.resource_name, key, 
-                                    cleanup_pretrigger=self.cleanup_pretrigger)
-
-    def get(self, key, handle_fault = None):
-
-        if handle_fault == None:
-            handle_fault = True
-
-        self.__log.debug("CacheAgent.get(%s)" % (key))
-
-        try:
-            result = self.registry.get(self.resource_name, key, 
-                                       max_age=self.max_age, 
-                                       cleanup_pretrigger=self.cleanup_pretrigger)
-        except (CacheFault):
-            self.__log.debug("There was a cache-miss while requesting item with "
-                          "ID (key).")
-
-            if self.fault_handler == None or not handle_fault:
-                raise
-
-            try:
-                result = self.fault_handler(self.resource_name, key)
-            except:
-                self.__log.exception("There was an exception in the fault-"
-                                  "handler, handling for key [%s].", key)
-                raise
-
-            if result == None:
-                raise
-
-        return result
-
-    def exists(self, key, no_fault_check=False):
-        self.__log.debug("CacheAgent.exists(%s)" % (key))
-
-        return self.registry.exists(self.resource_name, key, 
-                                    max_age=self.max_age,
-                                    cleanup_pretrigger=self.cleanup_pretrigger,
-                                    no_fault_check=no_fault_check)
-
-    def __getitem__(self, key):
-        return self.get(key)
-
-    def __setitem__(self, key, value):
-        return self.set(key, value)
-
-    def __delitem__(self, key):
-        return self.remove(key)
-
-class CacheClient(object):
-    """Meant to be inherited by a class. Is used to configure a particular 
-    namespace within the cache.
+def split_path(filepath, pathresolver_cb):
+    """Completely process and distill the requested file-path. The filename can"
+    be padded to adjust what's being requested. This will remove all such 
+    information, and return the actual file-path along with the extra meta-
+    information. pathresolver_cb should expect a single parameter of a path,
+    nd return a NormalEntry object.
     """
 
-    __log = None
+    # Remove any export-type that this file-path might've been tagged with.
 
-    @property
-    def cache(self):
-        try:
-            return self._cache
-        except:
-            pass
+    try:
+        _initial_split_results = _strip_export_type(filepath)
+        (filepath, extension, just_info, mime_type) = _initial_split_results
+    except:
+        logging.exception("Could not process path [%s] for export-type." % 
+                          (filepath))
+        raise
 
-        self._cache = _CacheAgent(self.child_type, self.max_age, 
-                                 fault_handler=self.fault_handler, 
-                                 cleanup_pretrigger=self.cleanup_pretrigger)
+    # Split the file-path into a path and a filename.
 
-        return self._cache
+    (path, filename) = os.path.split(filepath)
 
-    def __init__(self):
-        self.__log = logging.getLogger().getChild('CacheClient')
-        child_type = self.__class__.__bases__[0].__name__
-        max_age = self.get_max_cache_age_seconds()
-        
-        self.__log.debug("CacheClient(%s,%s)" % (child_type, max_age))
+    if path[0] != '/' or filename == '':
+        message = ("Could not create directory with badly-formatted "
+                   "file-path [%s]." % (filepath))
 
-        self.child_type = child_type
-        self.max_age = max_age
+        logging.error(message)
+        raise ValueError(message)
 
-        self.init()
+    # Lookup the file, as it was listed, in our cache.
 
-    def fault_handler(self, resource_name, key):
-        pass
+    try:
+        parent_entry = pathresolver_cb(path)
+    except:
+        logger.exception("Exception while getting entry from path [%s]." % 
+                         (path))
+        raise GdNotFoundError()
 
-    def cleanup_pretrigger(self, resource_name, key, force):
-        pass
+    if not parent_entry:
+        logging.debug("Path [%s] does not exist for split." % (path))
+        raise GdNotFoundError()
 
-    def init(self):
-        pass
+    # Strip a prefixing dot, if present.
 
-    def get_max_cache_age_seconds(self):
-        raise NotImplementedError("get_max_cache_age() must be implemented in "
-                                  "the CacheClient child.")
+    if filename[0] == '.':
+        is_hidden = True
+#        filename = filename[1:]
 
-    @classmethod
-    def get_instance(cls):
-        """A helper method to dispense a singleton of whomever is inheriting "
-        from us.
-        """
+    else:
+        is_hidden = False
 
-        class_name = cls.__name__
+    logging.debug("File-path [%s] dereferenced to parent with ID [%s], path "
+                  "[%s], filename [%s], extension [%s], mime-type [%s], "
+                  "is_hidden [%s], and just-info [%s]." % 
+                  (filepath, parent_entry.id, path, filename, extension, 
+                   mime_type, is_hidden, just_info))
 
-        try:
-            CacheClient.__instances
-        except:
-            CacheClient.__instances = { }
+    return (parent_clause, path, filename, extension, mime_type, is_hidden, 
+            just_info)
 
-        try:
-            return CacheClient.__instances[class_name]
-        except:
-            CacheClient.__instances[class_name] = cls()
-            return CacheClient.__instances[class_name]
 
 class PathRelations(object):
     """Manages physical path representations of all of the entries in our "
     account.
     """
 
+    rlock = RLock()
     __log = None
 
     entry_ll = { }
@@ -416,12 +97,12 @@ class PathRelations(object):
 
         with PathRelations.rlock:
             try:
-                return _CacheRegistry.__instance;
+                return CacheRegistry.__instance;
             except:
                 pass
 
-            _CacheRegistry.__instance = PathRelations()
-            return _CacheRegistry.__instance
+            CacheRegistry.__instance = PathRelations()
+            return CacheRegistry.__instance
 
     def __init__(self):
         self.__log = logging.getLogger().getChild('PathRelate')
@@ -1269,9 +950,7 @@ class PathRelations(object):
         return (entry_id in self.entry_ll and (include_placeholders or \
                                                self.entry_ll[entry_id][0]))
 
-PathRelations.rlock = RLock()
-
-class EntryCache(CacheClient):
+class EntryCache(CacheClientBase):
     """Manages our knowledge of file entries."""
 
     __log = None
@@ -1279,7 +958,7 @@ class EntryCache(CacheClient):
 
     def __init__(self):
         self.__log = logging.getLogger().getChild('EntryCache')
-        CacheClient.__init__(self)
+        CacheClientBase.__init__(self)
 
     def __get_entries_to_update(self, requested_entry_id):
         # Get more entries than just what was requested, while we're at it.

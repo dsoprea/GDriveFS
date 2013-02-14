@@ -2,10 +2,11 @@ import logging
 
 from threading import Lock, Timer
 
-from gdrivefs.gdtool import AccountInfo, drive_proxy
 from gdrivefs.conf import Conf
-from gdrivefs.cache import PathRelations, EntryCache
 from gdrivefs.timer import Timers
+from gdrivefs.gdtool.account_info import AccountInfo
+from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.cache.volume import PathRelations, EntryCache
 
 def _sched_check_changes():
     
