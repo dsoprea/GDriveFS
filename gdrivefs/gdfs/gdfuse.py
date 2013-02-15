@@ -11,7 +11,7 @@ import resource
 
 from errno import *
 from time import mktime, time
-from fuse import Operations, FuseOSError, c_statvfs, fuse_get_context #, LoggingMixIn
+from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context #, LoggingMixIn
 from sys import argv, exit, excepthook
 
 from gdrivefs.utility import get_utility
@@ -23,7 +23,6 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf import Conf
 from gdrivefs.utility import dec_hint
-from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
@@ -605,6 +604,66 @@ class GDriveFS(Operations):#LoggingMixIn,
         """Called on filesystem destruction. Path is always /."""
 
         get_change_manager().mount_destroy()
+
+def load_mount_parser_args(parser):
+    parser.add_argument('auth_storage_file', help='Authorization storage file')
+    parser.add_argument('mountpoint', help='Mount point')
+    parser.add_argument('-d', '--debug', help='Debug mode',
+                        action='store_true', required=False)
+    parser.add_argument('-o', '--opt', help='Mount options',
+                        action='store', required=False,
+                        nargs=1)
+
+def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, 
+          option_string=None):
+
+    fuse_opts = { }
+
+    if option_string:
+        for opt_parts in [opt.split('=', 1) \
+                          for opt \
+                          in option_string.split(',') ]:
+            k = opt_parts[0]
+
+            # We need to present a bool type for on/off flags. Since all we
+            # have are strings, we'll convert anything with a 'True' or 'False'
+            # to a bool, or anything with just a key to True.
+            if len(opt_parts) == 2:
+                v = opt_parts[1]
+
+                if v == 'True':
+                    v = True
+                elif v == 'False':
+                    v = False
+            else:
+                v = True
+
+            # We have a list of provided options. See which match against our 
+            # application options.
+
+            logging.info("Setting option [%s] to [%s]." % (k, v))
+
+            try:
+                Conf.set(k, v)
+            except (KeyError) as e:
+                fuse_opts[k] = v
+            except:
+                logging.exception("Could not set option [%s]. It is probably "
+                                  "invalid." % (k))
+                raise
+
+    # Assume that any option that wasn't an application option is a FUSE 
+    # option. The Python-FUSE interface that we're using is beautiful/elegant,
+    # but there's no help support. The user is just going to have to know the
+    # options.
+
+    set_auth_cache_filepath(auth_storage_filepath)
+
+    # How we'll appear in diskfree, mtab, etc..
+    name = ("gdfs(%s)" % (auth_storage_filepath))
+
+    fuse = FUSE(GDriveFS(), mountpoint, debug=False, foreground=debug, 
+                nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
     Conf.set('auth_cache_filepath', auth_storage_filepath)

@@ -31,7 +31,7 @@ def path_resolver(path):
         logging.debug("Path [%s] does not exist for split." % (path))
         raise GdNotFoundError()
 
-    return parent_clause[CLAUSE_ENTRY]
+    return (parent_clause[CLAUSE_ENTRY], parent_clause)
 
 
 class PathRelations(object):

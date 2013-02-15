@@ -81,7 +81,7 @@ def split_path(filepath, pathresolver_cb):
 
     # Split the file-path into a path and a filename.
 
-    (path, filename) = os.path.split(filepath)
+    (path, filename) = split(filepath)
 
     if path[0] != '/' or filename == '':
         message = ("Could not create directory with badly-formatted "
@@ -93,15 +93,17 @@ def split_path(filepath, pathresolver_cb):
     # Lookup the file, as it was listed, in our cache.
 
     try:
-        parent_entry = pathresolver_cb(path)
+        path_resolution = pathresolver_cb(path)
     except:
         logger.exception("Exception while getting entry from path [%s]." % 
                          (path))
         raise GdNotFoundError()
 
-    if not parent_entry:
+    if not path_resolution:
         logging.debug("Path [%s] does not exist for split." % (path))
         raise GdNotFoundError()
+
+    (parent_entry, parent_clause) = path_resolution
 
     # Strip a prefixing dot, if present.
 

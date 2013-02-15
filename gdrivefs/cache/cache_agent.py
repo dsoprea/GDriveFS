@@ -7,9 +7,8 @@ from threading import Timer
 from gdrivefs.timer import Timers
 from gdrivefs.conf import Conf
 
-from gdrivefs.cache.cache_registry import CacheRegistry
+from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
 from gdrivefs.report import Report
-
 
 class CacheAgent(object):
     """A particular namespace within the cache."""
@@ -153,7 +152,7 @@ class CacheAgent(object):
                                        key, 
                                        max_age=self.max_age, 
                                        cleanup_pretrigger=self.cleanup_pretrigger)
-        except (CacheFault):
+        except CacheFault:
             self.__log.debug("There was a cache-miss while requesting item with "
                           "ID (key).")
 

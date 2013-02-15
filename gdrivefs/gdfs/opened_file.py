@@ -12,7 +12,8 @@ from gdrivefs.errors import ExportFormatError, GdNotFoundError
 from gdrivefs.utility import dec_hint
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.gdfs.fsutility import get_temp_filepath, split_path
-from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver
+from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
+                                  CLAUSE_ID
 from gdrivefs.gdtool.drive import drive_proxy
 
 _static_log = logging.getLogger().getChild('(OF)')
@@ -334,8 +335,8 @@ class OpenedFile(object):
 # TODO: Read in steps?
                         self.buffer = f.read()
                     except:
-                        self.__log.exception("Could not read current cached file "
-                                             "into buffer.")
+                        self.__log.exception("Could not read current cached "
+                                             "file into buffer.")
                         raise
 
                 self.__is_loaded = True
@@ -501,8 +502,7 @@ class OpenedFile(object):
         try:
             self.__load_base_from_remote()
         except:
-            self.__log.exception("Could not load write-cache file [%s]." % 
-                                 (self.temp_file_path))
+            self.__log.exception("Could not load write-cache file.")
             raise
 
 # TODO: Refactor this into a paging mechanism.

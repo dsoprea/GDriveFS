@@ -1,8 +1,9 @@
 import logging
 import json
 
-from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdfs.fsutility import get_temp_filepath
+from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.normal_entry import NormalEntry
 
 class DisplacedFile(object):
     __log = None
