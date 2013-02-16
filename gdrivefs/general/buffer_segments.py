@@ -1,3 +1,5 @@
+import logging
+
 from threading import Lock
 
 class BufferSegments(object):
@@ -15,6 +17,7 @@ class BufferSegments(object):
         self.__segments = [(0, data)]
 
         self.__block_size = block_size
+        self.__log = logging.getLogger().getChild('BufferSeg')
 
     def __repr__(self):
         return ("<BSEGS  SEGS= (%(segs)d) BLKSIZE= (%(block_size)d)>" % 
@@ -78,6 +81,9 @@ class BufferSegments(object):
         """
 
         with self.__locker:
+            self.__log.debug("Applying update of (%d) bytes at offset (%d)."  % 
+                             (len(data), offset))
+
             seg_index = self.__find_segment(offset)
             data_len = len(data)
 
@@ -139,9 +145,12 @@ class BufferSegments(object):
         """
 
         with self.__locker:
+            self.__log.debug("Reading at offset (%d) for length [%s]. Total "
+                             "length is (%d)."  % (length, offset, self.length))
+
             if length is None:
-                length = self.size
-        
+                length = self.length
+
             current_segindex = self.__find_segment(offset)
             current_offset = offset
 
@@ -181,7 +190,7 @@ class BufferSegments(object):
                     current_segindex += 1
 
     @property
-    def size(self):
+    def length(self):
         last_segment = self.__segments[-1]
         return last_segment[0] + len(last_segment[1])
 

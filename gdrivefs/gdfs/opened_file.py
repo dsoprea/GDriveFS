@@ -8,6 +8,7 @@ from fuse import FuseOSError
 from tempfile import NamedTemporaryFile
 from os import unlink, utime
 
+from gdrivefs.conf import Conf
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
 from gdrivefs.utility import dec_hint
 from gdrivefs.gdfs.displaced_file import DisplacedFile
@@ -15,6 +16,7 @@ from gdrivefs.gdfs.fsutility import get_temp_filepath, split_path
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID
 from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.general.buffer_segments import BufferSegments
 
 _static_log = logging.getLogger().getChild('(OF)')
 
@@ -335,13 +337,18 @@ class OpenedFile(object):
 
                     try:
 # TODO: Read in steps?
-                        self.buffer = f.read()
+                        data = f.read()
+
+                        read_blocksize = Conf.get('default_buffer_read_blocksize')
+                        self.buffer = BufferSegments(data, read_blocksize)
                     except:
                         self.__log.exception("Could not read current cached "
                                              "file into buffer.")
                         raise
 
                 self.__is_loaded = True
+
+        return cache_fault
 
     @dec_hint(['offset', 'data'], ['data'], 'OF')
     def add_update(self, offset, data):
@@ -359,7 +366,8 @@ class OpenedFile(object):
 
 # TODO: Immediately apply updates to buffer. Add a "dirty" flag.
         with self.update_lock:
-            self.updates.append((offset, data))
+            self.buffer.apply_update(offset, data)
+        #    self.updates.append((offset, data))
 
         self.__log.debug("(%d) updates have been queued." % 
                          (len(self.updates)))
@@ -378,44 +386,31 @@ class OpenedFile(object):
             self.__log.exception("Could not get entry with ID [%s] for "
                               "write-flush." % (self.entry_id))
             raise
+
+        try:
+             cache_fault = self.__load_base_from_remote()
+        except:
+            self.__log.exception("Could not load write-cache file [%s]." % 
+                              (self.temp_file_path))
+            raise
     
         with self.update_lock:
             if not self.updates:
                 self.__log.debug("Flush will be skipped due to empty write-"
                               "queue.")
                 return
-# We no longer apply the updates to the existing data. We suspect that we're
-# always fed complete data, or we'd never be able to determine truncation.
-#            self.__log.debug("Checking write-cache file (flush).")
-#
-#            try:
-#                self.__load_base_from_remote()
-#            except:
-#                self.__log.exception("Could not load write-cache file [%s]." % 
-#                                  (self.temp_file_path))
-#                raise
+
+            if cache_fault:
+                logging.warn("File updates can no longer be applied. The file "
+                             "has been changed, remotely. Dumping queued "
+                             "updates.")
+                self.updates = []
+# TODO: Raise an exception?
+                return
 
             # Apply updates to the data.
 
             self.__log.debug("Applying (%d) updates." % (len(self.updates)))
-
-            i = 0
-            buffer = ''
-            while self.updates:
-#                print("Applying update (%d)." % (i))
-            
-                (offset, data) = self.updates.popleft()
-                self.__log.debug("Applying update (%d) at offset (%d) with "
-                                 "data-length (%d)." % (i, offset, len(data)))
-
-                right_fragment_start = offset + len(data)
-
-#                self.buffer = self.buffer[0:offset] + data + \
-#                                self.buffer[right_fragment_start:]
-                buffer = buffer[0:offset] + data + \
-                                buffer[right_fragment_start:]
-
-                i += 1
 
             # Write back out to the temporary file.
 
@@ -432,13 +427,19 @@ class OpenedFile(object):
                 temp_file_path = get_temp_filepath(entry, 
                                                    self.__just_info, 
                                                    mime_type)
+                                                   
+                with file(temp_file_path, 'w') as f:
+                    for block in self.buffer:
+                        f.write(block)
+                                                   
                 write_file_path = temp_file_path
             else:
                 is_temp = True
             
                 with NamedTemporaryFile(delete=False) as f:
                     write_file_path = f.name
-                    f.write(buffer)
+                    for block in self.buffer:
+                        f.write(block)
 
             # Push to GD.
 
@@ -508,7 +509,7 @@ class OpenedFile(object):
             raise
 
 # TODO: Refactor this into a paging mechanism.
-        buffer_len = len(self.buffer)
+        buffer_len = self.buffer.length
         if offset >= buffer_len:
             raise IndexError("Offset (%d) exceeds length of data (%d)." % 
                              (offset, buffer_len))
@@ -519,10 +520,11 @@ class OpenedFile(object):
                                                                buffer_len)) 
             length = buffer_len
 
-        data = self.buffer[offset:offset + length]
+        data_blocks = [block for block in self.buffer.read(offset, length)]
+        data = ''.join(data_blocks)
 
         self.__log.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d)." % 
-                         (len(data), offset, length, len(self.buffer)))
+                         (len(data), offset, length, self.buffer.length))
 
         return data
 
