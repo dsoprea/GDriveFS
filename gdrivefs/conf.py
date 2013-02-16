@@ -1,4 +1,5 @@
 import logging
+from apiclient.discovery import DISCOVERY_URI
 
 class Conf(object):
     """Manages options."""
@@ -29,6 +30,7 @@ class Conf(object):
     cache_entries_max_age               = 8 * 60 * 60
     cache_status_post_frequency_s       = 10
     report_emit_frequency_s             = 60
+    google_discovery_service_url        = DISCOVERY_URI
 
     max_readahead_entries = 10
     """How many extra entries to retrieve when an entry is accessed that is 

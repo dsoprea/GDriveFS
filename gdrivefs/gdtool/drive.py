@@ -6,6 +6,7 @@ import dateutil.parser
 
 from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
+from apiclient.errors import HttpError
 
 from time import mktime, time
 from datetime import datetime
@@ -56,8 +57,8 @@ class _GdriveManager(object):
         try:
             self.credentials.authorize(http)
         except:
-            self.__log.exception("Could not get authorized HTTP client for Google"
-                              " Drive client.")
+            self.__log.exception("Could not get authorized HTTP client for "
+                                 "Google Drive client.")
             raise
 
         return http
@@ -73,11 +74,32 @@ class _GdriveManager(object):
             self.__log.exception("Could not get authed Http instance.")
             raise
 
-        self.__log.info("Building authorized client from Http.  TYPE= [%s]" % (type(authed_http)))
+        self.__log.info("Building authorized client from Http.  TYPE= [%s]" % 
+                        (type(authed_http)))
     
         # Build a client from the passed discovery document path
-        client = build(self.conf_service_name, self.conf_service_version, 
-                        http=authed_http)
+        
+        discoveryUrl = Conf.get('google_discovery_service_url')
+        
+        try:
+            client = build(self.conf_service_name, 
+                           self.conf_service_version, 
+                           http=authed_http, 
+                           discoveryServiceUrl=discoveryUrl)
+        except HttpError as e:
+            # We've seen situations where the discovery URL's server is down,
+            # with an alternate one to be used.
+            #
+            # An error here shouldn't leave GDFS in an unstable state (the 
+            # current command should just fail). Hoepfully, the failure is 
+            # momentary, and the next command succeeds.
+
+            logging.exception("There was an HTTP response-code of (%d) while "
+                              "building the client with discovery URL [%s]." % 
+                              (e.resp.status, discoveryUrl))
+            raise
+        except:
+            raise
 
         self.client = client
         return self.client
@@ -88,8 +110,8 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (get_about).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (get_about).")
             raise
 
         try:
@@ -108,13 +130,13 @@ class _GdriveManager(object):
         """
 
         self.__log.info("Listing changes starting at ID [%s] with page_token "
-                     "[%s]." % (start_change_id, page_token))
+                        "[%s]." % (start_change_id, page_token))
 
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (list_changes).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (list_changes).")
             raise
 
         try:
@@ -139,8 +161,8 @@ class _GdriveManager(object):
             entry       = None if item[u'deleted'] else item[u'file']
 
             if last_change_id and change_id <= last_change_id:
-                message = "Change-ID (%d) being processed is less-than the last" \
-                          " change-ID (%d) to be processed." % \
+                message = "Change-ID (%d) being processed is less-than the " \
+                          "last change-ID (%d) to be processed." % \
                           (change_id, last_change_id)
 
                 self.__log.error(message)
@@ -170,7 +192,8 @@ class _GdriveManager(object):
                               "Drive client (get_parents_containing_id).")
             raise
 
-        self.__log.info("Listing entries over child with ID [%s]." % (child_id))
+        self.__log.info("Listing entries over child with ID [%s]." %
+                        (child_id))
 
         try:
             response = client.parents().list(fileId=child_id).execute()
@@ -180,8 +203,11 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
-    def get_children_under_parent_id(self, parent_id, query_contains_string=None, \
-                                        query_is_string=None, max_results=None):
+    def get_children_under_parent_id(self, \
+                                     parent_id, \
+                                     query_contains_string=None, \
+                                     query_is_string=None, \
+                                     max_results=None):
 
         self.__log.info("Getting client for child-listing.")
 
@@ -254,12 +280,14 @@ class _GdriveManager(object):
         try:
             entry = NormalEntry('direct_read', entry_raw)
         except:
-            self.__log.exception("Could not normalize raw-data for entry with ID [%s]." % (entry_id))
+            self.__log.exception("Could not normalize raw-data for entry with "
+                                 "ID [%s]." % (entry_id))
             raise
 
         return entry
 
-    def list_files(self, query_contains_string=None, query_is_string=None, parent_id=None):
+    def list_files(self, query_contains_string=None, query_is_string=None, 
+                   parent_id=None):
         
         self.__log.info("Listing all files.")
 
@@ -322,8 +350,10 @@ class _GdriveManager(object):
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
-            message = ("Entry with ID [%s] can not be exported to type [%s]. The available types are: %s" % 
-                       (normalized_entry.id, mime_type, ', '.join(normalized_entry.download_links.keys())))
+            message = ("Entry with ID [%s] can not be exported to type [%s]. "
+                       "The available types are: %s" % 
+                       (normalized_entry.id, mime_type, 
+                        ', '.join(normalized_entry.download_links.keys())))
 
             self.__log.warning(message)
             raise ExportFormatError(message)
@@ -347,14 +377,14 @@ class _GdriveManager(object):
         if allow_cache and isfile(output_file_path):
             # Determine if a local copy already exists that we can use.
             try:
-                stat = stat(output_file_path)
+                stat_info = stat(output_file_path)
             except:
                 self.__log.exception("Could not retrieve stat() information "
                                      "for temp download file [%s]." % 
                                      (output_file_path))
                 raise
 
-            if gd_mtime_epoch == stat.st_mtime:
+            if gd_mtime_epoch == stat_info.st_mtime:
                 use_cache = True
 
         if use_cache:
@@ -362,7 +392,7 @@ class _GdriveManager(object):
 
             self.__log.info("File retrieved from the previously downloaded, "
                             "still-current file.")
-            return (stat.st_size, False)
+            return (stat_info.st_size, False)
 
         # Go and get the file.
 
@@ -465,7 +495,8 @@ class _GdriveManager(object):
             self.__log.exception("Could not normalize created entry.")
             raise
             
-        self.__log.info("New entry created with ID [%s]." % (normalized_entry.id))
+        self.__log.info("New entry created with ID [%s]." % 
+                        (normalized_entry.id))
 
         return normalized_entry
 
@@ -476,7 +507,8 @@ class _GdriveManager(object):
         try:
             self.update_entry(normalized_entry, data_filepath='/dev/null')
         except:
-            self.__log.exception("Could not truncate entry with ID [%s]." % (normalized_enty.id))
+            self.__log.exception("Could not truncate entry with ID [%s]." % 
+                                 (normalized_enty.id))
             raise
 
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
@@ -560,7 +592,10 @@ class _GdriveManager(object):
             self.__log.debug("No mime-type was presented for file create/update. "
                           "Defaulting to [%s]." % (mime_type))
 
-        return self.__insert_entry(filename=filename, data_filepath=data_filepath, mime_type=mime_type, **kwargs)
+        return self.__insert_entry(filename=filename, 
+                                   data_filepath=data_filepath, 
+                                   mime_type=mime_type, 
+                                   **kwargs)
 
     def remove_entry(self, normalized_entry):
 
@@ -622,7 +657,7 @@ class _GoogleProxy(object):
             # any other error to bubble up.
             
             self.__log.debug("Attempting to invoke method for action [%s]." % 
-                          (action))
+                             (action))
                 
             try:
                 return method(**kwargs)
@@ -632,6 +667,11 @@ class _GoogleProxy(object):
                                       "proxied action [%s], and we were told "
                                       "to NOT auto-refresh." % (action))
                     raise
+            except HttpError as e:
+                logging.exception("There was an HTTP response-code of (%d) "
+                                  "while trying to do [%s]." % 
+                                  (e.resp.status, action))      
+                raise
             except NameError:
                 raise
             except:
@@ -684,7 +724,8 @@ def drive_proxy(action, auto_refresh = True, **kwargs):
     except (NameError):
         raise
     except:
-        logging.exception("There was an exception while invoking proxy action.")
+        logging.exception("There was an exception while invoking proxy "
+                          "action.")
         raise
     
 drive_proxy.gp = None

@@ -35,7 +35,7 @@ class CacheRegistry(object):
     def set(self, resource_name, key, value):
 
         self.__log.debug("CacheRegistry.set(%s,%s,%s)" % (resource_name, key, 
-                                                          type(value)))
+                                                          value))
 
         with CacheRegistry.__rlock:
             try:

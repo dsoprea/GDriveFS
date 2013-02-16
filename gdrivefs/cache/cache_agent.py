@@ -153,8 +153,8 @@ class CacheAgent(object):
                                        max_age=self.max_age, 
                                        cleanup_pretrigger=self.cleanup_pretrigger)
         except CacheFault:
-            self.__log.debug("There was a cache-miss while requesting item with "
-                          "ID (key).")
+            self.__log.debug("There was a cache-miss while requesting item "
+                             "with ID (key).")
 
             if self.fault_handler == None or not handle_fault:
                 raise
@@ -163,7 +163,7 @@ class CacheAgent(object):
                 result = self.fault_handler(self.resource_name, key)
             except:
                 self.__log.exception("There was an exception in the fault-"
-                                  "handler, handling for key [%s].", key)
+                                     "handler, handling for key [%s].", key)
                 raise
 
             if result == None:

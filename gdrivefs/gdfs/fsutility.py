@@ -16,7 +16,7 @@ def get_temp_filepath(normalized_entry, just_info, mime_type):
 
     temp_path = Conf.get('file_download_temp_path')
     suffix = '_temp' if just_info else ''
-    return ("%s/%s" % (temp_path, temp_filename, suffix))
+    return ("%s/%s%s" % (temp_path, temp_filename, suffix))
 
 def strip_export_type(path, set_mime=True):
 

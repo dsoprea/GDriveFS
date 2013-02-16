@@ -67,6 +67,8 @@ class OpenedManager(object):
                     self.fh_counter = 1
 
                 if self.fh_counter not in self.opened:
+                    logging.debug("Assigning file-handle (%d)." % 
+                                  (self.fh_counter))
                     return self.fh_counter
                 
         message = "Could not allocate new file handle. Safety breach."
@@ -206,7 +208,7 @@ class OpenedFile(object):
         self.buffer = None
         self.__is_loaded = False
 
-# TODO: !! Make sure the "changes" thread is still going.
+# TODO: !! Make sure the "changes" thread is still going, here.
 
     def __get_entry_or_raise(self):
         """We can never be sure that the entry will still be known to the 
@@ -515,8 +517,12 @@ class OpenedFile(object):
             self.__log.debug("Requested length (%d) from offset (%d) exceeds "
                              "file length (%d). Truncated." % (length, offset, 
                                                                buffer_len)) 
-            return self.buffer[offset:]
+            length = buffer_len
 
-        return self.buffer[offset:length]
+        data = self.buffer[offset:offset + length]
 
+        self.__log.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d)." % 
+                         (len(data), offset, length, len(self.buffer)))
+
+        return data
 

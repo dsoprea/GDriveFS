@@ -55,9 +55,10 @@ def dec_hint(argument_names=[], excluded=[], prefix=''):
                 values_nice = [("%s= [%s]" % (k, v)) for k, v \
                                                      in condensed.iteritems() \
                                                      if k not in excluded]
-                values_string = '  '.join(values_nice)
-
-                log.debug("DATA: %s" % (values_string))
+                
+                if values_nice:
+                    values_string = '  '.join(values_nice)
+                    log.debug("DATA: %s" % (values_string))
 
             suffix = ''
 
