@@ -81,8 +81,16 @@ class BufferSegments(object):
         """
 
         with self.__locker:
-            self.__log.debug("Applying update of (%d) bytes at offset (%d)."  % 
-                             (len(data), offset))
+            self.__log.debug("Applying update of (%d) bytes at offset (%d). "
+                             "Current segment count is (%d)."  % 
+                             (len(data), offset, len(self.__segments)))
+
+            if len(self.__segments) == 1 and self.__segments[0][1] == '':
+                self.__log.debug("Since the file is empty, we're just "
+                                 "assigning the data to the first segment.")
+                
+                self.__segments[0] = (0, data)
+                return
 
             seg_index = self.__find_segment(offset)
             data_len = len(data)
@@ -99,18 +107,17 @@ class BufferSegments(object):
             # moved to a new segment preceding the current.
             if seg_offset < offset:
                 prefix_len = offset - seg_offset
+                self.__log.debug("Splitting-of PREFIX of segment (%d). Prefix "
+                                 "length is (%d). Segment offset is (%d) and "
+                                 "length is (%d)." % 
+                                 (seg_index, prefix_len, seg_offset, 
+                                  len(seg_data)))
+
                 (_, (seg_offset, seg_data)) = self.__split(seg_index, 
                                                            prefix_len)
 
                 seg_len = prefix_len
                 seg_index += 1
-
-            # Now, if the segment's length exceeds the update's length, split 
-            # -that- into a new segment that follows the current segment. The 
-            # new segment will be inserted at the current seg_index.
-
-            if seg_len > data_len:
-                ((seg_offset, seg_data), _) = self.__split(seg_index, data_len)
 
             # Now, apply the update. Collect the number of segments that will 
             # be affected, and reduce to two (at most): the data that we're 
@@ -120,10 +127,26 @@ class BufferSegments(object):
 
             stop_offset = offset + data_len
             seg_stop = seg_index
-            while self.__segments[seg_stop][0] < stop_offset:
-                seg_stop += 1
+            append = True
+            while seg_stop < len(self.__segments):
+                # If our offset is within the current set of data, this is not
+                # going to be an append operation.
+                if self.__segments[seg_stop][0] >= stop_offset:
+                    append = False
+                    break
                 
-            seg_stop -= 1
+                seg_stop += 1
+
+            self.__log.debug("append is [%s]. seg_index= (%d)" % (append, seg_index))
+
+            # If our data is going to replace existing data, go back to the 
+            # last segment, which contained the offset that we're interested 
+            # in.
+            if append is False:
+                seg_stop -= 1
+# TODO: Make sure that updates applied at the front of a segment are correct.
+
+            self.__log.debug("seg_stop is [%s]. Current segments= (%d)" % (seg_stop, len(self.__segments)))
 
             # How much of the last segment that we touch will be affected?
             (lastseg_offset, lastseg_data) = self.__segments[seg_stop] 
@@ -131,11 +154,20 @@ class BufferSegments(object):
             lastseg_len = len(lastseg_data)
             affected_len = (offset + data_len) - lastseg_offset
             if affected_len > 0 and affected_len < lastseg_len:
+                self.__log.debug("Splitting-of suffix of segment (%d). Suffix "
+                                 "length is (%d). Segment offset is (%d) and "
+                                 "length is (%d)." % 
+                                 (seg_stop, lastseg_len - affected_len, 
+                                  lastseg_offset, lastseg_len))
                 self.__split(seg_stop, affected_len)
 
             # We now have a distinct range of segments to replace with the new 
             # data. We are implicitly accounting for the situation in which our
             # data is longer than the remaining number of bytes in the file.
+
+            self.__log.debug("Replacing segment(s) (%d)->(%d) with new "
+                             "segment having offset (%d) and length (%d)." % 
+                             (seg_index, seg_stop + 1, seg_offset, len(data)))
 
             self.__segments[seg_index:seg_stop + 1] = [(seg_offset, data)]        
 
@@ -146,7 +178,7 @@ class BufferSegments(object):
 
         with self.__locker:
             self.__log.debug("Reading at offset (%d) for length [%s]. Total "
-                             "length is (%d)."  % (length, offset, self.length))
+                             "length is [%s]."  % (offset, length, self.length))
 
             if length is None:
                 length = self.length

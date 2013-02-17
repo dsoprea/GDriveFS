@@ -77,8 +77,8 @@ class _ChangeManager(object):
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
-            self.__log.info("Change with ID (%d) will now be applied." %
-                         (change_id))
+            self.__log.info("========== Change with ID (%d) will now be applied. ==========" %
+                            (change_id))
 
             try:
                 self.__apply_change(change_id, change_tuple)

@@ -80,6 +80,9 @@ class _GdriveManager(object):
         # Build a client from the passed discovery document path
         
         discoveryUrl = Conf.get('google_discovery_service_url')
+# TODO: We should cache this, since we have, so often, having a problem 
+#       retrieving it. If there's no other way, grab it directly, and then pass
+#       via a file:// URI.
         
         try:
             client = build(self.conf_service_name, 

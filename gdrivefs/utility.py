@@ -7,7 +7,7 @@ from sys       import getfilesystemencoding
 from gdrivefs.conf import Conf
 
 
-def dec_hint(argument_names=[], excluded=[], prefix=''):
+def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
     """A decorator for the calling of functions to be emphasized in the 
     logging. Displays prefix and suffix information in the logs.
     """
@@ -56,6 +56,11 @@ def dec_hint(argument_names=[], excluded=[], prefix=''):
                                                      in condensed.iteritems() \
                                                      if k not in excluded]
                 
+                if otherdata_cb:
+                    data = otherdata_cb(*args, **kwargs)
+                    for k, v in data.iteritems():
+                        values_nice[k] = v
+                
                 if values_nice:
                     values_string = '  '.join(values_nice)
                     log.debug("DATA: %s" % (values_string))
@@ -65,6 +70,7 @@ def dec_hint(argument_names=[], excluded=[], prefix=''):
             try:
                 result = f(*args, **kwargs)
             except Exception as e:
+                logging.exception("There was an exception.")
                 suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
                 raise
             finally:
@@ -154,7 +160,7 @@ class _DriveUtility(object):
 
     def get_normalized_mime_type(self, entry):
         
-        logging.debug("Deriving mime-type entry with ID [%s]." % (entry.id))
+        logging.debug("Deriving normalized mime-type for [%s]." % (entry.id))
 
         if entry.is_directory:
             return None

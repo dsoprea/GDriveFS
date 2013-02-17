@@ -129,7 +129,7 @@ class CacheAgent(object):
         Timers.get_instance().register_timer('cleanup', cleanup_timer)
 
     def set(self, key, value):
-        self.__log.debug("CacheAgent.set(%s,%s)" % (key, type(value)))
+        self.__log.debug("CacheAgent.set(%s,%s)" % (key, value))
 
         return self.registry.set(self.resource_name, key, value)
 

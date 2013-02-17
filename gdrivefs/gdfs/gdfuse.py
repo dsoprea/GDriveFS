@@ -41,6 +41,7 @@ _static_log = logging.getLogger().getChild('(GDFS)')
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
 # TODO: make sure to finish the opened-file helper factory.
 
+
 class GDriveFS(Operations):#LoggingMixIn,
     """The main filesystem class."""
 
@@ -334,8 +335,7 @@ class GDriveFS(Operations):#LoggingMixIn,
                                  "opened filepath [%s]." % (filepath))
             raise FuseOSError(EIO)
 
-        self.__log.debug("OpenedFile object with path [%s] and ID [%s]." % 
-                         (filepath, opened_file.entry_id))
+        self.__log.debug("Created OpenedFile object [%s]." % (opened_file))
 
         try:
             fh = OpenedManager.get_instance().add(opened_file)
@@ -362,6 +362,8 @@ class GDriveFS(Operations):#LoggingMixIn,
     @dec_hint(['filepath', 'data', 'offset', 'fh'], ['data'])
     def write(self, filepath, data, offset, fh):
 
+        self.__log.debug("Write data length is (%d)." % (len(data)))
+
         try:
             opened_file = OpenedManager.get_instance().get_by_fh(fh=fh)
         except:
@@ -373,6 +375,8 @@ class GDriveFS(Operations):#LoggingMixIn,
         except:
             self.__log.exception("Could not queue file-update.")
             raise FuseOSError(EIO)
+
+        self.__log.debug("Write queued.")
 
         return len(data)
 

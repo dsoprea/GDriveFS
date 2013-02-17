@@ -139,7 +139,6 @@ class OpenedManager(object):
 class OpenedFile(object):
     """This class describes a single open file, and manages changes."""
 
-    updates         = deque()
     update_lock     = Lock()
     download_lock   = Lock()
 
@@ -200,15 +199,28 @@ class OpenedFile(object):
         self.__log.info("Opened-file object created for entry-ID [%s] and path "
                      "(%s)." % (entry_id, path))
 # TODO: Refactor this to being all obfuscated property names.
-        self.entry_id = entry_id
-        self.path = path
-        self.filename = filename
-        self.is_hidden = is_hidden
+        self.__entry_id = entry_id
+        self.__path = path
+        self.__filename = filename
+        self.__is_hidden = is_hidden
         self.__mime_type = mime_type
-        self.cache = EntryCache.get_instance().cache
+        self.__cache = EntryCache.get_instance().cache
         self.__just_info = just_info
-        self.buffer = None
+        self.__buffer = None
         self.__is_loaded = False
+        self.__is_dirty = False
+
+    def __repr__(self):
+        replacements = {'entry_id': self.__entry_id, 
+                        'filename': self.__filename, 
+                        'mime_type': self.__mime_type, 
+                        'just_info': self.__just_info, 
+                        'is_loaded': self.__is_loaded, 
+                        'is_dirty': self.__is_dirty }
+
+        return ("<OF [%(entry_id)s] F=[%(filename)s] MIME=[%(mime_type)s] "
+                "JUSTINFO= [%(just_info)s] LOADED=[%(is_loaded)s] DIRTY= "
+                "[%(is_dirty)s] " % replacements)
 
 # TODO: !! Make sure the "changes" thread is still going, here.
 
@@ -219,13 +231,13 @@ class OpenedFile(object):
         """
 
         self.__log.debug("Retrieving entry for opened-file with entry-ID "
-                         "[%s]." % (self.entry_id))
+                         "[%s]." % (self.__entry_id))
 
         try:
-            return self.cache.get(self.entry_id)
+            return self.__cache.get(self.__entry_id)
         except:
             self.__log.exception("Could not retrieve entry with ID [%s] for "
-                                 "the opened-file." % (self.entry_id))
+                                 "the opened-file." % (self.__entry_id))
             raise 
 
     @property
@@ -238,13 +250,15 @@ class OpenedFile(object):
             entry = self.__get_entry_or_raise()
         except:
             self.__log.exception("Could not get entry with ID [%s] for "
-                                 "mime_type." % (self.entry_id))
+                                 "mime_type." % (self.__entry_id))
             raise
 
         return entry.normalized_mime_type
 
-    @dec_hint(prefix='OF')
     def __write_stub_file(self, file_path, normalized_entry, mime_type):
+
+        self.__log.debug("Writing stub-file for [%s] to [%s]." % 
+                         (normalized_entry, file_path))
 
         try:
             displaced = DisplacedFile(normalized_entry)
@@ -263,23 +277,24 @@ class OpenedFile(object):
 
         return len(stub_data)
 
-    @dec_hint(prefix='OF')
     def __load_base_from_remote(self):
         """Download the data for the entry that we represent. This is probably 
         a file, but could also be a stub for -any- entry.
         """
 
-        self.__log.debug("Retrieving entry for load_base_from_remote.")
-
         try:
             entry = self.__get_entry_or_raise()
         except:
             self.__log.exception("Could not get entry with ID [%s] for "
-                              "write-flush." % (self.entry_id))
+                                 "write-flush." % (self.__entry_id))
             raise
+
+        self.__log.debug("Ensuring local availability of [%s]." % (entry))
 
         mime_type = self.mime_type
         temp_file_path = get_temp_filepath(entry, self.__just_info, mime_type)
+
+        self.__log.debug("__load_base_from_remote about to download.")
 
         with self.download_lock:
             # Get the current version of the write-cache file, or note that we 
@@ -292,6 +307,8 @@ class OpenedFile(object):
             # The output path is predictable. It shouldn't change.
 
             if self.__just_info:
+                self.__log.debug("Just storing information.")
+
                 try:
                     length = self.__write_stub_file(temp_file_path, 
                                                     entry, 
@@ -302,81 +319,88 @@ class OpenedFile(object):
                                          "[%s] being read." % (entry))
                     raise
             else:
+                self.__log.debug("Executing the download.")
+                
                 try:
                     result = drive_proxy('download_to_local', 
                                          output_file_path=temp_file_path,
                                          normalized_entry=entry,
                                          mime_type=mime_type)
+                    self.__log.debug("download_to_local succeeded.")
+
                     (length, cache_fault) = result
                 except ExportFormatError:
+                    self.__log.exception("There was an export-format error.")
                     raise FuseOSError(ENOENT)
                 except:
                     self.__log.exception("Could not localize file with entry "
                                          "[%s]." % (entry))
                     raise
 
+            self.__log.debug("Download complete.  cache_fault= [%s] "
+                             "__is_loaded= [%s]" % (cache_fault, self.__is_loaded))
+
             # We've either not loaded it, yet, or it has changed.
             if cache_fault or not self.__is_loaded:
-                if cache_fault:
-                    with self.update_lock:
-                        if self.updates:
+                with self.update_lock:
+                    self.__log.debug("Checking queued items for fault.")
+
+                    if cache_fault:
+                        if self.__is_dirty:
                             self.__log.error("Entry [%s] has been changed. "
                                              "Forcing buffer updates, and "
-                                             "clearing (%d) queued updates." % 
-                                             (entry, len(self.updates)))
-
-                            self.updates = []
+                                             "clearing uncommitted updates." % 
+                                             (entry))
                         else:
                             self.__log.debug("Entry [%s] has changed. "
                                              "Updating buffers." % (entry))
 
-                self.__log.debug("Updating local cache file.")
+                    self.__log.debug("Loading buffers.")
 
-                with open(temp_file_path, 'rb') as f:
-                    # Read the locally cached file in.
+                    with open(temp_file_path, 'rb') as f:
+                        # Read the locally cached file in.
 
-                    try:
-# TODO: Read in steps?
-                        data = f.read()
+                        try:
+    # TODO: Read in steps?
+                            data = f.read()
 
-                        read_blocksize = Conf.get('default_buffer_read_blocksize')
-                        self.buffer = BufferSegments(data, read_blocksize)
-                    except:
-                        self.__log.exception("Could not read current cached "
-                                             "file into buffer.")
-                        raise
+                            read_blocksize = Conf.get('default_buffer_read_blocksize')
+                            self.__buffer = BufferSegments(data, read_blocksize)
+                        except:
+                            self.__log.exception("Could not read current cached "
+                                                 "file into buffer.")
+                            raise
 
-                self.__is_loaded = True
+                        self.__is_dirty = False
 
+                    self.__is_loaded = True
+
+        self.__log.debug("__load_base_from_remote complete.")
         return cache_fault
 
     @dec_hint(['offset', 'data'], ['data'], 'OF')
     def add_update(self, offset, data):
         """Queue an update to this file."""
 
-        self.__marker('add_update', { 'offset': offset, 
-                                      'actual_length': len(data) })
+        self.__log.debug("Applying update for offset (%d) and length (%d)." % 
+                         (offset, len(data)))
 
         try:
             self.__load_base_from_remote()
         except:
-            self.__log.exception("Could not load write-cache file [%s]." % 
-                              (self.temp_file_path))
+            self.__log.exception("Could not load entry to local cache [%s]." % 
+                                 (self.temp_file_path))
             raise
 
-# TODO: Immediately apply updates to buffer. Add a "dirty" flag.
-        with self.update_lock:
-            self.buffer.apply_update(offset, data)
-        #    self.updates.append((offset, data))
+        self.__log.debug("Base loaded for add_update.")
 
-        self.__log.debug("(%d) updates have been queued." % 
-                         (len(self.updates)))
+        with self.update_lock:
+            self.__buffer.apply_update(offset, data)
+            self.__is_dirty = True
 
     @dec_hint(prefix='OF')
     def flush(self):
         """The OS wants to effect any changes made to the file."""
-
-        #print("Flushing (%d) updates." % (len(self.updates)))
 
         self.__log.debug("Retrieving entry for write-flush.")
 
@@ -384,7 +408,7 @@ class OpenedFile(object):
             entry = self.__get_entry_or_raise()
         except:
             self.__log.exception("Could not get entry with ID [%s] for "
-                              "write-flush." % (self.entry_id))
+                              "write-flush." % (self.__entry_id))
             raise
 
         try:
@@ -395,22 +419,11 @@ class OpenedFile(object):
             raise
     
         with self.update_lock:
-            if not self.updates:
-                self.__log.debug("Flush will be skipped due to empty write-"
-                              "queue.")
-                return
-
-            if cache_fault:
-                logging.warn("File updates can no longer be applied. The file "
-                             "has been changed, remotely. Dumping queued "
-                             "updates.")
-                self.updates = []
+            if self.__is_dirty is False:
+                self.__log.debug("Flush will be skipped because there are no "
+                                 "changes.")
 # TODO: Raise an exception?
                 return
-
-            # Apply updates to the data.
-
-            self.__log.debug("Applying (%d) updates." % (len(self.updates)))
 
             # Write back out to the temporary file.
 
@@ -429,7 +442,7 @@ class OpenedFile(object):
                                                    mime_type)
                                                    
                 with file(temp_file_path, 'w') as f:
-                    for block in self.buffer:
+                    for block in self.__buffer.read():
                         f.write(block)
                                                    
                 write_file_path = temp_file_path
@@ -438,15 +451,14 @@ class OpenedFile(object):
             
                 with NamedTemporaryFile(delete=False) as f:
                     write_file_path = f.name
-                    for block in self.buffer:
+                    for block in self.__buffer.read():
                         f.write(block)
 
             # Push to GD.
 
             self.__log.debug("Pushing (%d) bytes for entry with ID from [%s] "
-                             "to GD for file-path [%s]." % (len(buffer), 
-                                                            entry.id, 
-                                                            write_file_path))
+                             "to GD for file-path [%s]." % 
+                             (self.__buffer.length, entry.id, write_file_path))
 
 #            print("Sending updates.")
 
@@ -457,7 +469,7 @@ class OpenedFile(object):
                                     data_filepath=write_file_path, 
                                     mime_type=mime_type, 
                                     parents=entry.parents, 
-                                    is_hidden=self.is_hidden)
+                                    is_hidden=self.__is_hidden)
             except:
                 self.__log.exception("Could not localize displaced file with "
                                      "entry having ID [%s]." % (entry.id))
@@ -495,6 +507,8 @@ class OpenedFile(object):
             self.__log.exception("Could not register updated file in cache.")
             raise
 
+        self.__is_dirty = False
+
         self.__log.info("Update complete on entry with ID [%s]." % (entry.id))
 
     @dec_hint(['offset', 'length'], prefix='OF')
@@ -509,7 +523,7 @@ class OpenedFile(object):
             raise
 
 # TODO: Refactor this into a paging mechanism.
-        buffer_len = self.buffer.length
+        buffer_len = self.__buffer.length
         if offset >= buffer_len:
             raise IndexError("Offset (%d) exceeds length of data (%d)." % 
                              (offset, buffer_len))
@@ -520,11 +534,11 @@ class OpenedFile(object):
                                                                buffer_len)) 
             length = buffer_len
 
-        data_blocks = [block for block in self.buffer.read(offset, length)]
+        data_blocks = [block for block in self.__buffer.read(offset, length)]
         data = ''.join(data_blocks)
 
         self.__log.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d)." % 
-                         (len(data), offset, length, self.buffer.length))
+                         (len(data), offset, length, self.__buffer.length))
 
         return data
 

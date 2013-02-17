@@ -773,8 +773,8 @@ class PathRelations(object):
         matches.
         """
 
-        self.__log.debug("Searching for path components of [%s]." % (path))
-        self.__log.debug("Resolving entry_clause for path [%s]." % (path))
+        self.__log.debug("Searching for path components of [%s]. Now "
+                         "resolving entry_clause." % (path))
 
         if path[0] == '/':
             path = path[1:]

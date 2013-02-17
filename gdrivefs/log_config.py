@@ -1,15 +1,23 @@
-import logging
-import logging.handlers
+from logging import getLogger, Filter, Formatter, DEBUG
+from logging.handlers import SysLogHandler, TimedRotatingFileHandler
+from os.path import abspath, dirname
 
-from syslog import LOG_LOCAL0
+import gdrivefs
 
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.DEBUG)
+default_logger = getLogger()
+default_logger.setLevel(DEBUG)
 
-log_syslog = logging.handlers.SysLogHandler('/dev/log', facility=LOG_LOCAL0)
+# TODO: For errors: SMTPHandler
 
-log_format = 'GD: %(name)-12s %(levelname)-7s %(message)s'
-log_syslog.setFormatter(logging.Formatter(log_format))
+root_path = abspath(dirname(gdrivefs.__file__) + '/..')
+log_filepath = ('%s/logs/gdrivefs.log' % (root_path))
 
-root_logger.addHandler(log_syslog)
+#syslog_format = 'MC:%(name)s %(levelname)s %(message)s'
+flat_format = '%(asctime)s [%(name)s %(levelname)s] %(message)s'
+
+formatter = Formatter(flat_format)
+
+log_file = TimedRotatingFileHandler(log_filepath, 'D', backupCount=5)
+log_file.setFormatter(formatter)
+default_logger.addHandler(log_file)
 

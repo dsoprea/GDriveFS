@@ -114,8 +114,8 @@ def split_path(filepath, pathresolver_cb):
     else:
         is_hidden = False
 
-    logging.debug("File-path [%s] dereferenced to parent with ID [%s], path "
-                  "[%s], filename [%s], extension [%s], mime-type [%s], "
+    logging.debug("File-path [%s] split into parent with ID [%s], path [%s], "
+                  "unverified filename [%s], extension [%s], mime-type [%s], "
                   "is_hidden [%s], and just-info [%s]." % 
                   (filepath, parent_entry.id, path, filename, extension, 
                    mime_type, is_hidden, just_info))
