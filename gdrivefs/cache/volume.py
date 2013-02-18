@@ -488,10 +488,13 @@ class PathRelations(object):
             title_fs = normalized_entry.title_fs
 
             self.__log.debug("Registering entry with title [%s]." % (title_fs))
-            parent_ids = [ parent_id for parent_id in normalized_entry.parents ]
+
+            parent_ids = normalized_entry.parents if normalized_entry.parents \
+                                                  is not None else []
+
             self.__log.debug("Parents are: %s" % (', '.join(parent_ids)))
 
-            for parent_id in normalized_entry.parents:
+            for parent_id in parent_ids:
                 self.__log.debug("Processing parent with ID [%s] of entry with ID [%s]." % (parent_id, entry_id))
 
                 # If the parent hasn't yet been loaded, install a placeholder.

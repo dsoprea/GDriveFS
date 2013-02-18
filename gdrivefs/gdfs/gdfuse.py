@@ -86,8 +86,8 @@ class GDriveFS(Operations):#LoggingMixIn,
 # TODO: Implement handle.
 
         try:
-            (path, extension, just_info, mime_type) = strip_export_type \
-                                                        (raw_path, True)
+            result = strip_export_type(raw_path, True)
+            (path, extension, just_info, mime_type, explicit_type) = result
         except:
             self.__log.exception("Could not process export-type directives.")
             raise FuseOSError(EIO)
@@ -109,8 +109,6 @@ class GDriveFS(Operations):#LoggingMixIn,
             raise FuseOSError(ENOENT)
 
         effective_permission = 0o444
-        normalized_entry = entry_clause[0]
-
         entry = entry_clause[0]
 
         # If the user has required info, we'll treat folders like files so that 
@@ -136,6 +134,8 @@ class GDriveFS(Operations):#LoggingMixIn,
         else:
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
+
+        self.__log.debug("Reporting size (%d)." % (stat_result["st_size"]))
 
         return stat_result
 
@@ -207,7 +207,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath, path_resolver)
+             just_info, explicit_type) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (mkdir).")
             raise FuseOSError(ENOENT)
@@ -253,7 +253,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath, path_resolver)
+             just_info, explicit_type) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
@@ -278,7 +278,8 @@ class GDriveFS(Operations):#LoggingMixIn,
             entry = drive_proxy('create_file', filename=filename, 
                                 data_filepath='/dev/null', 
                                 parents=[parent_clause[3]], 
-                                is_hidden=is_hidden)
+                                is_hidden=is_hidden,
+                                mime_type=mime_type)
         except:
             self.__log.exception("Could not create empty file [%s] under parent "
                               "with ID [%s]." % (filename, parent_clause[3]))

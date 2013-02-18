@@ -20,13 +20,16 @@ def get_temp_filepath(normalized_entry, just_info, mime_type):
 
 def strip_export_type(path, set_mime=True):
 
-    rx = re.compile('(#([a-zA-Z0-9]+))?(\$)?$')
+    rx = re.compile('(#([a-zA-Z0-9\+\-]+))?(\$)$')
     matched = rx.search(path.encode('ASCII'))
 
     extension = None
     mime_type = None
     just_info = None
 
+    explicit_type = False
+
+    # If parameters are available.
     if matched:
         fragment = matched.group(0)
         extension = matched.group(2)
@@ -35,7 +38,9 @@ def strip_export_type(path, set_mime=True):
         if fragment:
             path = path[:-len(fragment)]
 
-        if not extension:
+        if extension:
+            explicit_type = True
+        else:
             extension_rx = re.compile('\.([a-zA-Z0-9]+)$')
             matched = extension_rx.search(path.encode('ASCII'))
 
@@ -51,15 +56,20 @@ def strip_export_type(path, set_mime=True):
                     mime_type = get_utility().get_first_mime_type_by_extension \
                                     (extension)
                 except:
-                    logging.warning("Could not render a mime-type for "
-                                    "prescribed extension [%s], for read." % 
-                                    (extension))
+                    # If the extension is actually a mime-type, use it. We 
+                    # expect the slash to be replaced by a 'plus' sign.
+                    if '+' in extension:
+                        mime_type = extension.replace('+', '/')
+                    else:
+                        logging.warning("Could not render a mime-type for "
+                                        "prescribed extension [%s], for "
+                                        "read." % (extension))
 
                 if mime_type:
                     logging.info("We have been told to export using mime-type "
                                  "[%s]." % (mime_type))
 
-    return (path, extension, just_info, mime_type)
+    return (path, extension, just_info, mime_type, explicit_type)
 
 def split_path(filepath, pathresolver_cb):
     """Completely process and distill the requested file-path. The filename can"
@@ -73,7 +83,7 @@ def split_path(filepath, pathresolver_cb):
 
     try:
         _initial_split_results = strip_export_type(filepath)
-        (filepath, extension, just_info, mime_type) = _initial_split_results
+        (filepath, extension, just_info, mime_type, explicit_type) = _initial_split_results
     except:
         logging.exception("Could not process path [%s] for export-type." % 
                           (filepath))
@@ -121,5 +131,5 @@ def split_path(filepath, pathresolver_cb):
                    mime_type, is_hidden, just_info))
 
     return (parent_clause, path, filename, extension, mime_type, is_hidden, 
-            just_info)
+            just_info, explicit_type)
 

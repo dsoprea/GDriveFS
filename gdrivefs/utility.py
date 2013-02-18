@@ -172,15 +172,18 @@ class _DriveUtility(object):
         mime_type = entry.mime_type
         normal_mime_type = None
 
-        # If there's a standard type on the entry, there won't be a list of
-        # export options.
-        if not entry.download_links:
-            normal_mime_type = mime_type
+# TODO: It seems as if anything but folders have download-URLs. We don't know 
+#       what we meant.
+#
+#        # If there's a standard type on the entry, there won't be a list of
+#        # export options.
+#        if not entry.download_links:
+#            normal_mime_type = mime_type
 
         # If we have a local mapping of the mime-type on the entry to another 
         # mime-type, only use it if that mime-type is listed among the export-
         # types.
-        elif mime_type in self.gd_to_normal_mime_mappings:
+        if mime_type in self.gd_to_normal_mime_mappings:
             normal_mime_type_candidate = \
                 self.gd_to_normal_mime_mappings[mime_type]
             if normal_mime_type_candidate in entry.download_links:

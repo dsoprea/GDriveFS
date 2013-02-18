@@ -368,7 +368,7 @@ class _GdriveManager(object):
                 makedirs(temp_path)
             except:
                 self.__log.exception("Could not create temporary download path "
-                                  "[%s]." % (temp_path))
+                                     "[%s]." % (temp_path))
                 raise
 
         gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())

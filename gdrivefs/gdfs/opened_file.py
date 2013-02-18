@@ -14,7 +14,7 @@ from gdrivefs.utility import dec_hint
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.gdfs.fsutility import get_temp_filepath, split_path
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
-                                  CLAUSE_ID
+                                  CLAUSE_ID, CLAUSE_ENTRY
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.general.buffer_segments import BufferSegments
 
@@ -155,7 +155,7 @@ class OpenedFile(object):
 
         try:
             (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info) = split_path(filepath, path_resolver)
+             just_info, explicit_type) = split_path(filepath, path_resolver)
         except GdNotFoundError:
             _static_log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
@@ -181,11 +181,28 @@ class OpenedFile(object):
             _static_log.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
+        # Further normalize the mime-type by considering what's available for
+        # download.
+
+        entry = entry_clause[CLAUSE_ENTRY]
+        final_mimetype = entry.normalize_download_mimetype(mime_type, 
+                                                           explicit_type)
+
+        if final_mimetype is None:
+            _static_log.error("We couldn't figure out a mime-type to "
+                              "download. PREFERRED= [%s] ISEXPLICIT= [%s]" % 
+                              (mime_type, explicit_type))
+            raise FuseOSError(EIO)
+
+        if final_mimetype != mime_type:
+            _static_log.info("Entry being opened will be opened as [%s] "
+                             "rather than [%s]." % (final_mimetype, mime_type))
+
         # Build the object.
 
         try:
             return OpenedFile(entry_clause[CLAUSE_ID], path, filename, 
-                              is_hidden, mime_type, just_info)
+                              is_hidden, final_mimetype, just_info)
         except:
             _static_log.exception("Could not create OpenedFile for requested "
                                   "file [%s]." % (distilled_filepath))
@@ -196,13 +213,14 @@ class OpenedFile(object):
 
         self.__log = logging.getLogger().getChild('OpenFile')
 
-        self.__log.info("Opened-file object created for entry-ID [%s] and path "
-                     "(%s)." % (entry_id, path))
+        self.__log.info("Opened-file object created for entry-ID [%s] and "
+                        "path (%s)." % (entry_id, path))
 # TODO: Refactor this to being all obfuscated property names.
         self.__entry_id = entry_id
         self.__path = path
         self.__filename = filename
         self.__is_hidden = is_hidden
+        
         self.__mime_type = mime_type
         self.__cache = EntryCache.get_instance().cache
         self.__just_info = just_info
@@ -220,7 +238,7 @@ class OpenedFile(object):
 
         return ("<OF [%(entry_id)s] F=[%(filename)s] MIME=[%(mime_type)s] "
                 "JUSTINFO= [%(just_info)s] LOADED=[%(is_loaded)s] DIRTY= "
-                "[%(is_dirty)s] " % replacements)
+                "[%(is_dirty)s]>" % replacements)
 
 # TODO: !! Make sure the "changes" thread is still going, here.
 
@@ -308,7 +326,7 @@ class OpenedFile(object):
 
             if self.__just_info:
                 self.__log.debug("Just storing information.")
-
+# TODO: Why do we even write this? Shouldn't we just return the data, before we get here?
                 try:
                     length = self.__write_stub_file(temp_file_path, 
                                                     entry, 
@@ -408,14 +426,14 @@ class OpenedFile(object):
             entry = self.__get_entry_or_raise()
         except:
             self.__log.exception("Could not get entry with ID [%s] for "
-                              "write-flush." % (self.__entry_id))
+                                 "write-flush." % (self.__entry_id))
             raise
 
         try:
              cache_fault = self.__load_base_from_remote()
         except:
-            self.__log.exception("Could not load write-cache file [%s]." % 
-                              (self.temp_file_path))
+            self.__log.exception("Could not load local cache for entry [%s]." % 
+                                 (entry))
             raise
     
         with self.update_lock:
@@ -523,16 +541,21 @@ class OpenedFile(object):
             raise
 
 # TODO: Refactor this into a paging mechanism.
-        buffer_len = self.__buffer.length
-        if offset >= buffer_len:
-            raise IndexError("Offset (%d) exceeds length of data (%d)." % 
-                             (offset, buffer_len))
 
-        if (offset + length) > buffer_len:
-            self.__log.debug("Requested length (%d) from offset (%d) exceeds "
-                             "file length (%d). Truncated." % (length, offset, 
-                                                               buffer_len)) 
-            length = buffer_len
+        buffer_len = self.__buffer.length
+
+        # Some files may have a length of (0) untill a particular type is 
+        # chosen (the download-links).
+        if buffer_len > 0:
+            if offset >= buffer_len:
+                raise IndexError("Offset (%d) exceeds length of data (%d)." % 
+                                 (offset, buffer_len))
+
+            if (offset + length) > buffer_len:
+                self.__log.debug("Requested length (%d) from offset (%d) exceeds "
+                                 "file length (%d). Truncated." % (length, offset, 
+                                                                   buffer_len)) 
+                length = buffer_len
 
         data_blocks = [block for block in self.__buffer.read(offset, length)]
         data = ''.join(data_blocks)

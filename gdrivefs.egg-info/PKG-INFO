@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: gdrivefs
-Version: 0.1.1
+Version: 0.1.2
 Summary: A complete FUSE adapter for Google Drive.
 Home-page: https://github.com/dsoprea/GDriveFS
 Author: Dustin Oprea
