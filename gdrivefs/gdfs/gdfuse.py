@@ -29,6 +29,7 @@ from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
 from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
 from gdrivefs.gdfs.fsutility import strip_export_type, split_path
+from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
 
@@ -124,10 +125,10 @@ class GDriveFS(Operations):#LoggingMixIn,
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
             # default size should be 4K.
             stat_result["st_size"] = 1024 * 4
+        elif entry.requires_mimetype:
+            stat_result["st_size"] = DisplacedFile.file_size
         else:
             stat_result["st_size"] = entry.file_size
-
-        self.__log.debug("IS-FOLDER= [%s]" % (is_folder))
 
         if is_folder:
             effective_permission |= 0o111
@@ -137,8 +138,6 @@ class GDriveFS(Operations):#LoggingMixIn,
         else:
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
-
-        self.__log.debug("Reporting size (%d)." % (stat_result["st_size"]))
 
         return stat_result
 

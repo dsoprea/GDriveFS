@@ -7,12 +7,14 @@ from threading import Lock, RLock
 from collections import deque
 from fuse import FuseOSError
 from tempfile import NamedTemporaryFile
-from os import unlink, utime
+from os import unlink, utime, makedirs
+from os.path import isdir
 
 from gdrivefs.conf import Conf
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
 from gdrivefs.utility import dec_hint
 from gdrivefs.gdfs.fsutility import split_path
+from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID, CLAUSE_ENTRY
 from gdrivefs.gdtool.drive import drive_proxy
@@ -20,13 +22,17 @@ from gdrivefs.general.buffer_segments import BufferSegments
 
 _static_log = logging.getLogger().getChild('(OF)')
 
+temp_path = ("%s/local" % (Conf.get('file_download_temp_path')))
+if isdir(temp_path) is False:
+    makedirs(temp_path)
+
 def get_temp_filepath(normalized_entry, mime_type):
-    temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)).\
+    temp_filename = ("%s.%s" % 
+                     (normalized_entry.id, mime_type.replace('/', '+'))).\
                     encode('ascii')
-    temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
 
     temp_path = Conf.get('file_download_temp_path')
-    return ("%s/%s" % (temp_path, temp_filename))
+    return ("%s/local/%s" % (temp_path, temp_filename))
 
 
 class OpenedManager(object):
@@ -292,23 +298,41 @@ class OpenedFile(object):
                             "entry [%s] and mime-type [%s]." % 
                             (temp_file_path, entry, self.mime_type))
 
-            self.__log.debug("Executing the download.")
-            
-            try:
-                result = drive_proxy('download_to_local', 
-                                     output_file_path=temp_file_path,
-                                     normalized_entry=entry,
-                                     mime_type=self.mime_type)
-                self.__log.debug("download_to_local succeeded.")
+            if entry.requires_mimetype:
+                length = DisplacedFile.file_size
 
-                (length, cache_fault) = result
-            except ExportFormatError:
-                self.__log.exception("There was an export-format error.")
-                raise FuseOSError(ENOENT)
-            except:
-                self.__log.exception("Could not localize file with entry "
-                                     "[%s]." % (entry))
-                raise
+                try:
+                    stub_data = DisplacedFile(entry).deposit_file(self.mime_type)
+
+                    with file(temp_file_path, 'w') as f:
+                        f.write(stub_data)
+                except:
+                    self.__log.exception("Could not deposit to file [%s] from "
+                                         "entry [%s]." % (temp_file_path, 
+                                                          entry))
+                    raise
+
+# TODO: Accomodate the cache for displaced-files.
+                cache_fault = True
+
+            else:
+                self.__log.debug("Executing the download.")
+                
+                try:
+                    result = drive_proxy('download_to_local', 
+                                         output_file_path=temp_file_path,
+                                         normalized_entry=entry,
+                                         mime_type=self.mime_type)
+                    self.__log.debug("download_to_local succeeded.")
+
+                    (length, cache_fault) = result
+                except ExportFormatError:
+                    self.__log.exception("There was an export-format error.")
+                    raise FuseOSError(ENOENT)
+                except:
+                    self.__log.exception("Could not localize file with entry "
+                                         "[%s]." % (entry))
+                    raise
 
             self.__log.debug("Download complete.  cache_fault= [%s] "
                              "__is_loaded= [%s]" % (cache_fault, self.__is_loaded))
