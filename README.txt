@@ -118,25 +118,20 @@ addition, notice the following features:
 > Any file that will require a mime-type in order to be downloaded has a "#" as
   the last character of its filename.
 
-dustin@host1:~$ sudo ls -la /tmp/test
-total 4
-drwxrwxrwx  2 root root     0 Nov 12  2008 .
-drwxrwxrwt 14 root root  4096 Aug 31 01:39 ..
--rw-rw-rw-  1 root root  1000 Feb 19  2011 .12-9-10 great north partial list-no iga.xls#
--rw-rw-rw-  1 root root  1000 Aug 23 07:28 Copy of Little League Newsletter.txt
--rw-rw-rw-  1 root root  1000 Mar  6  2010 Current Company Agenda.txt
-drwxrwxrwx  2 root root     0 Aug 26 08:36 HelloFax
-drwxrwxrwx  2 root root     0 Apr 24 18:40 HelloFax (2)
--rw-rw-rw-  1 root root  1000 Nov 28  2011 Imported from Google Notebook - My Notebook.txt
-drwxrwxrwx  2 root root     0 Nov 21  2008 New Folder
--rw-rw-rw-  1 root root  1000 May 13  2010 Provisioning Letter.txt
--rw-rw-rw-  1 root root 45056 Oct 26  2011 Resume 20111026.doc#
--rw-rw-rw-  1 root root  1000 Apr 21  2010 RHT Testimonial 2005- 2003.txt
--rw-rw-rw-  1 root root  1000 Oct 20  2010 searches - standard.xls#
--rw-rw-rw-  1 root root  3234 Dec 23  2011 testOnDemandRTSPServer.cpp.gz
-drwxrwxrwx  2 root root     0 Aug 26 08:36 Untitled document
--rw-rw-rw-  1 root root  1000 Aug 20 08:24 Untitled document.txt
--rw-rw-rw-  1 root root  1000 Aug 20 08:25 Untitled document.txt (2)
+-rw-rw-rw- 1 root root       0 Feb 17 07:52 20130217-145200
+-rw-rw-rw- 1 root root       0 Feb 17 08:04 20130217-150358
+-rw-rw-rw- 1 root root  358356 Feb 15 15:06 American-Pika-with-Food.jpg
+-rw-rw-rw- 1 root root    1000 Oct 25 03:53 Dear Biola.docx#
+-rw-rw-rw- 1 root root    1000 Oct 25 02:47 Dear Biola.docx (1)#
+-rw-rw-rw- 1 root root    1000 Oct 15 14:29 Reflection.docx#
+-rw-rw-rw- 1 root root 1536036 Nov 28 22:37 lotterynumbers01.png
+drwxrwxrwx 2 root root    4096 Oct  4 06:08 Scratchpad#
+drwxrwxrwx 2 root root    4096 Dec  1 19:21 testdir_1421#
+-rw-rw-rw- 1 root root       5 Dec  2 08:50 testfile_0350
+-rw-rw-rw- 1 root root       0 Dec  2 21:17 .testfile_0417.swp
+-rw-rw-rw- 1 root root       0 Dec  3 00:38 testfile_1937
+-rw-rw-rw- 1 root root       0 Dec  2 23:13 testfile_hidden_1812
+-rw-rw-rw- 1 root root    1000 Oct  4 02:13 Untitled document#
 
 
 Downloaded Google Document Files

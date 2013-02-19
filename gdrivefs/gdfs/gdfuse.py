@@ -92,21 +92,24 @@ class GDriveFS(Operations):#LoggingMixIn,
             self.__log.exception("Could not process export-type directives.")
             raise FuseOSError(EIO)
 
-        path = ("%s%s" % (path, filename))
+        filepath = ("%s%s" % (path, filename))
+        
+        self.__log.debug("[%s] => [%s]" % (raw_path, filepath))
+        
         path_relations = PathRelations.get_instance()
 
         try:
-            entry_clause = path_relations.get_clause_from_path(path)
+            entry_clause = path_relations.get_clause_from_path(filepath)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (getattr).")
             raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not try to get clause from path [%s] "
-                              "(getattr)." % (path))
+                                 "(getattr)." % (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            self.__log.debug("Path [%s] does not exist for stat()." % (path))
+            self.__log.debug("Path [%s] does not exist for stat()." % (filepath))
             raise FuseOSError(ENOENT)
 
         effective_permission = 0o444

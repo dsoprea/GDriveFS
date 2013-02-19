@@ -5,14 +5,17 @@ from os.path import split
 
 def strip_export_type(path):
 
-    matched = re.search('#([a-zA-Z0-9\-]+\\+[a-zA-Z0-9\-]+)$', 
+    matched = re.search('#([a-zA-Z0-9\-]+\\+[a-zA-Z0-9\-]+)?$', 
                        path.encode('ASCII'))
 
     mime_type = None
 
     if matched:
         fragment = matched.group(0)
-        mime_type = matched.group(1).replace('+', '/')
+        mime_type = matched.group(1)
+        
+        if mime_type is not None:
+            mime_type = mime_type.replace('+', '/')
 
         path = path[:-len(fragment)]
 
@@ -33,7 +36,7 @@ def split_path(filepath_original, pathresolver_cb):
         (filepath, mime_type) = strip_export_type(filepath_original)
     except:
         logging.exception("Could not process path [%s] for export-type." % 
-                          (original_filepath))
+                          (filepath_original))
         raise
 
     logging.debug("File-path [%s] split into filepath [%s] and mime_type "
