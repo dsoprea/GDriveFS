@@ -1,5 +1,6 @@
 import logging
 import resource
+import re
 
 from errno import *
 from threading import Lock, RLock
@@ -11,14 +12,21 @@ from os import unlink, utime
 from gdrivefs.conf import Conf
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
 from gdrivefs.utility import dec_hint
-from gdrivefs.gdfs.displaced_file import DisplacedFile
-from gdrivefs.gdfs.fsutility import get_temp_filepath, split_path
+from gdrivefs.gdfs.fsutility import split_path
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID, CLAUSE_ENTRY
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.general.buffer_segments import BufferSegments
 
 _static_log = logging.getLogger().getChild('(OF)')
+
+def get_temp_filepath(normalized_entry, mime_type):
+    temp_filename = ("%s.%s" % (normalized_entry.id, mime_type)).\
+                    encode('ascii')
+    temp_filename = re.sub('[^0-9a-zA-Z_\.]+', '', temp_filename)
+
+    temp_path = Conf.get('file_download_temp_path')
+    return ("%s/%s" % (temp_path, temp_filename))
 
 
 class OpenedManager(object):
@@ -154,14 +162,15 @@ class OpenedFile(object):
         # Process/distill the requested file-path.
 
         try:
-            (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info, explicit_type) = split_path(filepath, path_resolver)
+            result = split_path(filepath, path_resolver)
+            (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
-            _static_log.exception("Could not process [%s] (create).")
+            _static_log.exception("Could not process [%s] "
+                                  "(create_for_requested)." % (filepath))
             raise FuseOSError(ENOENT)
         except:
-            _static_log.exception("Could not split path [%s] (create)." % 
-                                  (filepath))
+            _static_log.exception("Could not split path [%s] "
+                                  "(create_for_requested)." % (filepath))
             raise
 
         distilled_filepath = ("%s%s" % (path, filename))
@@ -181,17 +190,20 @@ class OpenedFile(object):
             _static_log.debug("Path [%s] does not exist for stat()." % (path))
             raise FuseOSError(ENOENT)
 
-        # Further normalize the mime-type by considering what's available for
-        # download.
-
         entry = entry_clause[CLAUSE_ENTRY]
-        final_mimetype = entry.normalize_download_mimetype(mime_type, 
-                                                           explicit_type)
 
-        if final_mimetype is None:
-            _static_log.error("We couldn't figure out a mime-type to "
-                              "download. PREFERRED= [%s] ISEXPLICIT= [%s]" % 
-                              (mime_type, explicit_type))
+        if mime_type is None and entry.requires_mimetype:
+            _static_log.error("Mime-type needs to be specified. Options: %s" % 
+                              (entry.download_types))
+            raise FuseOSError(EIO)
+
+        # Normalize the mime-type by considering what's available for download.
+
+        try:
+            final_mimetype = entry.normalize_download_mimetype(mime_type)
+        except:
+            _static_log.exception("Could not normalize mime-type [%s] for "
+                                  "entry [%s]." % (mime_type, entry))
             raise FuseOSError(EIO)
 
         if final_mimetype != mime_type:
@@ -202,14 +214,13 @@ class OpenedFile(object):
 
         try:
             return OpenedFile(entry_clause[CLAUSE_ID], path, filename, 
-                              is_hidden, final_mimetype, just_info)
+                              is_hidden, final_mimetype)
         except:
             _static_log.exception("Could not create OpenedFile for requested "
                                   "file [%s]." % (distilled_filepath))
             raise
 
-    def __init__(self, entry_id, path, filename, is_hidden, mime_type, 
-                 just_info=False):
+    def __init__(self, entry_id, path, filename, is_hidden, mime_type):
 
         self.__log = logging.getLogger().getChild('OpenFile')
 
@@ -223,7 +234,6 @@ class OpenedFile(object):
         
         self.__mime_type = mime_type
         self.__cache = EntryCache.get_instance().cache
-        self.__just_info = just_info
         self.__buffer = None
         self.__is_loaded = False
         self.__is_dirty = False
@@ -232,13 +242,11 @@ class OpenedFile(object):
         replacements = {'entry_id': self.__entry_id, 
                         'filename': self.__filename, 
                         'mime_type': self.__mime_type, 
-                        'just_info': self.__just_info, 
                         'is_loaded': self.__is_loaded, 
                         'is_dirty': self.__is_dirty }
 
         return ("<OF [%(entry_id)s] F=[%(filename)s] MIME=[%(mime_type)s] "
-                "JUSTINFO= [%(just_info)s] LOADED=[%(is_loaded)s] DIRTY= "
-                "[%(is_dirty)s]>" % replacements)
+                "LOADED=[%(is_loaded)s] DIRTY= [%(is_dirty)s]>" % replacements)
 
 # TODO: !! Make sure the "changes" thread is still going, here.
 
@@ -258,43 +266,6 @@ class OpenedFile(object):
                                  "the opened-file." % (self.__entry_id))
             raise 
 
-    @property
-    def mime_type(self):
-    
-        if self.__mime_type:
-            return self.__mime_type
-        
-        try:
-            entry = self.__get_entry_or_raise()
-        except:
-            self.__log.exception("Could not get entry with ID [%s] for "
-                                 "mime_type." % (self.__entry_id))
-            raise
-
-        return entry.normalized_mime_type
-
-    def __write_stub_file(self, file_path, normalized_entry, mime_type):
-
-        self.__log.debug("Writing stub-file for [%s] to [%s]." % 
-                         (normalized_entry, file_path))
-
-        try:
-            displaced = DisplacedFile(normalized_entry)
-        except:
-            self.__log.exception("Could not wrap entry in DisplacedFile.")
-            raise
-
-        try:
-            stub_data = displaced.get_stub(mime_type, file_path=file_path)
-        except:
-            self.__log.exception("Could not do displaced-file download.")
-            raise
-
-        with file(file_path, 'w') as f:
-            f.write(stub_data)
-
-        return len(stub_data)
-
     def __load_base_from_remote(self):
         """Download the data for the entry that we represent. This is probably 
         a file, but could also be a stub for -any- entry.
@@ -309,8 +280,7 @@ class OpenedFile(object):
 
         self.__log.debug("Ensuring local availability of [%s]." % (entry))
 
-        mime_type = self.mime_type
-        temp_file_path = get_temp_filepath(entry, self.__just_info, mime_type)
+        temp_file_path = get_temp_filepath(entry, self.mime_type)
 
         self.__log.debug("__load_base_from_remote about to download.")
 
@@ -320,40 +290,25 @@ class OpenedFile(object):
 
             self.__log.info("Attempting local cache update of file [%s] for "
                             "entry [%s] and mime-type [%s]." % 
-                            (temp_file_path, entry, mime_type))
+                            (temp_file_path, entry, self.mime_type))
 
-            # The output path is predictable. It shouldn't change.
+            self.__log.debug("Executing the download.")
+            
+            try:
+                result = drive_proxy('download_to_local', 
+                                     output_file_path=temp_file_path,
+                                     normalized_entry=entry,
+                                     mime_type=self.mime_type)
+                self.__log.debug("download_to_local succeeded.")
 
-            if self.__just_info:
-                self.__log.debug("Just storing information.")
-# TODO: Why do we even write this? Shouldn't we just return the data, before we get here?
-                try:
-                    length = self.__write_stub_file(temp_file_path, 
-                                                    entry, 
-                                                    mime_type)
-                    cache_fault = True
-                except:
-                    self.__log.exception("Could not build info for entry "
-                                         "[%s] being read." % (entry))
-                    raise
-            else:
-                self.__log.debug("Executing the download.")
-                
-                try:
-                    result = drive_proxy('download_to_local', 
-                                         output_file_path=temp_file_path,
-                                         normalized_entry=entry,
-                                         mime_type=mime_type)
-                    self.__log.debug("download_to_local succeeded.")
-
-                    (length, cache_fault) = result
-                except ExportFormatError:
-                    self.__log.exception("There was an export-format error.")
-                    raise FuseOSError(ENOENT)
-                except:
-                    self.__log.exception("Could not localize file with entry "
-                                         "[%s]." % (entry))
-                    raise
+                (length, cache_fault) = result
+            except ExportFormatError:
+                self.__log.exception("There was an export-format error.")
+                raise FuseOSError(ENOENT)
+            except:
+                self.__log.exception("Could not localize file with entry "
+                                     "[%s]." % (entry))
+                raise
 
             self.__log.debug("Download complete.  cache_fault= [%s] "
                              "__is_loaded= [%s]" % (cache_fault, self.__is_loaded))
@@ -455,9 +410,7 @@ class OpenedFile(object):
             if self.__is_loaded:
                 is_temp = False
 
-                temp_file_path = get_temp_filepath(entry, 
-                                                   self.__just_info, 
-                                                   mime_type)
+                temp_file_path = get_temp_filepath(entry, mime_type)
                                                    
                 with file(temp_file_path, 'w') as f:
                     for block in self.__buffer.read():
@@ -564,4 +517,8 @@ class OpenedFile(object):
                          (len(data), offset, length, self.__buffer.length))
 
         return data
+
+    @property
+    def mime_type(self):
+        return self.__mime_type
 

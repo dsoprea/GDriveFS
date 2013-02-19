@@ -27,7 +27,6 @@ from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
-from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
 from gdrivefs.gdfs.fsutility import strip_export_type, split_path
 from gdrivefs.cache.volume import path_resolver
@@ -86,12 +85,13 @@ class GDriveFS(Operations):#LoggingMixIn,
 # TODO: Implement handle.
 
         try:
-            result = strip_export_type(raw_path, True)
-            (path, extension, just_info, mime_type, explicit_type) = result
+            result = split_path(raw_path, path_resolver)
+            (parent_clause, path, filename, mime_type, is_hidden) = result
         except:
             self.__log.exception("Could not process export-type directives.")
             raise FuseOSError(EIO)
 
+        path = ("%s%s" % (path, filename))
         path_relations = PathRelations.get_instance()
 
         try:
@@ -113,18 +113,21 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         # If the user has required info, we'll treat folders like files so that 
         # we can return the info.
-        is_folder = get_utility().is_directory(entry) and not just_info
+        is_folder = get_utility().is_directory(entry)
 
         if entry.editable:
             effective_permission |= 0o222
 
         stat_result = { "st_mtime": entry.modified_date_epoch }
         
-        
-        if is_folder or entry.requires_displaceable:
-            stat_result["st_size"] = DisplacedFile(entry).file_size
+        if is_folder:
+            # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
+            # default size should be 4K.
+            stat_result["st_size"] = 1024 * 4
         else:
             stat_result["st_size"] = entry.file_size
+
+        self.__log.debug("IS-FOLDER= [%s]" % (is_folder))
 
         if is_folder:
             effective_permission |= 0o111
@@ -171,16 +174,23 @@ class GDriveFS(Operations):#LoggingMixIn,
             raise FuseOSError(ENOENT)
 
         try:
-            filenames = path_relations.get_child_filenames_from_entry_id \
-                            (entry_clause[3])
+            entry_tuples = path_relations.get_children_entries_from_entry_id \
+                            (entry_clause[CLAUSE_ID])
         except:
             self.__log.exception("Could not render list of filenames under path "
                              "[%s]." % (path))
             raise FuseOSError(EIO)
 
-        filenames[0:0] = ['.','..']
+        yield '.'
+        yield '..'
 
-        for filename in filenames:
+        for (filename, entry) in entry_tuples:
+
+            # Decorate any file that -requires- a mime-type (all files can 
+            # merely accept a mime-type)
+            if entry.requires_mimetype:
+                filename += '#'
+        
             yield filename
 
     @dec_hint(['raw_path', 'length', 'offset', 'fh'])
@@ -206,8 +216,8 @@ class GDriveFS(Operations):#LoggingMixIn,
 # TODO: Implement the "mode".
 
         try:
-            (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info, explicit_type) = split_path(filepath, path_resolver)
+            result = split_path(filepath, path_resolver)
+            (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (mkdir).")
             raise FuseOSError(ENOENT)
@@ -219,8 +229,10 @@ class GDriveFS(Operations):#LoggingMixIn,
         self.__log.debug("Creating directory [%s] under [%s]." % (filename, path))
 
         try:
-            entry = drive_proxy('create_directory', filename=filename, 
-                        parents=[parent_clause[0].id], is_hidden=is_hidden)
+            entry = drive_proxy('create_directory', 
+                                filename=filename, 
+                                parents=[parent_clause[0].id], 
+                                is_hidden=is_hidden)
         except:
             self.__log.exception("Could not create directory with name [%s] and "
                               "parent with ID [%s]." % (filename, 
@@ -252,8 +264,8 @@ class GDriveFS(Operations):#LoggingMixIn,
         self.__log.debug("Splitting file-path [%s] for create." % (filepath))
 
         try:
-            (parent_clause, path, filename, extension, mime_type, is_hidden, \
-             just_info, explicit_type) = split_path(filepath, path_resolver)
+            result = split_path(filepath, path_resolver)
+            (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (create).")
             raise FuseOSError(ENOENT)
@@ -263,6 +275,9 @@ class GDriveFS(Operations):#LoggingMixIn,
             raise FuseOSError(EIO)
 
         self.__log.debug("Acquiring file-handle.")
+
+        if mime_type is None:
+            mime_type = Conf.get('default_mimetype')
 
         try:
             fh = OpenedManager.get_instance().get_new_handle()
@@ -282,7 +297,7 @@ class GDriveFS(Operations):#LoggingMixIn,
                                 mime_type=mime_type)
         except:
             self.__log.exception("Could not create empty file [%s] under parent "
-                              "with ID [%s]." % (filename, parent_clause[3]))
+                                 "with ID [%s]." % (filename, parent_clause[3]))
             raise FuseOSError(EIO)
 
         self.__log.debug("Registering created file in cache.")
@@ -312,7 +327,7 @@ class GDriveFS(Operations):#LoggingMixIn,
             OpenedManager.get_instance().add(opened_file, fh=fh)
         except:
             self.__log.exception("Could not register OpenedFile for created "
-                              "file.")
+                                 "file.")
             raise FuseOSError(EIO)
 
         self.__log.debug("File created, opened, and completely registered.")

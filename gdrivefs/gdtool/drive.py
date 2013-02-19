@@ -301,7 +301,7 @@ class _GdriveManager(object):
                               "Drive client (list_files).")
             raise
 
-        query_components = [ ]
+        query_components = []
 
         if parent_id:
             query_components.append("'%s' in parents" % (parent_id))

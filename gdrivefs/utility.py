@@ -144,6 +144,7 @@ class _DriveUtility(object):
             logging.info("No extension-mapping was found.")
 
     def is_directory(self, entry):
+        logging.info("is_directory(%s)" % (entry))
         return (entry.mime_type == self._mimetype_directory)
 
     def get_first_mime_type_by_extension(self, extension):
@@ -157,92 +158,6 @@ class _DriveUtility(object):
             return None
 
         return found[0]
-
-    def get_normalized_mime_type(self, entry):
-        
-        logging.debug("Deriving normalized mime-type for [%s]." % (entry.id))
-
-        if entry.is_directory:
-            return None
-
-        # Since we're loading from files and also juggling mime-types coming 
-        # from Google, we're just going to normalize all of the character-sets 
-        # to ASCII. This is reasonable since they're supposed to be standards-
-        # based, anyway.
-        mime_type = entry.mime_type
-        normal_mime_type = None
-
-# TODO: It seems as if anything but folders have download-URLs. We don't know 
-#       what we meant.
-#
-#        # If there's a standard type on the entry, there won't be a list of
-#        # export options.
-#        if not entry.download_links:
-#            normal_mime_type = mime_type
-
-        # If we have a local mapping of the mime-type on the entry to another 
-        # mime-type, only use it if that mime-type is listed among the export-
-        # types.
-        if mime_type in self.gd_to_normal_mime_mappings:
-            normal_mime_type_candidate = \
-                self.gd_to_normal_mime_mappings[mime_type]
-            if normal_mime_type_candidate in entry.download_links:
-                normal_mime_type = normal_mime_type_candidate
-
-        # If we still haven't been able to normalize the mime-type, use the 
-        # first available export-link.
-        if normal_mime_type == None:
-            for temp_mime_type in entry.download_links.iterkeys():
-                normal_mime_type = temp_mime_type
-                break
-
-        logging.debug("GD MIME [%s] normalized to [%s]." % (mime_type, 
-                                                           normal_mime_type))
-
-        return normal_mime_type.encode('ASCII')
-
-    def get_extension(self, entry):
-        """Return the filename extension that should be associated with this 
-        file.
-        """
-
-        logging.debug("Deriving extension for entry with ID [%s]." % 
-                      (entry.id))
-
-        try:
-            normal_mime_type = self.get_normalized_mime_type(entry)
-        except:
-            logging.exception("Could not render a mime-type for entry with ID "
-                              "[%s]." % (entry.id))
-            raise
-        
-        if not normal_mime_type:
-            return None
-
-        # We have an actionable mime-type for the entry, now.
-
-        if normal_mime_type in self.default_extensions:
-            file_extension = self.default_extensions[normal_mime_type]
-            logging.debug("We had a mapping for mime-type [%s] to extension "
-                          "[%s]." % (normal_mime_type, file_extension))
-
-        else:
-            try:
-                file_extension = guess_extension(normal_mime_type)
-            except:
-                logging.exception("Could not attempt to derive a file-extension "
-                                  "for mime-type [%s]." % (normal_mime_type))
-                raise
-
-            if not file_extension:
-                return None
-
-            file_extension = file_extension[1:]
-
-            logging.debug("Guessed extension [%s] for mime-type [%s]." % 
-                          (file_extension, normal_mime_type))
-
-        return file_extension
 
     def translate_filename_charset(self, original_filename):
         """Convert the given filename to the correct character set."""

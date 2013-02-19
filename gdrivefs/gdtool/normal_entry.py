@@ -6,10 +6,11 @@ from time import mktime
 
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
+from gdrivefs.errors import ExportFormatError
 
 
 class NormalEntry(object):
-    default_general_mime_type = 'application/octet-stream'
+    default_general_mime_type = Conf.get('default_mimetype')
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
@@ -21,11 +22,19 @@ class NormalEntry(object):
         self.__parents = []
         self.__raw_data = raw_data
 
+        """Return True if reading from this file should return info and deposit 
+        the data elsewhere. This is predominantly determined by whether we can
+        get a file-size up-front, or we have to decide on a specific mime-type 
+        in order to do so.
+        """
+        requires_mimetype = (u'fileSize' not in self.__raw_data)
+
         try:
+            self.__info['requires_mimetype']          = requires_mimetype
+            self.__info['title']                      = raw_data[u'title']
             self.__info['mime_type']                  = raw_data[u'mimeType']
             self.__info['labels']                     = raw_data[u'labels']
             self.__info['id']                         = raw_data[u'id']
-            self.__info['title']                      = raw_data[u'title']
             self.__info['last_modifying_user_name']   = raw_data[u'lastModifyingUserName']
             self.__info['writers_can_share']          = raw_data[u'writersCanShare']
             self.__info['owner_names']                = raw_data[u'ownerNames']
@@ -49,7 +58,7 @@ class NormalEntry(object):
                 self.__info['download_links'][self.__info['mime_type']] = raw_data[u'downloadUrl']
 
             # This is encoded for displaying locally.
-            self.__info['title_fs'] = get_utility().translate_filename_charset(raw_data[u'title'])
+            self.__info['title_fs'] = get_utility().translate_filename_charset(self.__info['title'])
 
             for parent in raw_data[u'parents']:
                 self.__parents.append(parent[u'id'])
@@ -69,24 +78,27 @@ class NormalEntry(object):
     def __repr__(self):
         return str(self)
 
-    def normalize_download_mimetype(self, preferred_mimetype, force_preferred=False):
-        """If there's a download-URL for the given mime-type, return the same
-        mime-type. Else, if there's a generic (octet-stream) download 
-        available, return that mime-type.
+    def normalize_download_mimetype(self, specific_mimetype=None):
+        """If a mimetype is given, return it if there is a download-URL 
+        available for it, or fail. Else, determine if a copy can downloaded 
+        with the default mime-type (application/octet-stream, or something 
+        similar), or return the only mime-type in the event that there's only 
+        one download format.
         """
 
 # TODO: The download-links might be empty. Under which files is this the case?        
 
-        # We just check this, since we'll potentially have to pull the first 
-        # item, later.
-        if not self.download_links:
-            return None
+        if specific_mimetype is not None:
+            self.__log.debug("Normalizing mime-type [%s] for download.  "
+                             "Options: %s" % (specific_mimetype, 
+                                              self.download_types))
 
-        if preferred_mimetype in self.download_links:
-            return preferred_mimetype
-
-        if force_preferred is True:
-            return None
+            if specific_mimetype not in self.download_links:
+                raise ExportFormatError("Mime-type [%s] is not available for "
+                                        "download. Options: %s" % 
+                                        (self.download_types))
+            
+            return specific_mimetype
 
         if NormalEntry.default_general_mime_type in self.download_links:
             return NormalEntry.default_general_mime_type
@@ -96,21 +108,13 @@ class NormalEntry(object):
         if len(self.download_links) == 1:
             return self.download_links.values()[0]
 
-        return None
+        raise ExportFormatError("A correct mime-type needs to be specified. "
+                                "Options: %s" % (self.download_types))
 
     @property
     def is_directory(self):
         """Return True if we represent a directory."""
         return get_utility().is_directory(self)
-
-    @property
-    def requires_displaceable(self):
-        """Return True if reading from this file should return info and deposit 
-        the data elsewhere. This is predominantly determined by whether we can
-        get a file-size up-front.
-        """
-        return (u'fileSize' not in self.__raw_data or 
-                int(self.__raw_data[u'fileSize']) == 0)
 
     @property
     def is_visible(self):
@@ -123,19 +127,14 @@ class NormalEntry(object):
             return True
 
     @property
-    def normalized_mime_type(self):
-        try:
-            return get_utility().get_normalized_mime_type(self)
-        except:
-            self.__log.exception("Could not render a mime-type for entry with"
-                              " ID [%s], for read." % (self.id))
-            raise
-
-    @property
     def parents(self):
         return self.__parents
 
     @property
     def raw_data(self):
         return self.__raw_data
+
+    @property
+    def download_types(self):
+        return self.download_links.keys()
 

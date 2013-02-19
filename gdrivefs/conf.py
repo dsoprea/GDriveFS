@@ -32,6 +32,7 @@ class Conf(object):
     report_emit_frequency_s             = 60
     google_discovery_service_url        = DISCOVERY_URI
     default_buffer_read_blocksize       = 65536
+    default_mimetype                    = 'application/octet-stream'
 
     max_readahead_entries = 10
     """How many extra entries to retrieve when an entry is accessed that is 
