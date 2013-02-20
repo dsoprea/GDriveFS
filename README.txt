@@ -1,5 +1,3 @@
-** IN DEVELOPMENT **
-
 GDriveFS
 ========
 
@@ -30,6 +28,7 @@ for Google Drive, and this doesn't sense. Our implementation is built against
 OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
 
+
 Installation
 ============
 
@@ -42,6 +41,7 @@ Manually:
   Expand into a directory named "gdrivefs" in the Python path, and run:
   
     python setup.py
+
 
 Usage
 =====
@@ -90,11 +90,13 @@ Since this is FUSE, you must be running as root to mount.
 
     gdfstool mount /var/cache/gdrivefs.auth /mnt/gdrivefs
 
+
 Options
 =======
 
 Any of the configuration values in conf.Conf can be overwritten as "-o" 
 options. You may pass the full array of FUSE options this way, as well.
+
 
 Format Management
 =================
@@ -110,8 +112,8 @@ in order to download, GDFS will make a guess based on whether the extension in
 the filename (if one exists) can be mapped to a mime-type that is available 
 among the export-types provided by GD for that specific file.
 
-The following is an example directory-listing, as a result of the above. In
-addition, notice the following features:
+
+The following is an example directory-listing. Notice the following features:
 
 > Manages duplicates by appending index numbers (e.g. "<filename> (2)").
 > Mtimes, permissions, and ownership are correct.
