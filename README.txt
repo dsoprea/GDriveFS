@@ -197,71 +197,79 @@ Extended attributes allow access to arbitrary, filesystem-specific data. You
 may access any of the properties that Google Drive provides for a given entry, 
 plus a handful of extra ones. The values are JSON-encoded.
 
-$ getfattr American-Pika-with-Food.jpg
-# file: American-Pika-with-Food.jpg
-user.extra.download_types
-user.extra.is_directory
-user.extra.is_visible
-user.extra.parents
-user.original.alternateLink
-user.original.createdDate
-user.original.downloadUrl
-user.original.editable
-user.original.etag
-user.original.fileExtension
-user.original.fileSize
-user.original.iconLink
-user.original.id
-user.original.imageMediaMetadata
-user.original.kind
-user.original.labels
-user.original.lastModifyingUser
-user.original.lastModifyingUserName
-user.original.md5Checksum
-user.original.mimeType
-user.original.modifiedByMeDate
-user.original.modifiedDate
-user.original.originalFilename
-user.original.ownerNames
-user.original.owners
-user.original.parents
-user.original.quotaBytesUsed
-user.original.selfLink
-user.original.shared
-user.original.thumbnailLink
-user.original.title
-user.original.userPermission
-user.original.webContentLink
-user.original.writersCanShare
+    Listing attributes:
 
-$ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg | json_reformat 
-"0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs"
+        $ getfattr American-Pika-with-Food.jpg
 
-$ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg | json_reformat 
-"2013-02-15T15:06:09.691Z"
+        # file: American-Pika-with-Food.jpg
+        user.extra.download_types
+        user.extra.is_directory
+        user.extra.is_visible
+        user.extra.parents
+        user.original.alternateLink
+        user.original.createdDate
+        user.original.downloadUrl
+        user.original.editable
+        user.original.etag
+        user.original.fileExtension
+        user.original.fileSize
+        user.original.iconLink
+        user.original.id
+        user.original.imageMediaMetadata
+        user.original.kind
+        user.original.labels
+        user.original.lastModifyingUser
+        user.original.lastModifyingUserName
+        user.original.md5Checksum
+        user.original.mimeType
+        user.original.modifiedByMeDate
+        user.original.modifiedDate
+        user.original.originalFilename
+        user.original.ownerNames
+        user.original.owners
+        user.original.parents
+        user.original.quotaBytesUsed
+        user.original.selfLink
+        user.original.shared
+        user.original.thumbnailLink
+        user.original.title
+        user.original.userPermission
+        user.original.webContentLink
+        user.original.writersCanShare
 
-$ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg | json_reformat 
-{
-  "restricted": "False",
-  "starred": "False",
-  "trashed": "False",
-  "hidden": "False",
-  "viewed": "False"
-}
+    Getting specific attribute:
 
-NOTE: You can use PHP to extract information from the JSON at the command-line:
+        $ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg | json_reformat 
 
-    getfattr --only-values -n user.original.id \
-        gdrivefs/American-Pika-with-Food.jpg | \
-        php -r "print(json_decode(fgets(STDIN)));"
+        "0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs"
 
-      Returns: 0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
+        $ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg | json_reformat 
 
-    getfattr --only-values -n user.original.labels \
-        gdrivefs/American-Pika-with-Food.jpg | \
-        php -r "print(json_decode(fgets(STDIN))->restricted);"
+        "2013-02-15T15:06:09.691Z"
 
-      Returns: False
+        $ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg | json_reformat 
+
+        {
+          "restricted": "False",
+          "starred": "False",
+          "trashed": "False",
+          "hidden": "False",
+          "viewed": "False"
+        }
+
+    You can use PHP to extract information from the JSON at the command-line:
+
+        $ getfattr --only-values -n user.original.id \
+            gdrivefs/American-Pika-with-Food.jpg | \
+            php -r "print(json_decode(fgets(STDIN)));"
+
+          Returns: 0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
+
+        $ getfattr --only-values -n user.original.labels \
+            gdrivefs/American-Pika-with-Food.jpg | \
+            php -r "print(json_decode(fgets(STDIN))->restricted);"
+
+          Returns: False
 
 
 Misc Notes
