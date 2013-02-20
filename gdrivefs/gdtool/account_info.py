@@ -8,6 +8,10 @@ class AccountInfo(LiveReaderBase):
     """Encapsulates our account info."""
 
     __log = None
+    __map = {'root_id': u'rootFolderId',
+             'largest_change_id': (u'largestChangeId', int),
+             'quota_bytes_total': (u'quotaBytesTotal', int),
+             'quota_bytes_used': (u'quotaBytesUsed', int)}
 
     def __init__(self):
         LiveReaderBase.__init__(self)
@@ -21,19 +25,20 @@ class AccountInfo(LiveReaderBase):
             self.__log.exception("get_about_info() call failed.")
             raise
 
-    @property
-    def root_id(self):
-        return self[u'rootFolderId']
+    def __getattr__(self, key):
+        target = AccountInfo.__map[key]
+        _type = None
+        
+        if target.__class__ == tuple:
+            (target, _type) = target
+
+        value = self[target]
+        if _type is not None:
+            value = _type(value)
+
+        return value
 
     @property
-    def largest_change_id(self):
-        return int(self[u'largestChangeId'])
-
-    @property
-    def quota_bytes_total(self):
-        return int(self[u'quotaBytesTotal'])
-
-    @property
-    def quota_bytes_used(self):
-        return int(self[u'quotaBytesUsed'])
+    def keys(self):
+        return AccountInfo.__map.keys()
 

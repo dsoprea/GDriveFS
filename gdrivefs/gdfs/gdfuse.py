@@ -39,8 +39,8 @@ _static_log = logging.getLogger().getChild('(GDFS)')
 
 # TODO: make sure strip_extension and split_path are used when each are relevant
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
-# TODO: make sure to finish the opened-file helper factory.
-
+# TODO: Make sure that we rely purely on the FH, whenever it is given, 
+#       whereever it appears. This will be to accomodate system calls that can work either via file-path or file-handle.
 
 class GDriveFS(Operations):#LoggingMixIn,
     """The main filesystem class."""
@@ -80,40 +80,44 @@ class GDriveFS(Operations):#LoggingMixIn,
                                   "(%d)." % (fh))
                 raise
 
-    @dec_hint(['raw_path', 'fh'])
-    def getattr(self, raw_path, fh=None):
-        """Return a stat() structure."""
-# TODO: Implement handle.
-
+    def __get_entry_or_raise(self, raw_path):
         try:
             result = split_path(raw_path, path_resolver)
             (parent_clause, path, filename, mime_type, is_hidden) = result
         except:
-            self.__log.exception("Could not process export-type directives.")
+            self.__log.exception("Could not process file-path [%s]." % 
+                                 (raw_path))
             raise FuseOSError(EIO)
 
         filepath = ("%s%s" % (path, filename))
-        
-        self.__log.debug("[%s] => [%s]" % (raw_path, filepath))
         
         path_relations = PathRelations.get_instance()
 
         try:
             entry_clause = path_relations.get_clause_from_path(filepath)
         except GdNotFoundError:
-            self.__log.exception("Could not process [%s] (getattr).")
+            self.__log.exception("Could not retrieve clause for non-existent "
+                                 "file-path [%s]." % (filepath))
             raise FuseOSError(ENOENT)
         except:
-            self.__log.exception("Could not try to get clause from path [%s] "
-                                 "(getattr)." % (filepath))
+            self.__log.exception("Could not retrieve clause for path [%s]. " %
+                                 (filepath))
             raise FuseOSError(EIO)
 
         if not entry_clause:
             self.__log.debug("Path [%s] does not exist for stat()." % (filepath))
             raise FuseOSError(ENOENT)
 
+        return entry_clause[CLAUSE_ENTRY]
+
+    @dec_hint(['raw_path', 'fh'])
+    def getattr(self, raw_path, fh=None):
+        """Return a stat() structure."""
+# TODO: Implement handle.
+
+        entry = self.__get_entry_or_raise(raw_path)
+
         effective_permission = 0o444
-        entry = entry_clause[0]
 
         # If the user has required info, we'll treat folders like files so that 
         # we can return the info.
@@ -233,7 +237,8 @@ class GDriveFS(Operations):#LoggingMixIn,
         try:
             entry = drive_proxy('create_directory', 
                                 filename=filename, 
-                                parents=[parent_clause[0].id], 
+# We can probably use CLAUSE_ID instead of CLAUSE_ENTRY and .id .
+                                parents=[parent_clause[CLAUSE_ENTRY].id], 
                                 is_hidden=is_hidden)
         except:
             self.__log.exception("Could not create directory with name [%s] and "
@@ -502,7 +507,7 @@ class GDriveFS(Operations):#LoggingMixIn,
 
     @dec_hint(['filepath'])
     def statfs(self, filepath):
-        """Return filesystem metrics.
+        """Return filesystem status info (for df).
 
         The given file-path seems to always be '/'.
 
@@ -627,6 +632,19 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         get_change_manager().mount_destroy()
 
+    @dec_hint(['path'])
+    def listxattr(self, raw_path):
+        entry = self.__get_entry_or_raise(raw_path)
+
+        return entry.xattr_data.keys()
+
+    @dec_hint(['path', 'name', 'position'])
+    def getxattr(self, raw_path, name, position=0):
+        entry = self.__get_entry_or_raise(raw_path)
+        return entry.xattr_data[name]
+        
+        #raise FuseOSError(ENOTSUP)
+        
 def load_mount_parser_args(parser):
     parser.add_argument('auth_storage_file', help='Authorization storage file')
     parser.add_argument('mountpoint', help='Mount point')

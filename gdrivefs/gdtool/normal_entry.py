@@ -1,6 +1,7 @@
 import logging
 import re
 import dateutil.parser
+import json
 
 from time import mktime
 
@@ -8,9 +9,12 @@ from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.errors import ExportFormatError
 
-
 class NormalEntry(object):
-    default_general_mime_type = Conf.get('default_mimetype')
+    __default_general_mime_type = Conf.get('default_mimetype')
+    __properties_extra = ('is_directory', 
+                          'is_visible', 
+                          'parents', 
+                          'download_types')
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
@@ -21,6 +25,7 @@ class NormalEntry(object):
         self.__info = {}
         self.__parents = []
         self.__raw_data = raw_data
+        self.__cache_data = None
 
         """Return True if reading from this file should return info and deposit 
         the data elsewhere. This is predominantly determined by whether we can
@@ -100,8 +105,8 @@ class NormalEntry(object):
             
             return specific_mimetype
 
-        if NormalEntry.default_general_mime_type in self.download_links:
-            return NormalEntry.default_general_mime_type
+        if NormalEntry.__default_general_mime_type in self.download_links:
+            return NormalEntry.__default_general_mime_type
 
         # If there's only one download link, resort to using it (perhaps it was 
         # an uploaded file, assigned only one type).
@@ -110,6 +115,47 @@ class NormalEntry(object):
 
         raise ExportFormatError("A correct mime-type needs to be specified. "
                                 "Options: %s" % (self.download_types))
+
+    def __convert(self, data):
+        if isinstance(data, dict):
+            return {self.__convert(key): self.__convert(value) for key, value in data.iteritems()}
+        elif isinstance(data, list):
+            return [self.__convert(element) for element in data]
+        elif isinstance(data, unicode):
+            return data.encode('utf-8')
+        elif isinstance(data, (bool, float)):
+            return str(data)
+        else:
+            return data
+
+    @property
+    def xattr_data(self):
+        if self.__cache_data is None:
+            original = dict([(key.encode('ASCII'), value) 
+                                for key, value 
+                                in self.__raw_data.iteritems()])
+            distilled = self.__info
+            extra = dict([(key, getattr(self, key)) 
+                                for key 
+                                in self.__properties_extra])
+
+            data_dict = {'original': original,
+                         #'distilled': distilled,
+                         'extra': extra}
+
+            # Normalize any values that might pose problems during 
+            # serialization.            
+            data_dict = self.__convert(data_dict)
+            
+            attrs = {}
+            for a_type, a_dict in data_dict.iteritems():
+                for key, value in a_dict.iteritems():
+                    fqkey = ('user.%s.%s' % (a_type, key))
+                    attrs[fqkey] = json.dumps(value)
+                    
+            self.__cache_data = attrs
+        
+        return self.__cache_data
 
     @property
     def is_directory(self):
@@ -129,10 +175,6 @@ class NormalEntry(object):
     @property
     def parents(self):
         return self.__parents
-
-    @property
-    def raw_data(self):
-        return self.__raw_data
 
     @property
     def download_types(self):
