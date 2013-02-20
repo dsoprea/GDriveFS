@@ -80,15 +80,15 @@ Since this is FUSE, you must be running as root to mount.
   a) Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs"):
 
-    gdfs [-h] [-d] [-o OPT] auth_storage_file mountpoint
+     gdfs -o allow_other /var/cache/gdrivefs.auth /mnt/gdrivefs
 
   b) Via /etc/fstab:
 
-     /var/cache/gdfs/credcache /tmp/hello gdfs defaults 0 0
+     /var/cache/gdrivefs.auth /mnt/gdrivefs gdfs allow_other 0 0
 
   c) Directly via gdfstool:
 
-    gdfstool mount /var/cache/gdfs/credcache /tmp/hello
+    gdfstool mount /var/cache/gdrivefs.auth /mnt/gdrivefs
 
 Options
 =======
@@ -139,7 +139,8 @@ Downloaded Google Document Files
 
   Example:
 
-    root@dustintank:/mnt/gdrivefs# cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
+    # cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
+
 
 Displaceables
 =============
@@ -155,9 +156,9 @@ To get around this, a read of these types of files will only return exactly
 the file-path that we've stored it to. This example also shows how we've 
 specified a mime-type in order to get a PDF version of a Google Document file.
 
-root@dustintank:/mnt/gdrivefs# cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
+# cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
 
-root@dustintank:/mnt# cat /tmp/Copy\ of\ Dear\ Biola.docx#application+pdf 
+# cat /tmp/Copy\ of\ Dear\ Biola.docx#application+pdf 
 {"ImageMediaMetadata": null, 
  "Length": 58484, 
  "FilePath": "/tmp/gdrivefs/displaced/Copy of Dear Biola.docx.application+pdf", 
@@ -188,6 +189,81 @@ Cache/Change Management
 No cache is maintained. Updates are performed every few seconds using GD's
 "change" functionality.
 
+
+Extended Attributes
+===================
+
+Extended attributes allow access to arbitrary, filesystem-specific data. You 
+may access any of the properties that Google Drive provides for a given entry, 
+plus a handful of extra ones. The values are JSON-encoded.
+
+$ getfattr American-Pika-with-Food.jpg
+# file: American-Pika-with-Food.jpg
+user.extra.download_types
+user.extra.is_directory
+user.extra.is_visible
+user.extra.parents
+user.original.alternateLink
+user.original.createdDate
+user.original.downloadUrl
+user.original.editable
+user.original.etag
+user.original.fileExtension
+user.original.fileSize
+user.original.iconLink
+user.original.id
+user.original.imageMediaMetadata
+user.original.kind
+user.original.labels
+user.original.lastModifyingUser
+user.original.lastModifyingUserName
+user.original.md5Checksum
+user.original.mimeType
+user.original.modifiedByMeDate
+user.original.modifiedDate
+user.original.originalFilename
+user.original.ownerNames
+user.original.owners
+user.original.parents
+user.original.quotaBytesUsed
+user.original.selfLink
+user.original.shared
+user.original.thumbnailLink
+user.original.title
+user.original.userPermission
+user.original.webContentLink
+user.original.writersCanShare
+
+$ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg | json_reformat 
+"0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs"
+
+$ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg | json_reformat 
+"2013-02-15T15:06:09.691Z"
+
+$ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg | json_reformat 
+{
+  "restricted": "False",
+  "starred": "False",
+  "trashed": "False",
+  "hidden": "False",
+  "viewed": "False"
+}
+
+NOTE: You can use PHP to extract information from the JSON at the command-line:
+
+    getfattr --only-values -n user.original.id \
+        gdrivefs/American-Pika-with-Food.jpg | \
+        php -r "print(json_decode(fgets(STDIN)));"
+
+      Returns: 0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
+
+    getfattr --only-values -n user.original.labels \
+        gdrivefs/American-Pika-with-Food.jpg | \
+        php -r "print(json_decode(fgets(STDIN))->restricted);"
+
+      Returns: False
+
+
 Misc Notes
 ==========
 
@@ -196,9 +272,7 @@ However, Linux/Unix doesn't care about the "hidden" attribute. If you create a
 file on Google Drive, somewhere else, and want it to truly be hidden via this 
 software, make sure you add the prefixing dot.
 
-Me
-==
 
 Dustin Oprea
-myselfasunder, gmail.com
+dustin, randomingenuity.com
 

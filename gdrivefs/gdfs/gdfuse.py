@@ -641,7 +641,11 @@ class GDriveFS(Operations):#LoggingMixIn,
     @dec_hint(['path', 'name', 'position'])
     def getxattr(self, raw_path, name, position=0):
         entry = self.__get_entry_or_raise(raw_path)
-        return entry.xattr_data[name]
+
+        try:
+            return entry.xattr_data[name]
+        except:
+            return ''
         
         #raise FuseOSError(ENOTSUP)
         
