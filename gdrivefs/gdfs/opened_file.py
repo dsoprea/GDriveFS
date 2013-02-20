@@ -198,15 +198,18 @@ class OpenedFile(object):
 
         entry = entry_clause[CLAUSE_ENTRY]
 
-        if mime_type is None and entry.requires_mimetype:
-            _static_log.error("Mime-type needs to be specified. Options: %s" % 
-                              (entry.download_types))
-            raise FuseOSError(EIO)
-
-        # Normalize the mime-type by considering what's available for download.
+        # Normalize the mime-type by considering what's available for download. 
+        # We're going to let the requests that didn't provide a mime-type fail 
+        # right here. It will give us the opportunity to try a few options to 
+        # get the file.
 
         try:
             final_mimetype = entry.normalize_download_mimetype(mime_type)
+        except ExportFormatError:
+            self.__log.exception("There was an export-format error. The mime-"
+                                 "type is given, may not be logging in "
+                                 "correct.")
+            raise FuseOSError(ENOENT)
         except:
             _static_log.exception("Could not normalize mime-type [%s] for "
                                   "entry [%s]." % (mime_type, entry))

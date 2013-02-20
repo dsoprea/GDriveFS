@@ -103,7 +103,12 @@ Google Drive will store Google Document files without a standard format. If
 you wish to download them, you have to select which format you'd like to 
 download it as. One of the more exciting features of this FUSE implementation 
 is the flexibility in choosing which format to download on the fly. See the 
-section below labeled "Displaceables".
+section below labeled "Displaceables". 
+
+If a mime-type isn't provided when requesting a file that requires a mime-type 
+in order to download, GDFS will make a guess based on whether the extension in 
+the filename (if one exists) can be mapped to a mime-type that is available 
+among the export-types provided by GD for that specific file.
 
 The following is an example directory-listing, as a result of the above. In
 addition, notice the following features:

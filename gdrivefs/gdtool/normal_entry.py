@@ -4,6 +4,7 @@ import dateutil.parser
 import json
 
 from time import mktime
+from mimetypes import guess_type
 
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
@@ -26,6 +27,7 @@ class NormalEntry(object):
         self.__parents = []
         self.__raw_data = raw_data
         self.__cache_data = None
+        self.__cache_mimetypes = None
 
         """Return True if reading from this file should return info and deposit 
         the data elsewhere. This is predominantly determined by whether we can
@@ -93,28 +95,48 @@ class NormalEntry(object):
 
 # TODO: The download-links might be empty. Under which files is this the case?        
 
+        if self.__cache_mimetypes is None:
+            self.__cache_mimetypes = [[], None]
+        
         if specific_mimetype is not None:
-            self.__log.debug("Normalizing mime-type [%s] for download.  "
-                             "Options: %s" % (specific_mimetype, 
-                                              self.download_types))
+            if specific_mimetype not in self.__cache_mimetypes[0]:
+                self.__log.debug("Normalizing mime-type [%s] for download.  "
+                                 "Options: %s" % (specific_mimetype, 
+                                                  self.download_types))
 
-            if specific_mimetype not in self.download_links:
-                raise ExportFormatError("Mime-type [%s] is not available for "
-                                        "download. Options: %s" % 
-                                        (self.download_types))
-            
+                if specific_mimetype not in self.download_links:
+                    raise ExportFormatError("Mime-type [%s] is not available for "
+                                            "download. Options: %s" % 
+                                            (self.download_types))
+
+                self.__cache_mimetypes[0].append(specific_mimetype)
+
             return specific_mimetype
 
-        if NormalEntry.__default_general_mime_type in self.download_links:
-            return NormalEntry.__default_general_mime_type
+        if self.__cache_mimetypes[1] is None:
+            # Try to derive a mimetype from the filename, and see if it matches
+            # against available export types.
+            (mimetype_candidate, _) = guess_type(self.title_fs, True)
+            if mimetype_candidate is not None and \
+               mimetype_candidate in self.download_links:
+                mime_type = mimetype_candidate
 
-        # If there's only one download link, resort to using it (perhaps it was 
-        # an uploaded file, assigned only one type).
-        if len(self.download_links) == 1:
-            return self.download_links.values()[0]
+            elif NormalEntry.__default_general_mime_type in self.download_links:
+                mime_type = NormalEntry.__default_general_mime_type
 
-        raise ExportFormatError("A correct mime-type needs to be specified. "
-                                "Options: %s" % (self.download_types))
+            # If there's only one download link, resort to using it (perhaps it was 
+            # an uploaded file, assigned only one type).
+            elif len(self.download_links) == 1:
+                mime_type = self.download_links.values()[0]
+
+            else:
+                raise ExportFormatError("A correct mime-type needs to be "
+                                        "specified. Options: %s" % 
+                                        (self.download_types))
+
+            self.__cache_mimetypes[1] = mime_type
+
+        return self.__cache_mimetypes[1]
 
     def __convert(self, data):
         if isinstance(data, dict):
