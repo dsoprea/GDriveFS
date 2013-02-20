@@ -141,14 +141,6 @@ drwxrwxrwx 2 root root    4096 Dec  1 19:21 testdir_1421#
 -rw-rw-rw- 1 root root    1000 Oct  4 02:13 Untitled document#
 
 
-Downloaded Google Document Files
-================================
-
-  Example:
-
-    # cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
-
-
 Displaceables
 =============
 
