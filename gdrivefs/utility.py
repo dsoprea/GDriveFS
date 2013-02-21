@@ -69,6 +69,10 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
 
             try:
                 result = f(*args, **kwargs)
+            except FuseOSError as e:
+                logging.info("FUSE error [%s] will be forwarded back to GDFS: "
+                             "%s" % (e.__class__.__name__, e))
+                raise
             except Exception as e:
                 logging.exception("There was an exception.")
                 suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
