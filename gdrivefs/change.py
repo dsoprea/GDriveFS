@@ -16,7 +16,6 @@ def _sched_check_changes():
 
     # Schedule next invocation.
     t = Timer(Conf.get('change_check_frequency_s'), _sched_check_changes)
-    t.start()
 
     Timers.get_instance().register_timer('change', t)
 

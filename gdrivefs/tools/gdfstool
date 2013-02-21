@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 
 from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath, GDriveFS, mount, \
                                  load_mount_parser_args
-from gdrivefs.gdfs.oauth_authorize import get_auth
+from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.conf import Conf
 
 parser = ArgumentParser()

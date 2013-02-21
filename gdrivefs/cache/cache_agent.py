@@ -72,7 +72,6 @@ class CacheAgent(object):
 
         status_post_interval_s = Conf.get('cache_status_post_frequency_s')
         status_timer = Timer(status_post_interval_s, self.__post_status)
-        status_timer.start()
 
         Timers.get_instance().register_timer('status', status_timer)
 
@@ -124,7 +123,6 @@ class CacheAgent(object):
 
         cleanup_interval_s = Conf.get('cache_cleanup_check_frequency_s')
         cleanup_timer = Timer(cleanup_interval_s, self.__cleanup_check)
-        cleanup_timer.start()
 
         Timers.get_instance().register_timer('cleanup', cleanup_timer)
 

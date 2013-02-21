@@ -13,6 +13,7 @@ from errno import *
 from time import mktime, time
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context #, LoggingMixIn
 from sys import argv, exit, excepthook
+from mimetypes import guess_type
 
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
@@ -283,8 +284,14 @@ class GDriveFS(Operations):#LoggingMixIn,
 
         self.__log.debug("Acquiring file-handle.")
 
+        # Try to guess at a mime-type, if not otherwise given.
         if mime_type is None:
-            mime_type = Conf.get('default_mimetype')
+            (mimetype_guess, _) = guess_type(filename, True)
+            
+            if mimetype_guess is not None:
+                mime_type = mimetype_guess
+            else:
+                mime_type = Conf.get('default_mimetype')
 
         try:
             fh = OpenedManager.get_instance().get_new_handle()
@@ -706,12 +713,12 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
     # How we'll appear in diskfree, mtab, etc..
     name = ("gdfs(%s)" % (auth_storage_filepath))
 
+    atexit.register(Timers.get_instance().cancel_all)
+
     fuse = FUSE(GDriveFS(), mountpoint, debug=False, foreground=debug, 
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
     Conf.set('auth_cache_filepath', auth_storage_filepath)
-
-atexit.register(Timers.get_instance().cancel_all)
 
 

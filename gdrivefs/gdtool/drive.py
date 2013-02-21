@@ -297,8 +297,8 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (list_files).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (list_files).")
             raise
 
         query_components = []
@@ -333,8 +333,8 @@ class _GdriveManager(object):
             try:
                 entry = NormalEntry('list_files', entry_raw)
             except:
-                self.__log.exception("Could not normalize raw-data for entry with"
-                                  " ID [%s]." % (entry_raw[u'id']))
+                self.__log.exception("Could not normalize raw-data for entry "
+                                     "with ID [%s]." % (entry_raw[u'id']))
                 raise
 
             entries.append(entry)
@@ -367,8 +367,8 @@ class _GdriveManager(object):
             try:
                 makedirs(temp_path)
             except:
-                self.__log.exception("Could not create temporary download path "
-                                     "[%s]." % (temp_path))
+                self.__log.exception("Could not create temporary download "
+                                     "path [%s]." % (temp_path))
                 raise
 
         gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
@@ -467,8 +467,8 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (insert_entry).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (insert_entry).")
             raise
 
         body = { 
@@ -528,8 +528,8 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (update_entry).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (update_entry).")
             raise
 
         body = { 
@@ -578,10 +578,14 @@ class _GdriveManager(object):
         # If no data and no mime-type was given, default it.
         if mime_type == None:
             mime_type = Conf.get('file_default_mime_type')
-            self.__log.debug("No mime-type was presented for file create/update. "
-                          "Defaulting to [%s]." % (mime_type))
+            self.__log.debug("No mime-type was presented for file "
+                             "create/update. Defaulting to [%s]." % 
+                             (mime_type))
 
-        return self.__insert_entry(filename, mime_type, data_filepath, **kwargs)
+        return self.__insert_entry(filename, 
+                                   mime_type, 
+                                   data_filepath, 
+                                   **kwargs)
 
     def rename(self, normalized_entry, new_filename):
 # TODO: It doesn't seem as if the created file is being registered.

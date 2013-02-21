@@ -150,9 +150,7 @@ class NormalEntry(object):
         else:
             return data
 
-    @property
-    def xattr_data(self):
-        if self.__cache_data is None:
+    def get_data(self):
             original = dict([(key.encode('ASCII'), value) 
                                 for key, value 
                                 in self.__raw_data.iteritems()])
@@ -164,6 +162,13 @@ class NormalEntry(object):
             data_dict = {'original': original,
                          #'distilled': distilled,
                          'extra': extra}
+
+            return data_dict
+
+    @property
+    def xattr_data(self):
+        if self.__cache_data is None:
+            data_dict = self.get_data()
 
             # Normalize any values that might pose problems during 
             # serialization.            
