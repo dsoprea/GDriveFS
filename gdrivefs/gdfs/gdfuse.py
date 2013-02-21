@@ -117,6 +117,10 @@ class GDriveFS(Operations):#LoggingMixIn,
 # TODO: Implement handle.
 
         entry = self.__get_entry_or_raise(raw_path)
+        (uid, gid, pid) = fuse_get_context()
+
+        self.__log.debug("Context: UID= (%d) GID= (%d) PID= (%d)" % (uid, gid, 
+                                                                     pid))
 
         effective_permission = 0o444
 
@@ -127,7 +131,9 @@ class GDriveFS(Operations):#LoggingMixIn,
         if entry.editable:
             effective_permission |= 0o222
 
-        stat_result = { "st_mtime": entry.modified_date_epoch }
+        stat_result = {"st_mtime": entry.modified_date_epoch,
+                       "st_uid": uid,
+                       "st_gid": gid}
         
         if is_folder:
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
@@ -492,13 +498,13 @@ class GDriveFS(Operations):#LoggingMixIn,
     @dec_hint(['filepath', 'mode'])
     def chmod(self, filepath, mode):
 
-        raise FuseOSError(EPERM)
+        raise FuseOSError(EPERM) # Operation not permitted.
 
     # Not supported. Google Drive doesn't fit within this model.
     @dec_hint(['filepath', 'uid', 'gid'])
     def chown(self, filepath, uid, gid):
 
-        raise FuseOSError(EPERM)
+        raise FuseOSError(EPERM) # Operation not permitted.
 
     # Not supported.
     @dec_hint(['target', 'source'])
