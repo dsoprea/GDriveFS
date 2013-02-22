@@ -9,9 +9,10 @@ import os
 import atexit
 import resource
 
-from errno import *
+from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM
+from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
+                 LoggingMixIn
 from time import mktime, time
-from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context #, LoggingMixIn
 from sys import argv, exit, excepthook
 from mimetypes import guess_type
 
@@ -43,7 +44,7 @@ _static_log = logging.getLogger().getChild('(GDFS)')
 # TODO: Make sure that we rely purely on the FH, whenever it is given, 
 #       whereever it appears. This will be to accomodate system calls that can work either via file-path or file-handle.
 
-class GDriveFS(Operations):#LoggingMixIn,
+class GDriveFS(LoggingMixIn,Operations):
     """The main filesystem class."""
 
     __log = None
@@ -123,33 +124,32 @@ class GDriveFS(Operations):#LoggingMixIn,
                                                                      pid))
 
         effective_permission = 0o444
+        if entry.editable:
+            effective_permission |= 0o222
 
         # If the user has required info, we'll treat folders like files so that 
         # we can return the info.
         is_folder = get_utility().is_directory(entry)
 
-        if entry.editable:
-            effective_permission |= 0o222
-
-        stat_result = {"st_mtime": entry.modified_date_epoch,
-                       "st_uid": uid,
-                       "st_gid": gid}
+        stat_result = { "st_mtime": entry.modified_date_epoch,
+                        "st_ctime": entry.created_date_epoch,
+                        "st_atime": time(),
+                        "st_uid":   uid,
+                        "st_gid":   gid}
         
         if is_folder:
+            effective_permission |= 0o111
+
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
             # default size should be 4K.
             stat_result["st_size"] = 1024 * 4
-        elif entry.requires_mimetype:
-            stat_result["st_size"] = DisplacedFile.file_size
-        else:
-            stat_result["st_size"] = entry.file_size
-
-        if is_folder:
-            effective_permission |= 0o111
             stat_result["st_mode"] = (stat.S_IFDIR | effective_permission)
-
             stat_result["st_nlink"] = 2
         else:
+            stat_result["st_size"] = DisplacedFile.file_size \
+                                        if entry.requires_mimetype \
+                                        else entry.file_size
+
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
 
