@@ -48,9 +48,9 @@ class NormalEntry(object):
             self.__info['editable']                   = raw_data[u'editable']
             self.__info['user_permission']            = raw_data[u'userPermission']
             self.__info['modified_date']              = dateutil.parser.parse(raw_data[u'modifiedDate'])
-            self.__info['modified_date_epoch']        = int(mktime(self.__info['modified_date'].timetuple()))
+            self.__info['modified_date_epoch']        = mktime(self.__info['modified_date'].timetuple())
             self.__info['created_date']               = dateutil.parser.parse(raw_data[u'createdDate'])
-            self.__info['created_date_epoch']         = int(mktime(self.__info['created_date'].timetuple()))
+            self.__info['created_date_epoch']         = mktime(self.__info['created_date'].timetuple())
 
             self.__info['download_links']         = raw_data[u'exportLinks']          if u'exportLinks'           in raw_data else { }
             self.__info['link']                   = raw_data[u'embedLink']            if u'embedLink'             in raw_data else None
