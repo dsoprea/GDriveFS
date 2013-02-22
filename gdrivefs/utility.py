@@ -2,7 +2,8 @@ import json
 import logging
 
 from mimetypes import guess_extension
-from sys       import getfilesystemencoding
+from sys import getfilesystemencoding
+from fuse import FuseOSError
 
 from gdrivefs.conf import Conf
 
@@ -70,11 +71,11 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
             try:
                 result = f(*args, **kwargs)
             except FuseOSError as e:
-                logging.info("FUSE error [%s] will be forwarded back to GDFS: "
-                             "%s" % (e.__class__.__name__, e))
+                log.info("FUSE error [%s] (%d) will be forwarded back to GDFS: "
+                             "%s" % (e.__class__.__name__, e.errno, e))
                 raise
             except Exception as e:
-                logging.exception("There was an exception.")
+                log.exception("There was an exception.")
                 suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
                 raise
             finally:
