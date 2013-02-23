@@ -454,7 +454,8 @@ class _GdriveManager(object):
         return (len(data), True)
 
     def __insert_entry(self, filename, mime_type, data_filepath=None, 
-                       parents=None, modified_datetime=None, is_hidden=False, 
+                       parents=None, modified_datetime=None, 
+                       accessed_datetime=None, is_hidden=False, 
                        description=None):
 
         if not parents:
@@ -474,16 +475,21 @@ class _GdriveManager(object):
         body = { 
                 'title': filename, 
                 'parents': parents, 
-                'modifiedDate': modified_datetime, 
                 'mimeType': mime_type, 
                 'labels': { "hidden": is_hidden }, 
                 'description': description 
             }
 
+        if modified_datetime is not None:
+            body['modifiedDate'] = modified_datetime
+
+        if accessed_datetime is not None:
+            body['lastViewedByMeDate'] = accessed_datetime
+
         args = { 'body': body }
 
         if data_filepath:
-            args['media_body'] = MediaFileUpload(data_filepath, \
+            args['media_body'] = MediaFileUpload(filename=data_filepath, \
                                                  mimetype=mime_type)
 
         try:
@@ -516,14 +522,13 @@ class _GdriveManager(object):
 
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
                      mime_type=None, parents=None, modified_datetime=None, 
-                     is_hidden=False, description=None):
+                     accessed_datetime=None, is_hidden=False, 
+                     description=None):
 
         if not mime_type:
             mime_type = normalized_entry.mime_type
 
-        self.__log.info("Updating file with filename [%s] under "
-                     "parent(s) [%s].  UPDATE-ID= [%s]" % 
-                     (filename, ', '.join(parents), normalized_entry.id))
+        self.__log.info("Updating entry [%s]." % (normalized_entry))
 
         try:
             client = self.get_client()
@@ -532,16 +537,39 @@ class _GdriveManager(object):
                                  "Google Drive client (update_entry).")
             raise
 
-        body = { 
-                'title': filename, 
-                'parents': parents, 
-                'modifiedDate': modified_datetime, 
-                'mimeType': mime_type, 
-                'labels': { "hidden": is_hidden }, 
-                'description': description 
-            }
+        body = { 'mimeType': mime_type }
 
-        args = { 'fileId': normalized_entry.id, 'body': body }
+        if filename is not None:
+            body['title'] = filename
+        
+        if parents is not None:
+            body['parents'] = parents
+
+        if is_hidden is not None:
+            body['labels'] = { "hidden": is_hidden }
+
+        if description is not None:
+            body['description'] = description
+
+        self.__log.info("MTIME= [%s] [%s]" % (modified_datetime, modified_datetime.__class__))
+
+        if modified_datetime is not None:
+            set_mtime = True
+            body['modifiedDate'] = modified_datetime
+        else:
+            set_mtime = False
+
+#        if accessed_datetime is not None:
+#            set_atime = 1
+#            body['lastViewedByMeDate'] = accessed_datetime
+#        else:
+#            set_atime = 0
+
+        args = { 'fileId': normalized_entry.id, 
+                 'body': body, 
+                 'setModifiedDate': set_mtime #, 
+                 #'updateViewedDate': set_atime 
+                 }
 
         if data_filepath:
             args['media_body'] = MediaFileUpload(data_filepath, mime_type)
