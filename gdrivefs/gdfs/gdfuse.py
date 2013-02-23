@@ -15,6 +15,9 @@ from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
 from time import mktime, time
 from sys import argv, exit, excepthook
 from mimetypes import guess_type
+from datetime import datetime
+from dateutil.tz import tzlocal
+from math import floor
 
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
@@ -34,7 +37,7 @@ from gdrivefs.gdfs.fsutility import strip_export_type, split_path
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
-
+from gdrivefs.constants import *
 
 _static_log = logging.getLogger().getChild('(GDFS)')
 
@@ -43,6 +46,9 @@ _static_log = logging.getLogger().getChild('(GDFS)')
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
 # TODO: Make sure that we rely purely on the FH, whenever it is given, 
 #       whereever it appears. This will be to accomodate system calls that can work either via file-path or file-handle.
+
+def set_datetime_tz(datetime_obj, tz):
+    return datetime_obj.replace(tzinfo=tz)
 
 class GDriveFS(LoggingMixIn,Operations):
     """The main filesystem class."""
@@ -110,14 +116,14 @@ class GDriveFS(LoggingMixIn,Operations):
             self.__log.debug("Path [%s] does not exist for stat()." % (filepath))
             raise FuseOSError(ENOENT)
 
-        return entry_clause[CLAUSE_ENTRY]
+        return (entry_clause[CLAUSE_ENTRY], path, filename)
 
     @dec_hint(['raw_path', 'fh'])
     def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
 # TODO: Implement handle.
 
-        entry = self.__get_entry_or_raise(raw_path)
+        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
         (uid, gid, pid) = fuse_get_context()
 
         self.__log.debug("Context: UID= (%d) GID= (%d) PID= (%d)" % (uid, gid, 
@@ -244,8 +250,7 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             entry = drive_proxy('create_directory', 
                                 filename=filename, 
-# We can probably use CLAUSE_ID instead of CLAUSE_ENTRY and .id .
-                                parents=[parent_clause[CLAUSE_ENTRY].id], 
+                                parents=[parent_clause[CLAUSE_ID]], 
                                 is_hidden=is_hidden)
         except:
             self.__log.exception("Could not create directory with name [%s] and "
@@ -266,27 +271,30 @@ class GDriveFS(LoggingMixIn,Operations):
             self.__log.exception("Could not register new directory in cache.")
             raise FuseOSError(EIO)
 
-    @dec_hint(['filepath', 'mode'])
-    def create(self, filepath, mode):
-        """Create a new file. This always precedes a write.
-        
+# TODO: Find a way to implement or enforce 'mode'.
+    def __create(self, filepath, mode=None):
+        """Create a new file.
+                
         We don't implement "mode" (permissions) because the model doesn't agree 
         with GD.
         """
 # TODO: Fail if it already exists.
 
-        self.__log.debug("Splitting file-path [%s] for create." % (filepath))
+        self.__log.debug("Splitting file-path [%s] for inner create." % 
+                         (filepath))
 
         try:
             result = split_path(filepath, path_resolver)
             (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
-            self.__log.exception("Could not process [%s] (create).")
+            self.__log.exception("Could not process [%s] (i-create).")
             raise FuseOSError(ENOENT)
         except:
-            self.__log.exception("Could not split path [%s] (create)." % 
+            self.__log.exception("Could not split path [%s] (i-create)." % 
                               (filepath))
             raise FuseOSError(EIO)
+
+        distilled_filepath = ('%s%s' % (path, filename))
 
         self.__log.debug("Acquiring file-handle.")
 
@@ -299,15 +307,8 @@ class GDriveFS(LoggingMixIn,Operations):
             else:
                 mime_type = Conf.get('default_mimetype')
 
-        try:
-            fh = OpenedManager.get_instance().get_new_handle()
-        except:
-            self.__log.exception("Could not acquire file-handle for create of "
-                              "[%s]." % (filepath))
-            raise FuseOSError(EIO)
-
-        self.__log.debug("Creating empty file [%s] under parent with ID [%s]." % 
-                      (filename, parent_clause[3]))
+        self.__log.debug("Creating empty file [%s] under parent with ID "
+                         "[%s]." % (filename, parent_clause[3]))
 
         try:
             entry = drive_proxy('create_file', filename=filename, 
@@ -316,8 +317,9 @@ class GDriveFS(LoggingMixIn,Operations):
                                 is_hidden=is_hidden,
                                 mime_type=mime_type)
         except:
-            self.__log.exception("Could not create empty file [%s] under parent "
-                                 "with ID [%s]." % (filename, parent_clause[3]))
+            self.__log.exception("Could not create empty file [%s] under "
+                                 "parent with ID [%s]." % (filename, 
+                                                           parent_clause[3]))
             raise FuseOSError(EIO)
 
         self.__log.debug("Registering created file in cache.")
@@ -330,18 +332,39 @@ class GDriveFS(LoggingMixIn,Operations):
             self.__log.exception("Could not register created file in cache.")
             raise FuseOSError(EIO)
 
+        self.__log.info("Inner-create of [%s] completed." % 
+                        (distilled_filepath))
+
+        return (entry, path, filename, mime_type)
+
+    @dec_hint(['filepath', 'mode'])
+    def create(self, raw_filepath, mode):
+        """Create a new file. This always precedes a write."""
+
+        self.__log.debug("Acquiring file-handle.")
+
+        try:
+            fh = OpenedManager.get_instance().get_new_handle()
+        except:
+            self.__log.exception("Could not acquire file-handle for create of "
+                                 "[%s]." % (raw_filepath))
+            raise FuseOSError(EIO)
+
+        (entry, path, filename, mime_type) = self.__create(raw_filepath)
+
         self.__log.debug("Building OpenedFile object for created file.")
 
         try:
-            opened_file = OpenedFile(entry.id, path, filename, is_hidden, 
-                                     mime_type)
+            opened_file = OpenedFile(entry.id, path, filename, 
+                                     not entry.is_visible, mime_type)
         except:
             self.__log.exception("Could not create OpenedFile object for "
-                              "created file.")
+                                 "created file.")
             raise FuseOSError(EIO)
 
         self.__log.debug("Registering OpenedFile object with handle (%d), "
-                         "path [%s], and ID [%s]." % (fh, filepath, entry.id))
+                         "path [%s], and ID [%s]." % 
+                         (fh, raw_filepath, entry.id))
 
         try:
             OpenedManager.get_instance().add(opened_file, fh=fh)
@@ -578,7 +601,8 @@ class GDriveFS(LoggingMixIn,Operations):
     @dec_hint(['filepath'])
     def unlink(self, filepath):
         """Remove a file."""
-
+# TODO: Change to simply move to "trash". Have a FUSE option to elect this
+# behavior.
         path_relations = PathRelations.get_instance()
 
         self.__log.debug("Removing file [%s]." % (filepath))
@@ -624,14 +648,61 @@ class GDriveFS(LoggingMixIn,Operations):
 
         self.__log.debug("File removal complete.")
 
-# TODO: Finish this.
-    @dec_hint(['path', 'times'])
-    def utimens(self, path, times=None):
+    def __build_rfc3339_phrase(self, datetime_obj):
+        datetime_phrase = datetime_obj.strftime(DTF_DATETIMET)
+        us = datetime_obj.strftime('%f')
+
+        seconds = datetime_obj.utcoffset().total_seconds()
+
+        if seconds is None:
+            datetime_phrase += 'Z'
+        else:
+            # Append: decimal, 2-digit uS, -/+, hours, minutes
+            datetime_phrase += ('.%.2s%s%02d:%02d' % (
+                                us,
+                                ('-' if seconds < 0 else '+'),
+                                abs(int(floor(seconds / 3600))),
+                                abs(seconds % 3600)
+                                ))
+
+        return datetime_phrase
+
+    @dec_hint(['raw_path', 'times'])
+    def utimens(self, raw_path, times=None):
         """Set the file times."""
 
-        pass
-#        now = time()
-#        atime, mtime = times if times else (now, now)
+        if times is not None:
+            (atime, mtime) = times
+        else:
+            now = time()
+            (atime, mtime) = (now, now)
+
+        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
+
+        tz = tzlocal()
+        
+        mtime_datetime = datetime.fromtimestamp(mtime, tz)
+        mtime_phrase = self.__build_rfc3339_phrase(mtime_datetime)
+        atime_datetime = datetime.fromtimestamp(atime, tz)
+        atime_phrase = self.__build_rfc3339_phrase(atime_datetime)
+
+        self.__log.debug("Updating entry [%s] with m-time [%s] and a-time "
+                         "[%s]." % (entry, mtime_phrase, atime_phrase))
+
+        try:
+            entry = drive_proxy('update_entry', normalized_entry=entry, 
+                                modified_datetime=mtime_phrase,
+                                accessed_datetime=atime_phrase)
+        except:
+            self.__log.exception("Could not update entry [%s] for times." %
+                                 (entry))
+            raise FuseOSError(EIO)
+
+        self.__log.debug("Entry [%s] mtime is now [%s] and atime is now "
+                         "[%s]." % (entry, entry.modified_date, 
+                                    entry.atime_byme_date))
+
+        return 0
 
     @dec_hint(['path'])
     def init(self, path):
@@ -647,13 +718,13 @@ class GDriveFS(LoggingMixIn,Operations):
 
     @dec_hint(['path'])
     def listxattr(self, raw_path):
-        entry = self.__get_entry_or_raise(raw_path)
+        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
 
         return entry.xattr_data.keys()
 
     @dec_hint(['path', 'name', 'position'])
     def getxattr(self, raw_path, name, position=0):
-        entry = self.__get_entry_or_raise(raw_path)
+        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
 
         try:
             return entry.xattr_data[name]
