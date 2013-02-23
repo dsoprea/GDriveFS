@@ -3,6 +3,7 @@ setup.py
 gdrivefs/__init__.py
 gdrivefs/change.py
 gdrivefs/conf.py
+gdrivefs/constants.py
 gdrivefs/errors.py
 gdrivefs/log_config.py
 gdrivefs/report.py
