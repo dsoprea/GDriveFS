@@ -15,7 +15,15 @@ class NormalEntry(object):
     __properties_extra = ('is_directory', 
                           'is_visible', 
                           'parents', 
-                          'download_types')
+                          'download_types',
+                          'modified_date',
+                          'modified_date_epoch',
+                          'created_date',
+                          'created_date_epoch',
+                          'mtime_byme_date',
+                          'mtime_byme_date_epoch',
+                          'atime_byme_date',
+                          'atime_byme_date_epoch')
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
@@ -28,6 +36,7 @@ class NormalEntry(object):
         self.__raw_data = raw_data
         self.__cache_data = None
         self.__cache_mimetypes = None
+        self.__cache_dict = {}
 
         """Return True if reading from this file should return info and deposit 
         the data elsewhere. This is predominantly determined by whether we can
@@ -47,15 +56,9 @@ class NormalEntry(object):
             self.__info['owner_names']                = raw_data[u'ownerNames']
             self.__info['editable']                   = raw_data[u'editable']
             self.__info['user_permission']            = raw_data[u'userPermission']
-            self.__info['modified_date']              = dateutil.parser.parse(raw_data[u'modifiedDate'])
-            self.__info['modified_date_epoch']        = mktime(self.__info['modified_date'].timetuple())
-            self.__info['created_date']               = dateutil.parser.parse(raw_data[u'createdDate'])
-            self.__info['created_date_epoch']         = mktime(self.__info['created_date'].timetuple())
 
             self.__info['download_links']         = raw_data[u'exportLinks']          if u'exportLinks'           in raw_data else { }
             self.__info['link']                   = raw_data[u'embedLink']            if u'embedLink'             in raw_data else None
-            self.__info['modified_by_me_date']    = raw_data[u'modifiedByMeDate']     if u'modifiedByMeDate'      in raw_data else None
-            self.__info['last_viewed_by_me_date'] = raw_data[u'lastViewedByMeDate']   if u'lastViewedByMeDate'    in raw_data else None
             self.__info['file_size']              = int(raw_data[u'fileSize'])        if u'fileSize'              in raw_data else 0
             self.__info['file_extension']         = raw_data[u'fileExtension']        if u'fileExtension'         in raw_data else None
             self.__info['md5_checksum']           = raw_data[u'md5Checksum']          if u'md5Checksum'           in raw_data else None
@@ -206,4 +209,57 @@ class NormalEntry(object):
     @property
     def download_types(self):
         return self.download_links.keys()
+
+    @property
+    def modified_date(self):
+        if 'modified_date' not in self.__cache_dict:
+            self.__cache_dict['modified_date'] = \
+                dateutil.parser.parse(self.__raw_data[u'modifiedDate'])
+
+        return self.__cache_dict['modified_date']
+
+    @property
+    def modified_date_epoch(self):
+        return mktime(self.modified_date.timetuple())
+
+    @property
+    def created_date(self):
+        if 'created_date' not in self.__cache_dict:
+            self.__cache_dict['created_date'] = \
+                dateutil.parser.parse(self.__raw_data[u'createdDate'])
+
+        return self.__cache_dict['created_date']
+        
+    @property
+    def created_date_epoch(self):
+        return mktime(self.created_date.timetuple())
+
+    @property  
+    def mtime_byme_date(self):
+        if 'modified_byme_date' not in self.__cache_dict:
+            self.__cache_dict['modified_byme_date'] = \
+                dateutil.parser.parse(self.__raw_data[u'modifiedByMeDate'])
+
+        return self.__cache_dict['modified_byme_date']
+
+    @property
+    def mtime_byme_date_epoch(self):
+        return mktime(self.mtime_byme_date.timetuple())
+
+    @property
+    def atime_byme_date(self):
+        if 'viewed_byme_date' not in self.__cache_dict:
+            self.__cache_dict['viewed_byme_date'] = \
+                dateutil.parser.parse(self.__raw_data[u'lastViewedByMeDate']) \
+                if u'lastViewedByMeDate' in self.__raw_data \
+                else None
+
+        return self.__cache_dict['viewed_byme_date']
+
+    @property
+    def atime_byme_date_epoch(self):
+        return mktime(self.atime_byme_date.timetuple()) \
+                if self.atime_byme_date \
+                else None
+
 
