@@ -1,90 +1,9 @@
 import json
 import logging
 
-from mimetypes import guess_extension
 from sys import getfilesystemencoding
-from fuse import FuseOSError
 
 from gdrivefs.conf import Conf
-
-
-def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
-    """A decorator for the calling of functions to be emphasized in the 
-    logging. Displays prefix and suffix information in the logs.
-    """
-
-    try:
-        log = dec_hint.log
-    except:
-        log = logging.getLogger().getChild('VfsAction')
-        dec_hint.log = log
-
-    # We use a serial-number so that we can eyeball corresponding pairs of
-    # beginning and ending statements in the logs.
-    sn = getattr(dec_hint, 'sn', 0) + 1
-    dec_hint.sn = sn
-
-    prefix = ("%s: " % (prefix)) if prefix else ''
-
-    def real_decorator(f):
-        def wrapper(*args, **kwargs):
-        
-            try:
-                pid = fuse_get_context()[2]
-            except:
-                # Just in case.
-                pid = 0
-        
-            log.info("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)" % 
-                     (prefix, f.__name__, sn, pid))
-        
-            if args or kwargs:
-                condensed = {}
-                for i in xrange(len(args)):
-                    # Skip the 'self' argument.
-                    if i == 0:
-                        continue
-                
-                    if i - 1 >= len(argument_names):
-                        break
-
-                    condensed[argument_names[i - 1]] = args[i]
-
-                for k, v in kwargs.iteritems():
-                    condensed[k] = v
-
-                values_nice = [("%s= [%s]" % (k, v)) for k, v \
-                                                     in condensed.iteritems() \
-                                                     if k not in excluded]
-                
-                if otherdata_cb:
-                    data = otherdata_cb(*args, **kwargs)
-                    for k, v in data.iteritems():
-                        values_nice[k] = v
-                
-                if values_nice:
-                    values_string = '  '.join(values_nice)
-                    log.debug("DATA: %s" % (values_string))
-
-            suffix = ''
-
-            try:
-                result = f(*args, **kwargs)
-            except FuseOSError as e:
-                log.info("FUSE error [%s] (%d) will be forwarded back to GDFS: "
-                             "%s" % (e.__class__.__name__, e.errno, e))
-                raise
-            except Exception as e:
-                log.exception("There was an exception.")
-                suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
-                raise
-            finally:
-                log.info("%s<<<<<<<<<< %s(%d) (%d)%s" % 
-                         (prefix, f.__name__, sn, pid, suffix))
-            
-            return result
-        return wrapper
-    return real_decorator
 
 
 class _DriveUtility(object):
