@@ -17,7 +17,6 @@ from sys import argv, exit, excepthook
 from mimetypes import guess_type
 from datetime import datetime
 from dateutil.tz import tzlocal
-from math import floor
 
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
@@ -27,7 +26,7 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_CHILDREN, CLAUSE_ID, \
                                   CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf import Conf
-from gdrivefs.utility import dec_hint
+from gdrivefs.gdfs.fsutility import dec_hint
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
@@ -37,7 +36,7 @@ from gdrivefs.gdfs.fsutility import strip_export_type, split_path
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
-from gdrivefs.constants import *
+from gdrivefs.time_support import build_rfc3339_phrase
 
 _static_log = logging.getLogger().getChild('(GDFS)')
 
@@ -379,7 +378,7 @@ class GDriveFS(LoggingMixIn,Operations):
 
     @dec_hint(['filepath', 'flags'])
     def open(self, filepath, flags):
-# TODO: Fail if does not exist and the mode is read only.
+# TODO: Fail if does not exist and the mode/flags is read only.
 
         self.__log.debug("Building OpenedFile object for file being opened.")
 
@@ -598,27 +597,28 @@ class GDriveFS(LoggingMixIn,Operations):
     def truncate(self, path, length, fh=None):
         pass
 
-    @dec_hint(['filepath'])
-    def unlink(self, filepath):
+    @dec_hint(['file_path'])
+    def unlink(self, file_path):
         """Remove a file."""
 # TODO: Change to simply move to "trash". Have a FUSE option to elect this
 # behavior.
         path_relations = PathRelations.get_instance()
 
-        self.__log.debug("Removing file [%s]." % (filepath))
+        self.__log.debug("Removing file [%s]." % (file_path))
 
         try:
-            entry_clause = path_relations.get_clause_from_path(filepath)
+            entry_clause = path_relations.get_clause_from_path(file_path)
         except GdNotFoundError:
             self.__log.exception("Could not process [%s] (unlink).")
             raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not get clause from file-path [%s] "
-                              "(unlink)." % (filepath))
+                                 "(unlink)." % (file_path))
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            self.__log.error("Path [%s] does not exist for unlink()." % (filepath))
+            self.__log.error("Path [%s] does not exist for unlink()." % 
+                             (file_path))
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
@@ -629,11 +629,15 @@ class GDriveFS(LoggingMixIn,Operations):
         self.__log.debug("Ensuring it is a file (not a directory).")
 
         if normalized_entry.is_directory:
-            self.__log.error("Can not unlink() directory [%s] with ID [%s]. Must be file.", filepath, entry_id)
+            self.__log.error("Can not unlink() directory [%s] with ID [%s]. "
+                             "Must be file.", file_path, entry_id)
             raise FuseOSError(errno.EISDIR)
 
         self.__log.debug("Doing remove of directory [%s] with ID [%s]." % 
-                      (filepath, entry_id))
+                         (file_path, entry_id))
+
+        # Remove online. Complements local removal (if not found locally, a 
+        # follow-up request checks online).
 
         try:
             drive_proxy('remove_entry', normalized_entry=normalized_entry)
@@ -641,31 +645,35 @@ class GDriveFS(LoggingMixIn,Operations):
             raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not remove file [%s] with ID [%s]." % 
-                              (filepath, entry_id))
+                                 (file_path, entry_id))
             raise FuseOSError(EIO)
 
-# TODO: Remove from cache.
+        # Remove from cache. Will no longer be able to be found, locally.
+
+        self.__log.debug("Removing all trace of entry [%s] from cache "
+                         "(unlink)." % (normalized_entry))
+
+        try:
+            PathRelations.get_instance().remove_entry_all(entry_id)
+        except:
+            self.__log.exception("There was a problem removing entry [%s] "
+                                 "from the caches." % (normalized_entry))
+            raise
+
+        # Remove from among opened-files.
+
+        self.__log.debug("Removing all opened-files for [%s]." % (file_path))
+
+        try:
+            opened_file = OpenedManager.get_instance().\
+                            remove_by_filepath(file_path)
+        except:
+            self.__log.exception("There was an error while removing all "
+                                 "opened-file instances for file [%s] "
+                                 "(remove)." % (file_path))
+            raise FuseOSError(EIO)
 
         self.__log.debug("File removal complete.")
-
-    def __build_rfc3339_phrase(self, datetime_obj):
-        datetime_phrase = datetime_obj.strftime(DTF_DATETIMET)
-        us = datetime_obj.strftime('%f')
-
-        seconds = datetime_obj.utcoffset().total_seconds()
-
-        if seconds is None:
-            datetime_phrase += 'Z'
-        else:
-            # Append: decimal, 2-digit uS, -/+, hours, minutes
-            datetime_phrase += ('.%.2s%s%02d:%02d' % (
-                                us,
-                                ('-' if seconds < 0 else '+'),
-                                abs(int(floor(seconds / 3600))),
-                                abs(seconds % 3600)
-                                ))
-
-        return datetime_phrase
 
     @dec_hint(['raw_path', 'times'])
     def utimens(self, raw_path, times=None):
@@ -682,9 +690,9 @@ class GDriveFS(LoggingMixIn,Operations):
         tz = tzlocal()
         
         mtime_datetime = datetime.fromtimestamp(mtime, tz)
-        mtime_phrase = self.__build_rfc3339_phrase(mtime_datetime)
+        mtime_phrase = build_rfc3339_phrase(mtime_datetime)
         atime_datetime = datetime.fromtimestamp(atime, tz)
-        atime_phrase = self.__build_rfc3339_phrase(atime_datetime)
+        atime_phrase = build_rfc3339_phrase(atime_datetime)
 
         self.__log.debug("Updating entry [%s] with m-time [%s] and a-time "
                          "[%s]." % (entry, mtime_phrase, atime_phrase))
@@ -790,9 +798,15 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
     # How we'll appear in diskfree, mtab, etc..
     name = ("gdfs(%s)" % (auth_storage_filepath))
 
-    atexit.register(Timers.get_instance().cancel_all)
+    # Don't start any of the scheduled tasks, such as change checking, cache
+    # cleaning, etc. It will minimize outside influence of the logs and state
+    # to make it easier to debug.
 
-    fuse = FUSE(GDriveFS(), mountpoint, debug=False, foreground=debug, 
+#    atexit.register(Timers.get_instance().cancel_all)
+    if debug:
+        Timers.get_instance().set_autostart_default(False)
+
+    fuse = FUSE(GDriveFS(), mountpoint, debug=debug, foreground=debug, 
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
