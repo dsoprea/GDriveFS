@@ -104,23 +104,26 @@ class _ChangeManager(object):
         
         is_visible = entry.is_visible if entry else None
 
-        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], and "
-                     "is-visible of [%s]" % (change_id, entry_id, is_visible))
+        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], "
+                        "and is-visible of [%s]" % 
+                        (change_id, entry_id, is_visible))
 
         # First, remove any current knowledge from the system.
 
-        self.__log.debug("Removing all trace of entry with ID [%s]." % (entry_id))
+        self.__log.debug("Removing all trace of entry with ID [%s] "
+                         "(apply_change)." % (entry_id))
 
         try:
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
-            self.__log.exception("There was a problem remove entry with ID [%s] "
-                              "from the caches." % (entry_id))
+            self.__log.exception("There was a problem remove entry with ID "
+                                 "[%s] from the caches." % (entry_id))
             raise
 
         # If it wasn't deleted, add it back.
 
-        self.__log.debug("Registering changed entry with ID [%s]." % (entry_id))
+        self.__log.debug("Registering changed entry with ID [%s]." % 
+                         (entry_id))
 
         if is_visible:
             path_relations = PathRelations.get_instance()
@@ -128,9 +131,9 @@ class _ChangeManager(object):
             try:
                 path_relations.register_entry(entry)
             except:
-                self.__log.exception("Could not register changed entry with ID "
-                                  "[%s] with path-relations cache." % 
-                                  (entry_id))
+                self.__log.exception("Could not register changed entry with "
+                                     "ID [%s] with path-relations cache." % 
+                                     (entry_id))
                 raise
 
 def get_change_manager():
