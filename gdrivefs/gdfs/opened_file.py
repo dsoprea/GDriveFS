@@ -12,8 +12,7 @@ from os.path import isdir
 
 from gdrivefs.conf import Conf
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
-from gdrivefs.utility import dec_hint
-from gdrivefs.gdfs.fsutility import split_path
+from gdrivefs.gdfs.fsutility import dec_hint, split_path
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID, CLAUSE_ENTRY
@@ -37,28 +36,29 @@ def get_temp_filepath(normalized_entry, mime_type):
 
 class OpenedManager(object):
 
-    instance = None
-    singleton_lock = Lock()
-    __log = None
-    opened = { }
-    opened_lock = RLock()
-    fh_counter = 1
+    __instance = None
+    __singleton_lock = Lock()
+    __opened_lock = RLock()
+    __fh_counter = 1
 
     @staticmethod
     def get_instance():
-        with OpenedManager.singleton_lock:
-            if OpenedManager.instance == None:
+        with OpenedManager.__singleton_lock:
+            if OpenedManager.__instance == None:
                 try:
-                    OpenedManager.instance = OpenedManager()
+                    OpenedManager.__instance = OpenedManager()
                 except:
                     _static_log.exception("Could not create singleton "
                                           "instance of OpenedManager.")
                     raise
 
-            return OpenedManager.instance
+            return OpenedManager.__instance
 
     def __init__(self):
         self.__log = logging.getLogger().getChild('OpenMan')
+
+        self.__opened = {}
+        self.__opened_byfile = {}
 
     def __get_max_handles(self):
 
@@ -71,21 +71,21 @@ class OpenedManager(object):
 
         max_handles = self.__get_max_handles()
 
-        with self.opened_lock:
-            if len(self.opened) >= (max_handles + 1):
+        with OpenedManager.__opened_lock:
+            if len(self.__opened) >= (max_handles + 1):
                 raise FuseOSError(EMFILE)
 
             safety_counter = max_handles
             while safety_counter >= 1:
-                self.fh_counter += 1
+                OpenedManager.__fh_counter += 1
 
-                if self.fh_counter >= (max_handles + 1):
-                    self.fh_counter = 1
+                if OpenedManager.__fh_counter >= (max_handles + 1):
+                    OpenedManager.__fh_counter = 1
 
-                if self.fh_counter not in self.opened:
-                    logging.debug("Assigning file-handle (%d)." % 
-                                  (self.fh_counter))
-                    return self.fh_counter
+                if OpenedManager.__fh_counter not in self.__opened:
+                    self.__log.debug("Assigning file-handle (%d)." % 
+                                     (OpenedManager.__fh_counter))
+                    return OpenedManager.__fh_counter
                 
         message = "Could not allocate new file handle. Safety breach."
 
@@ -101,7 +101,7 @@ class OpenedManager(object):
             self.__log.error(message)
             raise Exception(message)
 
-        with self.opened_lock:
+        with OpenedManager.__opened_lock:
             if not fh:
                 try:
                     fh = self.get_new_handle()
@@ -110,44 +110,81 @@ class OpenedManager(object):
                                       "OpenedFile to be registered.")
                     raise
 
-            elif fh in self.opened:
+            elif fh in self.__opened:
                 message = ("Opened-file with file-handle (%d) has already been"
                            " registered." % (opened_file.fh))
 
                 self.__log.error(message)
                 raise Exception(message)
 
-            self.opened[fh] = opened_file
+            self.__opened[fh] = opened_file
+
+            file_path = opened_file.file_path
+            if file_path in self.__opened_byfile:
+                self.__opened_byfile[file_path].append(fh)
+            else:
+                self.__opened_byfile[file_path] = [fh]
 
             return fh
 
     def remove_by_fh(self, fh):
         """Remove an opened-file, by the handle."""
 
-        with self.opened_lock:
+        with OpenedManager.__opened_lock:
             self.__log.debug("Closing opened-file with handle (%d)." % (fh))
 
-            if fh not in self.opened:
-                message = ("Opened-file with file-handle (%d) is not "
-                          "registered (remove_by_fh)." % (fh))
+            try:
+                self.__opened[fh].cleanup()
+            except:
+                self.__log.exception("There was an error while cleaning up "
+                                     "opened file-path [%s] handle (%d)." % 
+                                     (file_path, fh))
+                return
 
-                self.__log.error(message)
-                raise Exception(message)
+            file_path = self.__opened[fh].file_path
+            del self.__opened[fh]
+            
+            try:
+                self.__opened_byfile[file_path].remove(fh)
+            except ValueError:
+                raise ValueError("Could not remove handle (%d) from list of "
+                                 "open-handles for file-path [%s]: %s" % 
+                                 (fh, file_path, 
+                                  self.__opened_byfile[file_path]))
 
-            del self.opened[fh]
+            if not self.__opened_byfile[file_path]:
+                del self.__opened_byfile[file_path]
+
+    def remove_by_filepath(self, file_path):
+
+        self.__log.debug("Removing all open handles for file-path [%s]." % 
+                         (file_path))
+
+        count = 0
+
+        with OpenedManager.__opened_lock:
+            try:
+                for fh in self.__opened_byfile[file_path]:
+                    self.remove_by_fh(fh)
+                    count += 1
+            except KeyError:
+                pass
+
+        self.__log.debug("(%d) file-handles removed for file-path [%s]." % 
+                         (count, file_path))
 
     def get_by_fh(self, fh):
         """Retrieve an opened-file, by the handle."""
 
-        with self.opened_lock:
-            if fh not in self.opened:
+        with OpenedManager.__opened_lock:
+            if fh not in self.__opened:
                 message = ("Opened-file with file-handle (%d) is not "
                           "registered (get_by_fh)." % (fh))
 
                 self.__log.error(message)
                 raise Exception(message)
 
-            return self.opened[fh]
+            return self.__opened[fh]
 
             
 class OpenedFile(object):
@@ -258,6 +295,11 @@ class OpenedFile(object):
                 "LOADED=[%(is_loaded)s] DIRTY= [%(is_dirty)s]>" % replacements)
 
 # TODO: !! Make sure the "changes" thread is still going, here.
+
+    def cleanup(self):
+        """Remove temporary files."""
+    
+        pass
 
     def __get_entry_or_raise(self):
         """We can never be sure that the entry will still be known to the 
@@ -443,12 +485,12 @@ class OpenedFile(object):
                     for block in self.__buffer.read():
                         f.write(block)
                                                    
-                write_file_path = temp_file_path
+                write_filepath = temp_file_path
             else:
                 is_temp = True
             
                 with NamedTemporaryFile(delete=False) as f:
-                    write_file_path = f.name
+                    write_filepath = f.name
                     for block in self.__buffer.read():
                         f.write(block)
 
@@ -456,7 +498,7 @@ class OpenedFile(object):
 
             self.__log.debug("Pushing (%d) bytes for entry with ID from [%s] "
                              "to GD for file-path [%s]." % 
-                             (self.__buffer.length, entry.id, write_file_path))
+                             (self.__buffer.length, entry.id, write_filepath))
 
 #            print("Sending updates.")
 
@@ -464,7 +506,7 @@ class OpenedFile(object):
                 entry = drive_proxy('update_entry', 
                                     normalized_entry=entry, 
                                     filename=entry.title, 
-                                    data_filepath=write_file_path, 
+                                    data_filepath=write_filepath, 
                                     mime_type=mime_type, 
                                     parents=entry.parents, 
                                     is_hidden=self.__is_hidden)
@@ -474,7 +516,7 @@ class OpenedFile(object):
                 raise
 
             if not is_temp:
-                unlink(write_file_path)
+                unlink(write_filepath)
             else:
                 # Update the write-cache file to the official mtime. We won't 
                 # redownload it on the next flush if it wasn't changed, 
@@ -484,7 +526,7 @@ class OpenedFile(object):
                                  "mtime [%s]." % (entry.modified_date_epoch))
 
                 try:
-                    utime(write_file_path, (entry.modified_date_epoch, 
+                    utime(write_filepath, (entry.modified_date_epoch, 
                                             entry.modified_date_epoch))
                 except:
                     self.__log.exception("Could not update mtime of write-"
@@ -548,4 +590,12 @@ class OpenedFile(object):
     @property
     def mime_type(self):
         return self.__mime_type
+
+    @property
+    def entry_id(self):
+        return self.__entry_id
+
+    @property
+    def file_path(self):
+        return ("%s%s" % (self.__path, self.__filename))
 
