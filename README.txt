@@ -57,8 +57,8 @@ Manually:
 
   Expand into a directory named "gdrivefs" in the Python path, and run:
   
-    python setup.py
-
+    sudo python setup.py install
+    sudo python setup.py install_egg_info
 
 Usage
 =====
