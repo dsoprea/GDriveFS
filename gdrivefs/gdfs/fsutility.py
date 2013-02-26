@@ -153,3 +153,8 @@ def split_path(filepath_original, pathresolver_cb):
 
     return (parent_clause, path, filename, mime_type, is_hidden)
 
+def build_filepath(path, filename):
+    separator = '/' if path != '/' else ''
+
+    return ('%s%s%s' % (path, separator, filename))
+
