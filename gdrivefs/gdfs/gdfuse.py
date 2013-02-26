@@ -136,8 +136,8 @@ class GDriveFS(LoggingMixIn,Operations):
         # we can return the info.
         is_folder = get_utility().is_directory(entry)
 
-        stat_result = { "st_mtime": entry.modified_date_epoch,
-                        "st_ctime": entry.created_date_epoch,
+        stat_result = { "st_mtime": entry.modified_date_epoch, # modified time.
+                        "st_ctime": entry.modified_date_epoch, # changed time.
                         "st_atime": time(),
                         "st_uid":   uid,
                         "st_gid":   gid}

@@ -18,8 +18,6 @@ class NormalEntry(object):
                           'download_types',
                           'modified_date',
                           'modified_date_epoch',
-                          'created_date',
-                          'created_date_epoch',
                           'mtime_byme_date',
                           'mtime_byme_date_epoch',
                           'atime_byme_date',
@@ -221,18 +219,6 @@ class NormalEntry(object):
     @property
     def modified_date_epoch(self):
         return mktime(self.modified_date.timetuple())
-
-    @property
-    def created_date(self):
-        if 'created_date' not in self.__cache_dict:
-            self.__cache_dict['created_date'] = \
-                dateutil.parser.parse(self.__raw_data[u'createdDate'])
-
-        return self.__cache_dict['created_date']
-        
-    @property
-    def created_date_epoch(self):
-        return mktime(self.created_date.timetuple())
 
     @property  
     def mtime_byme_date(self):

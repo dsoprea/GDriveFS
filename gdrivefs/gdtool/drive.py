@@ -559,16 +559,16 @@ class _GdriveManager(object):
         else:
             set_mtime = False
 
-#        if accessed_datetime is not None:
-#            set_atime = 1
-#            body['lastViewedByMeDate'] = accessed_datetime
-#        else:
-#            set_atime = 0
+        if accessed_datetime is not None:
+            set_atime = 1
+            body['lastViewedByMeDate'] = accessed_datetime
+        else:
+            set_atime = 0
 
         args = { 'fileId': normalized_entry.id, 
                  'body': body, 
-                 'setModifiedDate': set_mtime #, 
-                 #'updateViewedDate': set_atime 
+                 'setModifiedDate': set_mtime, 
+                 'updateViewedDate': set_atime 
                  }
 
         if data_filepath:
