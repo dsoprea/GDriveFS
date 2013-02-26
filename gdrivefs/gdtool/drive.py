@@ -14,6 +14,7 @@ from httplib2 import Http
 from collections import OrderedDict
 from os.path import isdir, isfile
 from os import makedirs, stat, utime
+from dateutil.tz import tzlocal, tzutc
 
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
 from gdrivefs.errors import FilenameQuantityError, ExportFormatError
@@ -21,7 +22,7 @@ from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
-
+from gdrivefs.time_support import build_rfc3339_phrase
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -458,12 +459,22 @@ class _GdriveManager(object):
                        accessed_datetime=None, is_hidden=False, 
                        description=None):
 
-        if not parents:
+        if parents is None:
             parents = []
 
-        self.__log.info("Creating file with filename [%s] under "
-                     "parent(s) [%s] with mime-type [%s]." % 
-                     (filename, ', '.join(parents), mime_type))
+        now_obj = datetime.now().replace(tzinfo=tzutc())
+        now_phrase = build_rfc3339_phrase(now_obj)
+
+        if modified_datetime is None:
+            modified_datetime = now_phrase 
+    
+        if accessed_datetime is None:
+            accessed_datetime = now_phrase 
+
+        self.__log.info("Creating file with filename [%s] under parent(s) "
+                        "[%s] with mime-type [%s], mtime= [%s], atime= [%s]." % 
+                        (filename, ', '.join(parents), mime_type, 
+                         modified_datetime, accessed_datetime))
 
         try:
             client = self.get_client()
