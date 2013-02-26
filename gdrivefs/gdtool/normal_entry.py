@@ -22,6 +22,7 @@ class NormalEntry(object):
                           'mtime_byme_date_epoch',
                           'atime_byme_date',
                           'atime_byme_date_epoch')
+    __directory_mimetype = Conf.get('directory_mimetype')
 
     def __init__(self, gd_resource_type, raw_data):
         # LESSONLEARNED: We had these set as properties, but CPython was 
@@ -41,7 +42,8 @@ class NormalEntry(object):
         get a file-size up-front, or we have to decide on a specific mime-type 
         in order to do so.
         """
-        requires_mimetype = (u'fileSize' not in self.__raw_data)
+        requires_mimetype = (u'fileSize' not in self.__raw_data and \
+                             raw_data[u'mimeType'] != self.__directory_mimetype)
 
         try:
             self.__info['requires_mimetype']          = requires_mimetype
@@ -94,8 +96,6 @@ class NormalEntry(object):
         one download format.
         """
 
-# TODO: The download-links might be empty. Under which files is this the case?        
-
         if self.__cache_mimetypes is None:
             self.__cache_mimetypes = [[], None]
         
@@ -128,7 +128,7 @@ class NormalEntry(object):
             # If there's only one download link, resort to using it (perhaps it was 
             # an uploaded file, assigned only one type).
             elif len(self.download_links) == 1:
-                mime_type = self.download_links.values()[0]
+                mime_type = self.download_links.keys()[0]
 
             else:
                 raise ExportFormatError("A correct mime-type needs to be "
@@ -188,7 +188,7 @@ class NormalEntry(object):
     @property
     def is_directory(self):
         """Return True if we represent a directory."""
-        return get_utility().is_directory(self)
+        return (self.__info['mime_type'] == self.__directory_mimetype)
 
     @property
     def is_visible(self):

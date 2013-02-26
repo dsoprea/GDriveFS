@@ -12,7 +12,7 @@ from os.path import isdir
 
 from gdrivefs.conf import Conf
 from gdrivefs.errors import ExportFormatError, GdNotFoundError
-from gdrivefs.gdfs.fsutility import dec_hint, split_path
+from gdrivefs.gdfs.fsutility import dec_hint, split_path, build_filepath
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID, CLAUSE_ENTRY
@@ -216,7 +216,7 @@ class OpenedFile(object):
                                   "(create_for_requested)." % (filepath))
             raise
 
-        distilled_filepath = ("%s%s" % (path, filename))
+        distilled_filepath = build_filepath(path, filename)
 
         # Look-up the requested entry.
 
@@ -243,9 +243,8 @@ class OpenedFile(object):
         try:
             final_mimetype = entry.normalize_download_mimetype(mime_type)
         except ExportFormatError:
-            self.__log.exception("There was an export-format error. The mime-"
-                                 "type is given, may not be logging in "
-                                 "correct.")
+            self.__log.exception("There was an export-format error "
+                                 "(create_for_requested_filesystem).")
             raise FuseOSError(ENOENT)
         except:
             _static_log.exception("Could not normalize mime-type [%s] for "
@@ -368,7 +367,6 @@ class OpenedFile(object):
                                          output_file_path=temp_file_path,
                                          normalized_entry=entry,
                                          mime_type=self.mime_type)
-                    self.__log.debug("download_to_local succeeded.")
 
                     (length, cache_fault) = result
                 except ExportFormatError:
@@ -597,5 +595,5 @@ class OpenedFile(object):
 
     @property
     def file_path(self):
-        return ("%s%s" % (self.__path, self.__filename))
+        return build_filepath(self.__path, self.__filename)
 

@@ -32,7 +32,8 @@ from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
 from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
-from gdrivefs.gdfs.fsutility import strip_export_type, split_path
+from gdrivefs.gdfs.fsutility import strip_export_type, split_path,\
+                                    build_filepath
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
@@ -96,8 +97,7 @@ class GDriveFS(LoggingMixIn,Operations):
                                  (raw_path))
             raise FuseOSError(EIO)
 
-        filepath = ("%s%s" % (path, filename))
-        
+        filepath = build_filepath(path, filename)
         path_relations = PathRelations.get_instance()
 
         try:
@@ -132,17 +132,13 @@ class GDriveFS(LoggingMixIn,Operations):
         if entry.editable:
             effective_permission |= 0o222
 
-        # If the user has required info, we'll treat folders like files so that 
-        # we can return the info.
-        is_folder = get_utility().is_directory(entry)
-
         stat_result = { "st_mtime": entry.modified_date_epoch, # modified time.
                         "st_ctime": entry.modified_date_epoch, # changed time.
                         "st_atime": time(),
                         "st_uid":   uid,
                         "st_gid":   gid}
         
-        if is_folder:
+        if entry.is_directory:
             effective_permission |= 0o111
 
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
@@ -293,7 +289,7 @@ class GDriveFS(LoggingMixIn,Operations):
                               (filepath))
             raise FuseOSError(EIO)
 
-        distilled_filepath = ('%s%s' % (path, filename))
+        distilled_filepath = build_filepath(path, filename)
 
         self.__log.debug("Acquiring file-handle.")
 

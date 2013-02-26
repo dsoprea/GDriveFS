@@ -323,22 +323,36 @@ class _GdriveManager(object):
 
         query = ' and '.join(query_components) if query_components else None
 
-        try:
-            result = client.files().list(q=query).execute()
-        except:
-            self.__log.exception("Could not get the list of files.")
-            raise
+        page_token = None
+        page_num = 0
+        while 1:
+            self.__log.debug("Doing request for listing of files with page-"
+                             "token [%s] and number (%d): %s" % 
+                             (page_token, page_num, query))
 
-        entries = []
-        for entry_raw in result[u'items']:
             try:
-                entry = NormalEntry('list_files', entry_raw)
+                result = client.files().list(q=query, pageToken=page_token).\
+                            execute()
             except:
-                self.__log.exception("Could not normalize raw-data for entry "
-                                     "with ID [%s]." % (entry_raw[u'id']))
+                self.__log.exception("Could not get the list of files.")
                 raise
 
-            entries.append(entry)
+            entries = []
+            for entry_raw in result[u'items']:
+                try:
+                    entry = NormalEntry('list_files', entry_raw)
+                except:
+                    self.__log.exception("Could not normalize raw-data for entry "
+                                         "with ID [%s]." % (entry_raw[u'id']))
+                    raise
+
+                entries.append(entry)
+
+            if u'nextPageToken' not in result:
+                break
+
+            page_token = result[u'nextPageToken']
+            page_num += 1
 
         return entries
 

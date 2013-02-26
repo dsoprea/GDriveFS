@@ -38,7 +38,6 @@ class _DriveUtility(object):
             'video/x-flv':                      'flv'
         }
 
-    _mimetype_directory = u'application/vnd.google-apps.folder'
     local_character_set = getfilesystemencoding()
 
     def __init__(self):
@@ -66,10 +65,6 @@ class _DriveUtility(object):
                 self.default_extensions.extend(json.load(f))
         except:
             logging.info("No extension-mapping was found.")
-
-    def is_directory(self, entry):
-        logging.info("is_directory(%s)" % (entry))
-        return (entry.mime_type == self._mimetype_directory)
 
     def get_first_mime_type_by_extension(self, extension):
 

@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ENTRY
-from gdrivefs.gdfs.fsutility import split_path
+from gdrivefs.gdfs.fsutility import split_path, build_filepath
 from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath
 from gdrivefs.timer import Timers
 
@@ -17,7 +17,7 @@ def get_by_path(raw_path):
         print("Could not process file-path [%s]." % (raw_path))
         exit()
 
-    filepath = ("%s%s" % (path, filename))
+    filepath = build_filepath(path, filename)
     
     path_relations = PathRelations.get_instance()
 
