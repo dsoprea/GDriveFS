@@ -87,7 +87,7 @@ class BufferSegments(object):
                 self.__segments = []
                 simple_append = True
             else:
-                simple_append = (offset == self.length)
+                simple_append = (offset >= self.length)
 
             self.__log.debug("Applying update of (%d) bytes at offset (%d). "
                              "Current segment count is (%d). Total length is "
@@ -130,28 +130,27 @@ class BufferSegments(object):
 
                 stop_offset = offset + data_len
                 seg_stop = seg_index
-                append = True
-                while seg_stop < len(self.__segments):
+                while 1:
+                    # Since the insertion offset must be within the given data 
+                    # (otherwise it'd be an append, above), it looks like we're 
+                    # inserting into the last segment.
+                    if seg_stop >= len(self.__segments):
+                        break
+                
                     # If our offset is within the current set of data, this is not
                     # going to be an append operation.
                     if self.__segments[seg_stop][0] >= stop_offset:
-                        append = False
                         break
                     
                     seg_stop += 1
 
-                self.__log.debug("append is [%s]. seg_index= (%d)" % 
-                                 (append, seg_index))
+                seg_stop -= 1
 
-                # If our data is going to replace existing data, go back to the 
-                # last segment, which contained the offset that we're interested 
-                # in.
-                if append is False:
-                    seg_stop -= 1
-    # TODO: Make sure that updates applied at the front of a segment are correct.
+# TODO: Make sure that updates applied at the front of a segment are correct.
 
-                self.__log.debug("seg_stop is [%s]. Current segments= (%d)" % 
-                                 (seg_stop, len(self.__segments)))
+                self.__log.debug("Replacement interval is [%d, %d]. Current "
+                                 "segments= (%d)" % 
+                                 (seg_index, seg_stop, len(self.__segments)))
 
                 # How much of the last segment that we touch will be affected?
                 (lastseg_offset, lastseg_data) = self.__segments[seg_stop] 
