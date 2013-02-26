@@ -8,9 +8,9 @@ finished.
 
 UPDATE:
 
-This project is under active development, but should now be functionally 
-complete, except for a couple of bugs that I'm presently working on. I could
-use some help in testing it.
+This project is under active development, but should now be mostly functionally 
+complete (less a couple of more minor FUSE calls). I could use some help in 
+testing it.
 
 
 Design goals:
@@ -27,6 +27,23 @@ Also, a design choice of other implementations is to make the user get API keys
 for Google Drive, and this doesn't sense. Our implementation is built against 
 OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
+
+
+IMPORTANT
+=========
+
+Both PyPI and the Google Code downloads for google_api_python_client have an
+old version of their libraries, prior to when they fixed some Unicode problems
+that might cause failure when dealing with downloads/uploads of certain types
+of files.
+
+To install from Mercurial, do the following:
+
+  hg clone https://code.google.com/p/google-api-python-client
+
+  cd google-api-python-client
+  sudo python setup.py install
+  sudo python setup.py install_egg_info
 
 
 Installation
