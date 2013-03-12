@@ -663,7 +663,10 @@ class PathRelations(object):
 
                 # Else, we've encountered a component/depth of the path that we 
                 # don't currently know about.
-
+# TODO: This is going to be the general area that we'd have to adjust to 
+#        support multiple, identical entries. This currently only considers the 
+#        first result. We should rewrite this to be recursive in order to make 
+#        it easier t okee ptrack of a list of results.
                 # The parent is the last one found, or the root if none.
                 parent_id = result[0][num_results - 1] \
                                 if num_results \
