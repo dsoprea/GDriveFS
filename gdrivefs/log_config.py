@@ -11,7 +11,7 @@ default_logger.setLevel(WARNING)
 
 log_syslog = SysLogHandler('/dev/log', facility=SysLogHandler.LOG_LOCAL0)
 log_format = 'GD: %(name)-12s %(levelname)-7s %(message)s'
-log_syslog.setFormatter(Formatter(log_syslog))
+log_syslog.setFormatter(Formatter(log_format))
 default_logger.addHandler(log_syslog)
 
 # Log to physical file.
