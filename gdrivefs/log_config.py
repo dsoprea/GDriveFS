@@ -1,6 +1,7 @@
 from logging import getLogger, Filter, Formatter, DEBUG, WARNING
 from logging.handlers import SysLogHandler, TimedRotatingFileHandler
-from os.path import abspath, dirname
+from os.path import abspath, dirname, exists
+from sys import platform
 
 import gdrivefs
 
@@ -9,7 +10,15 @@ default_logger.setLevel(WARNING)
 
 # Log to syslog.
 
-log_syslog = SysLogHandler('/dev/log', facility=SysLogHandler.LOG_LOCAL0)
+if platform == "darwin":
+    # Apple made 10.5 more secure by disabling network syslog:
+    address = "/var/run/syslog"
+elif exists('/dev/log'):
+    address = '/dev/log'
+else:
+    address = ('localhost', 514)
+
+log_syslog = SysLogHandler(address, facility=SysLogHandler.LOG_LOCAL0)
 log_format = 'GD: %(name)-12s %(levelname)-7s %(message)s'
 log_syslog.setFormatter(Formatter(log_format))
 default_logger.addHandler(log_syslog)
