@@ -15,17 +15,16 @@ testing it.
 
 Design goals:
 
-> Cleanup thread to manage cleanup of aged cache items.
-x Thread for monitoring changes via "changes" functionality of API. (DONE)
-x Complete stat() implementation. (DONE)
-x Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
-x Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
-  not have a particular format). (DONE)
-x Allow for many-to-one references on the files. (DONE)
+Thread for monitoring changes via "changes" functionality of API. (DONE)
+Complete stat() implementation. (DONE)
+Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
+Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
+ not have a particular format). (DONE)
+Allow for many-to-one references on the files. (DONE)
 
 Also, a design choice of other implementations is to make the user get API keys 
-for Google Drive, and this doesn't sense. Our implementation is built against 
-OAuth 2.0 as a native application. You should just have to visit the 
+for Google Drive, and this doesn't make sense. Our implementation is built 
+against OAuth 2.0 as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
 
 
