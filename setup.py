@@ -37,7 +37,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.7.2'
+version = '0.7.3'
 
 core.setup(name='gdrivefs',
       version=version,
@@ -71,7 +71,6 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
         'httplib2',
         'python-dateutil',
         'fusepy',
-        'dateutil'
       ],
       entry_points="""
       # -*- Entry points: -*-
