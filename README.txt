@@ -78,16 +78,20 @@ Run:
 
     sudo easy_install gdrivefs
 
-    Go to whereever the package was installed (easy_install mentions this at 
-    the end), and install the symlinks. For example:
+Go to whereever the package was installed (easy_install mentions this at 
+the end), and install the symlinks. For example:
     
     cd /usr/local/sbin
-    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-0.10.2-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
-    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-0.10.2-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
+
+    # This needs to be in the primary sbin/ directory.
+    cd /sbin
+    sudo ln -s /usr/local/sbin/gdfs mount.gdfs
 
 
-Manuall Installation
---------------------
+Manual Installation
+-------------------
 
   Expand into a directory named "gdrivefs" accessible from the Python path, and 
   run:
@@ -122,7 +126,7 @@ Since this is FUSE, you must be running as root to mount.
    that you would like to save it as. The name and location of this file is 
    arbitrary:
 
-  gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQCQStf9_NFAMMbRC.cj4LQYdXFdwfshQV0ieZDAqA-C7ecwI"
+  gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
 
   Output:
 
@@ -133,15 +137,15 @@ Since this is FUSE, you must be running as root to mount.
   a) Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs"):
 
-     gdfs -o allow_other /var/cache/gdrivefs.auth /mnt/gdrivefs
+     gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
 
   b) Via /etc/fstab:
 
-     /var/cache/gdrivefs.auth /mnt/gdrivefs gdfs allow_other 0 0
+     /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
 
   c) Directly via gdfstool:
 
-    gdfstool mount /var/cache/gdrivefs.auth /mnt/gdrivefs
+    gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
 
 Options
