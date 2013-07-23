@@ -44,20 +44,63 @@ To install from Mercurial, do the following:
   sudo python setup.py install
   sudo python setup.py install_egg_info
 
+NOTE: I've also experienced a google-api-python-client installation problem
+      when you don't already have it installed, and it's listed as a dependency
+      in setup.py:
+      
+          error: Installed distribution httplib2 0.7.7 conflicts with requirement httplib2>=0.8
+
+     Therefore, google-api-python-client has been removed as an explicit 
+     dependency. It should always be installed by hand, as we now won't install 
+     it automatically.
+
 
 Installation
 ============
 
-Via PyPi:
+pip
+---
 
-  sudo pip install gdrivefs
+Run:
 
-Manually:
+    sudo pip install gdrivefs
 
-  Expand into a directory named "gdrivefs" in the Python path, and run:
+If your setuptools package is too old, you might see the following [annoying] 
+error:
+      
+    error: option --single-version-externally-managed not recognized
+      
+See http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind .
+      
+Apparently, the solution is to make sure that you have a healthy copy of
+Distribute and to, then, uninstall setuptools. However, this doesn't seem to 
+[always] work. You might prefer to use the "easy_install" method, below.
+
+
+easy_install
+------------
+
+Run:
+
+    sudo easy_install gdrivefs
+
+    Go to whereever the package was installed (easy_install mentions this at 
+    the end), and install the symlinks. For example:
+    
+    cd /usr/local/sbin
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-0.10.2-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-0.10.2-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
+
+
+Manuall Installation
+--------------------
+
+  Expand into a directory named "gdrivefs" accessible from the Python path, and 
+  run:
   
-    sudo python setup.py install
-    sudo python setup.py install_egg_info
+    sudo ./setup.py install
+    sudo ./setup.py install_egg_info
+
 
 Usage
 =====

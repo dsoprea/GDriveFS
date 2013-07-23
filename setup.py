@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from setuptools import find_packages
 from distutils import core
 from distutils.command.install import install
@@ -16,16 +18,18 @@ def pre_install():
 def post_install():
     tool_path = dirname(tools.__file__)
 
-    gdfs_filepath = ('%s/%s' % (tool_path, 'gdfs'))
-    gdfs_symlink_filepath = '/usr/sbin/gdfs'
+    gdfs_filepath = ('%s/%s' % (tool_path, 'gdfs.py'))
+    gdfs_symlink_filepath = '/usr/local/sbin/gdfs'
 
-    gdfstool_filepath = ('%s/%s' % (tool_path, 'gdfstool'))
-    gdfstool_symlink_filepath = '/usr/sbin/gdfstool'
+    gdfstool_filepath = ('%s/%s' % (tool_path, 'gdfstool.py'))
+    gdfstool_symlink_filepath = '/usr/local/sbin/gdfstool'
 
-    print("Writing gdfs symlink.")
+    print("Writing gdfs symlink (%s -> %s)." % 
+          (gdfs_symlink_filepath, gdfs_filepath))
     symlink(gdfs_filepath, gdfs_symlink_filepath)
 
-    print("Writing gdfstool symlink.")
+    print("Writing gdfstool symlink (%s -> %s)." % 
+          (gdfstool_symlink_filepath, gdfstool_filepath))
     symlink(gdfstool_filepath, gdfstool_symlink_filepath)
 
 if not pre_install():
@@ -37,7 +41,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.7.3'
+version = '0.10.4'
 
 core.setup(name='gdrivefs',
       version=version,
@@ -67,7 +71,10 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       install_requires=[
         'ez_setup',
         'google_appengine',
-        'google_api_python_client',
+# TODO: There's an issue when this is listed as a requirement here. It can be 
+#       installed separately, easily. The repository version is old, anyways.
+#       We advise that people download and install it manually.
+#        'google_api_python_client',
         'httplib2',
         'python-dateutil',
         'fusepy',

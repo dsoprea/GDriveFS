@@ -35,7 +35,6 @@ class Report(object):
 
         report_emit_interval_s = Conf.get('report_emit_frequency_s')
         emit_timer = Timer(report_emit_interval_s, self.__emit_log)
-        emit_timer.start()
 
         Timers.get_instance().register_timer('emit', emit_timer)
 
