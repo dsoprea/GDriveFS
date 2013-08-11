@@ -293,7 +293,16 @@ class _GdriveManager(object):
     def list_files(self, query_contains_string=None, query_is_string=None, 
                    parent_id=None):
         
-        self.__log.info("Listing all files.")
+        self.__log.info("Listing all files. CONTAINS=[%s] IS=[%s] "
+                        "PARENT_ID=[%s]" % 
+                        (query_contains_string 
+                            if query_contains_string is not None 
+                            else '<none>', 
+                         query_is_string 
+                            if query_is_string is not None 
+                            else '<none>', 
+                         parent_id if parent_id is not None 
+                                   else '<none>'))
 
         try:
             client = self.get_client()
@@ -325,9 +334,10 @@ class _GdriveManager(object):
 
         page_token = None
         page_num = 0
+        entries = []
         while 1:
             self.__log.debug("Doing request for listing of files with page-"
-                             "token [%s] and number (%d): %s" % 
+                             "token [%s] and page-number (%d): %s" % 
                              (page_token, page_num, query))
 
             try:
@@ -337,7 +347,10 @@ class _GdriveManager(object):
                 self.__log.exception("Could not get the list of files.")
                 raise
 
-            entries = []
+            self.__log.debug("(%d) entries were presented for page-number "
+                             "(%d)." % 
+                             (len(result[u'items']), page_num))
+
             for entry_raw in result[u'items']:
                 try:
                     entry = NormalEntry('list_files', entry_raw)
@@ -349,8 +362,10 @@ class _GdriveManager(object):
                 entries.append(entry)
 
             if u'nextPageToken' not in result:
+                self.__log.debug("No more pages in file listing.")
                 break
 
+            self.__log.debug("Next page-token in file-listing is [%s]." % (result[u'nextPageToken']))
             page_token = result[u'nextPageToken']
             page_num += 1
 
