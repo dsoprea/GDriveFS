@@ -562,13 +562,13 @@ class GDriveFS(LoggingMixIn,Operations):
             'f_bsize': block_size,
 
             # Total data blocks in file system.
-            'f_blocks': used,
+            'f_blocks': total,
 
             # Fragment size.
-#            'f_frsize': block_size,
+            'f_frsize': block_size,
 
             # Free blocks in filesystem.
-#            'f_bfree': free,
+            'f_bfree': free,
 
             # Free blocks avail to non-superuser.
             'f_bavail': free
