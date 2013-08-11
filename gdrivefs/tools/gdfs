@@ -2,8 +2,6 @@
 
 import logging
 
-from sys import argv
-from os.path import basename
 from argparse import ArgumentParser
 
 from gdrivefs.gdfs.gdfuse import mount, load_mount_parser_args
