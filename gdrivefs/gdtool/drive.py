@@ -334,6 +334,7 @@ class _GdriveManager(object):
 
         page_token = None
         page_num = 0
+        entries = []
         while 1:
             self.__log.debug("Doing request for listing of files with page-"
                              "token [%s] and page-number (%d): %s" % 
@@ -346,7 +347,10 @@ class _GdriveManager(object):
                 self.__log.exception("Could not get the list of files.")
                 raise
 
-            entries = []
+            self.__log.debug("(%d) entries were presented for page-number "
+                             "(%d)." % 
+                             (len(result[u'items']), page_num))
+
             for entry_raw in result[u'items']:
                 try:
                     entry = NormalEntry('list_files', entry_raw)
