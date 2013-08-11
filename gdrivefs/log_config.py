@@ -1,9 +1,7 @@
-from logging import getLogger, Filter, Formatter, DEBUG, WARNING
-from logging.handlers import SysLogHandler, TimedRotatingFileHandler
-from os.path import abspath, dirname, exists
+from logging import getLogger, Formatter, DEBUG, WARNING
+from logging.handlers import SysLogHandler
+from os.path import exists
 from sys import platform
-
-import gdrivefs
 
 default_logger = getLogger()
 default_logger.setLevel(WARNING)
