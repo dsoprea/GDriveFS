@@ -14,7 +14,7 @@ Complete stat() implementation. (DONE)
 Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
 Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
  not have a particular format). (DONE)
-Allow for many-to-one references on the files. (DONE)
+Allow for the same file at multiple paths. (DONE)
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive, and this doesn't make sense. Our implementation is built 
