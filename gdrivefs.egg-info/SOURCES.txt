@@ -1,4 +1,5 @@
 README.txt
+setup.cfg
 setup.py
 gdrivefs/__init__.py
 gdrivefs/change.py
@@ -35,6 +36,9 @@ gdrivefs/general/__init__.py
 gdrivefs/general/buffer_segments.py
 gdrivefs/general/livereader_base.py
 gdrivefs/tools/__init__.py
+gdrivefs/tools/gdfs.py
+gdrivefs/tools/gdfsdumpentry.py
+gdrivefs/tools/gdfstool.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py
 tests/gdtool/drive_proxy.py

@@ -2,10 +2,11 @@ import logging
 
 from threading import Lock, Timer
 
-from gdrivefs.gdtool import AccountInfo, drive_proxy
 from gdrivefs.conf import Conf
-from gdrivefs.cache import PathRelations, EntryCache
 from gdrivefs.timer import Timers
+from gdrivefs.gdtool.account_info import AccountInfo
+from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.cache.volume import PathRelations, EntryCache
 
 def _sched_check_changes():
     
@@ -15,7 +16,6 @@ def _sched_check_changes():
 
     # Schedule next invocation.
     t = Timer(Conf.get('change_check_frequency_s'), _sched_check_changes)
-    t.start()
 
     Timers.get_instance().register_timer('change', t)
 
@@ -76,8 +76,8 @@ class _ChangeManager(object):
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
-            self.__log.info("Change with ID (%d) will now be applied." %
-                         (change_id))
+            self.__log.info("========== Change with ID (%d) will now be applied. ==========" %
+                            (change_id))
 
             try:
                 self.__apply_change(change_id, change_tuple)
@@ -104,23 +104,26 @@ class _ChangeManager(object):
         
         is_visible = entry.is_visible if entry else None
 
-        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], and "
-                     "is-visible of [%s]" % (change_id, entry_id, is_visible))
+        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], "
+                        "and is-visible of [%s]" % 
+                        (change_id, entry_id, is_visible))
 
         # First, remove any current knowledge from the system.
 
-        self.__log.debug("Removing all trace of entry with ID [%s]." % (entry_id))
+        self.__log.debug("Removing all trace of entry with ID [%s] "
+                         "(apply_change)." % (entry_id))
 
         try:
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
-            self.__log.exception("There was a problem remove entry with ID [%s] "
-                              "from the caches." % (entry_id))
+            self.__log.exception("There was a problem remove entry with ID "
+                                 "[%s] from the caches." % (entry_id))
             raise
 
         # If it wasn't deleted, add it back.
 
-        self.__log.debug("Registering changed entry with ID [%s]." % (entry_id))
+        self.__log.debug("Registering changed entry with ID [%s]." % 
+                         (entry_id))
 
         if is_visible:
             path_relations = PathRelations.get_instance()
@@ -128,9 +131,9 @@ class _ChangeManager(object):
             try:
                 path_relations.register_entry(entry)
             except:
-                self.__log.exception("Could not register changed entry with ID "
-                                  "[%s] with path-relations cache." % 
-                                  (entry_id))
+                self.__log.exception("Could not register changed entry with "
+                                     "ID [%s] with path-relations cache." % 
+                                     (entry_id))
                 raise
 
 def get_change_manager():

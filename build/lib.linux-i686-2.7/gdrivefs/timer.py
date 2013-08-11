@@ -5,6 +5,7 @@ import logging
 class Timers(object):
     timers = None
     lock = Lock()
+    autostart_default = True
 
     def __init__(self):
         with self.lock:
@@ -20,9 +21,22 @@ class Timers(object):
 
         return Timers.instance
 
-    def register_timer(self, name, timer):
+    def set_autostart_default(self, flag):
+        """This can be set to keep the timers from actually starting, if we
+        don't want to spawn off new threads."""
+
+        Timers.autostart_default = flag
+
+    def register_timer(self, name, timer, autostart=None):
+        if autostart is None:
+            autostart = Timers.autostart_default
+
         with self.lock:
-            self.timers[name] = timer
+            if name not in self.timers:
+                self.timers[name] = timer
+
+                if autostart:
+                    timer.start()
 
     def cancel_all(self):
         """Cancelling all timer threads. This might be called multiple times 

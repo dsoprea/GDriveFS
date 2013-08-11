@@ -1,16 +1,10 @@
 GDriveFS
 ========
 
-An innovative FUSE wrapper for Google Drive developed under Python 2.7 . Work
-has been done to start making GDriveFS compatible with Python 3, but most of
-this will probably be completed only after initial development has been 
-finished.
+An innovative FUSE wrapper for Google Drive developed under Python 2.7 .
 
-UPDATE:
-
-This project is under active development, but should now be mostly functionally 
-complete (less a couple of more minor FUSE calls). I could use some help in 
-testing it.
+I could use some help in testing GDriveFS. Please let me know if you find 
+issues.
 
 
 Design goals:
@@ -44,20 +38,67 @@ To install from Mercurial, do the following:
   sudo python setup.py install
   sudo python setup.py install_egg_info
 
+NOTE: I've also experienced a google-api-python-client installation problem
+      when you don't already have it installed, and it's listed as a dependency
+      in setup.py:
+      
+          error: Installed distribution httplib2 0.7.7 conflicts with requirement httplib2>=0.8
+
+     Therefore, google-api-python-client has been removed as an explicit 
+     dependency. It should always be installed by hand, as we now won't install 
+     it automatically.
+
 
 Installation
 ============
 
-Via PyPi:
+pip
+---
 
-  sudo pip install gdrivefs
+Run:
 
-Manually:
+    sudo pip install gdrivefs
 
-  Expand into a directory named "gdrivefs" in the Python path, and run:
+If your setuptools package is too old, you might see the following [annoying] 
+error:
+      
+    error: option --single-version-externally-managed not recognized
+      
+See http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind .
+      
+Apparently, the solution is to make sure that you have a healthy copy of
+Distribute and to, then, uninstall setuptools. However, this doesn't seem to 
+[always] work. You might prefer to use the "easy_install" method, below.
+
+
+easy_install
+------------
+
+Run:
+
+    sudo easy_install gdrivefs
+
+Go to whereever the package was installed (easy_install mentions this at 
+the end), and install the symlinks. For example:
+    
+    cd /usr/local/sbin
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
+    sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
+
+    # This needs to be in the primary sbin/ directory.
+    cd /sbin
+    sudo ln -s /usr/local/sbin/gdfs mount.gdfs
+
+
+Manual Installation
+-------------------
+
+  Expand into a directory named "gdrivefs" accessible from the Python path, and 
+  run:
   
-    sudo python setup.py install
-    sudo python setup.py install_egg_info
+    sudo ./setup.py install
+    sudo ./setup.py install_egg_info
+
 
 Usage
 =====
@@ -85,7 +126,7 @@ Since this is FUSE, you must be running as root to mount.
    that you would like to save it as. The name and location of this file is 
    arbitrary:
 
-  gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQCQStf9_NFAMMbRC.cj4LQYdXFdwfshQV0ieZDAqA-C7ecwI"
+  gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
 
   Output:
 
@@ -96,15 +137,15 @@ Since this is FUSE, you must be running as root to mount.
   a) Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs"):
 
-     gdfs -o allow_other /var/cache/gdrivefs.auth /mnt/gdrivefs
+     gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
 
   b) Via /etc/fstab:
 
-     /var/cache/gdrivefs.auth /mnt/gdrivefs gdfs allow_other 0 0
+     /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
 
   c) Directly via gdfstool:
 
-    gdfstool mount /var/cache/gdrivefs.auth /mnt/gdrivefs
+    gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
 
 Options
