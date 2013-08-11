@@ -1,5 +1,5 @@
 from logging import getLogger, Formatter, DEBUG, WARNING
-from logging.handlers import SysLogHandler
+from logging.handlers import SysLogHandler, TimedRotatingFileHandler
 from os.path import exists
 from sys import platform
 
