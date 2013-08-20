@@ -41,7 +41,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.10.5'
+version = '0.10.6'
 
 core.setup(name='gdrivefs',
       version=version,
@@ -49,7 +49,7 @@ core.setup(name='gdrivefs',
       long_description="""\
 A complete FUSE adapter for Google Drive. See Github for more information.""",
       classifiers=['Topic :: System :: Filesystems',
-                   'Development Status :: 2 - Pre-Alpha',
+                   'Development Status :: 4 - Beta',
                    'Environment :: Console',
                    'Intended Audience :: End Users/Desktop',
                    'Intended Audience :: System Administrators',
