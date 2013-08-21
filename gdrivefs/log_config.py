@@ -23,8 +23,7 @@ default_logger.addHandler(log_syslog)
 
 # Log to physical file.
 
-#root_path = abspath(dirname(gdrivefs.__file__) + '/..')
-#log_filepath = ('%s/logs/gdrivefs.log' % (root_path))
+#log_filepath = '/tmp/gdrivefs.log'
 #log_file = TimedRotatingFileHandler(log_filepath, 'D', backupCount=5)
 #log_file.setFormatter(Formatter('%(asctime)s [%(name)s %(levelname)s] %(message)s'))
 #default_logger.addHandler(log_file)
