@@ -142,7 +142,8 @@ class _GdriveManager(object):
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (list_changes).")
             raise
-
+# TODO: We expected that this reports all changes to all files. If this is the 
+#       case, than what's the point of the watch() call in Files?
         try:
             response = client.changes().list(pageToken=page_token, \
                             startChangeId=start_change_id).execute()
@@ -483,10 +484,9 @@ class _GdriveManager(object):
 
         return (len(data), True)
 
-    def __insert_entry(self, filename, mime_type, data_filepath=None, 
-                       parents=None, modified_datetime=None, 
-                       accessed_datetime=None, is_hidden=False, 
-                       description=None):
+    def __insert_entry(self, filename, mime_type, parents, data_filepath=None, 
+                       modified_datetime=None, accessed_datetime=None, 
+                       is_hidden=False, description=None):
 
         if parents is None:
             parents = []
@@ -531,6 +531,8 @@ class _GdriveManager(object):
         if data_filepath:
             args['media_body'] = MediaFileUpload(filename=data_filepath, \
                                                  mimetype=mime_type)
+
+        self.__log.debug("Doing file-insert with:\n%s" % (args))
 
         try:
             result = client.files().insert(**args).execute()
@@ -631,13 +633,14 @@ class _GdriveManager(object):
 
         return normalized_entry
 
-    def create_directory(self, filename, **kwargs):
+    def create_directory(self, filename, parents, **kwargs):
 
-        mimetype_directory = get_utility().mimetype_directory
+        mimetype_directory = Conf.get('directory_mimetype')
+        return self.__insert_entry(filename, mimetype_directory, parents, 
+                                   **kwargs)
 
-        return self.__insert_entry(filename, mimetype_directory, **kwargs)
-
-    def create_file(self, filename, data_filepath, mime_type=None, **kwargs):
+    def create_file(self, filename, data_filepath, parents, mime_type=None, 
+                    **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.
         # Even though we're supposed to provide an extension, we can get away 
         # without having one. We don't want to impose this when acting like a 
@@ -650,27 +653,35 @@ class _GdriveManager(object):
                              "create/update. Defaulting to [%s]." % 
                              (mime_type))
 
-        return self.__insert_entry(filename, 
-                                   mime_type, 
-                                   data_filepath, 
+        return self.__insert_entry(filename,
+                                   mime_type,
+                                   parents,
+                                   data_filepath,
                                    **kwargs)
 
-    def rename(self, normalized_entry, new_filename):
-# TODO: It doesn't seem as if the created file is being registered.
-        # Even though we're supposed to provide an extension, we can get away 
-        # without having one. We don't want to impose this when acting like a 
-        # normal FS.
-
-        # If no data and no mime-type was given, default it.
-        if mime_type == None:
-            mime_type = Conf.get('file_default_mime_type')
-            self.__log.debug("No mime-type was presented for file create/update. "
-                          "Defaulting to [%s]." % (mime_type))
-
-        return self.__insert_entry(filename=filename, 
-                                   data_filepath=data_filepath, 
-                                   mime_type=mime_type, 
-                                   **kwargs)
+# TODO: Finish this.
+#    def rename(self, normalized_entry, new_filename):
+## TODO: It doesn't seem as if the created file is being registered.
+#        # Even though we're supposed to provide an extension, we can get away 
+#        # without having one. We don't want to impose this when acting like a 
+#        # normal FS.
+#
+#        # If no data and no mime-type was given, default it.
+#        if mime_type == None:
+#            mime_type = Conf.get('file_default_mime_type')
+#            self.__log.debug("No mime-type was presented for file create/update. "
+#                          "Defaulting to [%s]." % (mime_type))
+#
+# update(fileId, body=None, newRevision=None, media_body=None, ocrLanguage=None, 
+#        ocr=None, pinned=None, updateViewedDate=None, timedTextTrackName=None, 
+#        convert=None, useContentAsIndexableText=None, setModifiedDate=None, 
+#        timedTextLanguage=None)
+#
+#        pass
+##        return self.__insert_entry(filename=filename, 
+##                                   data_filepath=data_filepath, 
+##                                   mime_type=mime_type, 
+##                                   **kwargs)
 
     def remove_entry(self, normalized_entry):
 

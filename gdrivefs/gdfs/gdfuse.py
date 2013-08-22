@@ -240,21 +240,24 @@ class GDriveFS(LoggingMixIn,Operations):
                               (filepath))
             raise FuseOSError(EIO)
 
-        self.__log.debug("Creating directory [%s] under [%s]." % (filename, path))
+        parent_id = parent_clause[CLAUSE_ID]
+
+        self.__log.debug("Creating directory [%s] under parent [%s] with ID "
+                         "[%s]." % (filename, path, parent_id))
 
         try:
             entry = drive_proxy('create_directory', 
                                 filename=filename, 
-                                parents=[parent_clause[CLAUSE_ID]], 
+                                parents=[parent_id], 
                                 is_hidden=is_hidden)
         except:
-            self.__log.exception("Could not create directory with name [%s] and "
-                              "parent with ID [%s]." % (filename, 
-                                                        parent_clause[0].id))
+            self.__log.exception("Could not create directory with name [%s] "
+                                 "and parent with ID [%s]." % 
+                                 (filename, parent_clause[0].id))
             raise FuseOSError(EIO)
 
-        self.__log.info("Directory [%s] created as ID [%s]." % (filepath, 
-                     entry.id))
+        self.__log.info("Directory [%s] created as ID [%s] under parent with "
+                        "ID [%s]." % (filepath, entry.id, parent_id))
 
         #parent_clause[4] = False
 
@@ -309,8 +312,8 @@ class GDriveFS(LoggingMixIn,Operations):
             entry = drive_proxy('create_file', filename=filename, 
                                 data_filepath='/dev/null', 
                                 parents=[parent_clause[3]], 
-                                is_hidden=is_hidden,
-                                mime_type=mime_type)
+                                mime_type=mime_type,
+                                is_hidden=is_hidden)
         except:
             self.__log.exception("Could not create empty file [%s] under "
                                  "parent with ID [%s]." % (filename, 

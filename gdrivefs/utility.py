@@ -83,10 +83,6 @@ class _DriveUtility(object):
         
         return original_filename.encode(self.local_character_set)
 
-    @property
-    def mimetype_directory(self):
-        return self._mimetype_directory
-
 def get_utility():
     if get_utility.__instance == None:
         try:
