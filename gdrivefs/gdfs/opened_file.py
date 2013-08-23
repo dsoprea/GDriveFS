@@ -500,6 +500,7 @@ class OpenedFile(object):
 
 #            print("Sending updates.")
 
+# TODO: Update mtime?
             try:
                 entry = drive_proxy('update_entry', 
                                     normalized_entry=entry, 

@@ -593,7 +593,8 @@ class _GdriveManager(object):
         if description is not None:
             body['description'] = description
 
-        self.__log.info("MTIME= [%s] [%s]" % (modified_datetime, modified_datetime.__class__))
+        self.__log.info("MTIME= [%s] [%s]" % 
+                        (modified_datetime, modified_datetime.__class__))
 
         if modified_datetime is not None:
             set_mtime = True

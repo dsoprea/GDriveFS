@@ -16,7 +16,7 @@ from time import mktime, time
 from sys import argv, exit, excepthook
 from mimetypes import guess_type
 from datetime import datetime
-from dateutil.tz import tzlocal
+from dateutil.tz import tzlocal, tzutc
 
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
@@ -686,12 +686,11 @@ class GDriveFS(LoggingMixIn,Operations):
 
         (entry, path, filename) = self.__get_entry_or_raise(raw_path)
 
-        tz = tzlocal()
-        
-        mtime_datetime = datetime.fromtimestamp(mtime, tz)
-        mtime_phrase = build_rfc3339_phrase(mtime_datetime)
-        atime_datetime = datetime.fromtimestamp(atime, tz)
-        atime_phrase = build_rfc3339_phrase(atime_datetime)
+        tz_get = lambda dt: datetime.fromtimestamp(dt, tzlocal()).\
+                                     astimezone(tzutc())
+
+        mtime_phrase = build_rfc3339_phrase(tz_get(mtime))
+        atime_phrase = build_rfc3339_phrase(tz_get(atime))
 
         self.__log.debug("Updating entry [%s] with m-time [%s] and a-time "
                          "[%s]." % (entry, mtime_phrase, atime_phrase))
