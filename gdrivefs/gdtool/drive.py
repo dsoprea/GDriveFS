@@ -514,7 +514,7 @@ class _GdriveManager(object):
 
         body = { 
                 'title': filename, 
-                'parents': parents, 
+                'parents': [dict(id=parent) for parent in parents], 
                 'mimeType': mime_type, 
                 'labels': { "hidden": is_hidden }, 
                 'description': description 
