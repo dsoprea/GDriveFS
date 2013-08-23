@@ -491,7 +491,7 @@ class _GdriveManager(object):
         if parents is None:
             parents = []
 
-        now_obj = datetime.now().replace(tzinfo=tzutc())
+        now_obj = datetime.now().replace(tzinfo=tzlocal()).astimezone(tzutc())
         now_phrase = build_rfc3339_phrase(now_obj)
 
         if modified_datetime is None:
