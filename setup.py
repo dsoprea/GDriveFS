@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 
 from setuptools import find_packages
 from distutils import core

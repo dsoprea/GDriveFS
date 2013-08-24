@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 import stat
 import logging
 import dateutil.parser
