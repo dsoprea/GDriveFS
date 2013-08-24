@@ -614,13 +614,9 @@ class GDriveFS(LoggingMixIn,Operations):
         # Make sure the old filepath exists.
         (entry, path, filename_old) = self.__get_entry_or_raise(filepath_old)
 
-        # Make sure there's no mime-type decoration. We might use this, in the
-        # future, to do some data conversions.
-        filepath_new = strip_export_type(filepath_new)[0]
-        (path, filename_new) = split(filepath_new)
-
-        self.__log.debug("Renaming from old entry [%s] filename [%s] to "
-                         "[%s]." % (entry, filename_old, filename_new))
+        # At this point, decorations, the is-hidden prefix, etc.. haven't been
+        # stripped.
+        (path, filename_new_raw) = split(filepath_new)
 
         # Make sure the new filepath doesn't exist.
 
@@ -631,7 +627,7 @@ class GDriveFS(LoggingMixIn,Operations):
 
         try:
             entry = drive_proxy('rename', normalized_entry=entry, 
-                                new_filename=filename_new)
+                                new_filename=filename_new_raw)
         except:
             self.__log.exception("Could not update entry [%s] for rename." %
                                  (entry))
@@ -828,8 +824,6 @@ class GDriveFS(LoggingMixIn,Operations):
             return entry.xattr_data[name]
         except:
             return ''
-        
-        #raise FuseOSError(ENOTSUP)
         
 def load_mount_parser_args(parser):
     parser.add_argument('auth_storage_file', help='Authorization storage file')
