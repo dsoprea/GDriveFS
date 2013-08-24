@@ -587,14 +587,14 @@ class GDriveFS(LoggingMixIn,Operations):
         }
 
 # TODO: !! Finish this.
-    @dec_hint(['old', 'new'])
-    def rename(self, old, new):
-        pass
+#    @dec_hint(['old', 'new'])
+#    def rename(self, old, new):
+#        pass
 
 # TODO: !! Finish this.
-    @dec_hint(['path', 'length', 'fh'])
-    def truncate(self, path, length, fh=None):
-        pass
+#    @dec_hint(['path', 'length', 'fh'])
+#    def truncate(self, path, length, fh=None):
+#        pass
 
     @dec_hint(['file_path'])
     def unlink(self, file_path):
