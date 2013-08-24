@@ -9,6 +9,8 @@ from mimetypes import guess_type
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.errors import ExportFormatError
+from gdrivefs.time_support import build_rfc3339_phrase
+
 
 class NormalEntry(object):
     __default_general_mime_type = Conf.get('default_mimetype')
@@ -163,6 +165,14 @@ class NormalEntry(object):
             data_dict = {'original': original,
                          #'distilled': distilled,
                          'extra': extra}
+
+            def flatten_time(k):
+                data_dict['extra'][k] = \
+                    build_rfc3339_phrase(data_dict['extra'][k])
+
+            flatten_time('modified_date')
+            flatten_time('mtime_byme_date')
+            flatten_time('atime_byme_date')
 
             return data_dict
 
