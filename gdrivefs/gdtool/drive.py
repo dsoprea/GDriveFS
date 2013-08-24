@@ -16,13 +16,14 @@ from os.path import isdir, isfile
 from os import makedirs, stat, utime
 from dateutil.tz import tzlocal, tzutc
 
-from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError
-from gdrivefs.errors import FilenameQuantityError, ExportFormatError
+from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
+                            FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
+from gdrivefs.gdfs.fsutility import split_path_nolookups
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -658,10 +659,14 @@ class _GdriveManager(object):
 
     def rename(self, normalized_entry, new_filename):
 
-        self.__log.debug("Renaming entry [%s] to [%s]." % 
-                         (normalized_entry, new_filename))
+        result = split_path_nolookups(new_filename)
+        (path, filename_stripped, mime_type, is_hidden) = result
 
-        return self.update_entry(normalized_entry, filename=new_filename)
+        self.__log.debug("Renaming entry [%s] to [%s]. IS_HIDDEN=[%s]" % 
+                         (normalized_entry, filename_stripped, is_hidden))
+
+        return self.update_entry(normalized_entry, filename=filename_stripped, 
+                                 is_hidden=is_hidden)
 
     def remove_entry(self, normalized_entry):
 
