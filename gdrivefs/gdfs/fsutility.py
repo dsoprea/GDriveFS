@@ -153,6 +153,29 @@ def split_path(filepath_original, pathresolver_cb):
 
     return (parent_clause, path, filename, mime_type, is_hidden)
 
+def split_path_nolookups(filepath_original):
+    """This allows us to get the is-hidden flag, mimetype info, path, and 
+    filename, without doing the [time consuming] lookup if unnecessary.
+    """
+
+    # Remove any export-type that this file-path might've been tagged with.
+
+    try:
+        (filepath, mime_type) = strip_export_type(filepath_original)
+    except:
+        logging.exception("Could not process path [%s] for export-type." % 
+                          (filepath_original))
+        raise
+
+    # Split the file-path into a path and a filename.
+
+    (path, filename) = split(filepath)
+
+    # We don't remove the period, if we will mark it as hidden, as appropriate.
+    is_hidden = (filename[0] == '.') if filename else False
+
+    return (path, filename, mime_type, is_hidden)
+
 def build_filepath(path, filename):
     separator = '/' if path != '/' else ''
 
