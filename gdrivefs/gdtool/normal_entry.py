@@ -5,6 +5,8 @@ import json
 
 from time import mktime
 from mimetypes import guess_type
+from numbers import Number
+from datetime import datetime
 
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
@@ -31,6 +33,7 @@ class NormalEntry(object):
         #                reusing the reference between objects.
 
         self.__log = logging.getLogger().getChild('NormalEntry')
+        self.__utility = get_utility()
 
         self.__info = {}
         self.__parents = []
@@ -91,7 +94,7 @@ class NormalEntry(object):
 
     def __update_display_name(self):
         # This is encoded for displaying locally.
-        self.__info['title_fs'] = get_utility().translate_filename_charset(self.__info['title'])
+        self.__info['title_fs'] = self.__utility.translate_filename_charset(self.__info['title'])
 
     def temp_rename(self, new_filename):
         """Set the name to something else, here, while we, most likely, wait 
@@ -154,13 +157,24 @@ class NormalEntry(object):
 
     def __convert(self, data):
         if isinstance(data, dict):
-            return {self.__convert(key): self.__convert(value) for key, value in data.iteritems()}
+            list_ = [("K(%s)=V(%s)" % (self.__convert(key), 
+                                  self.__convert(value))) \
+                     for key, value \
+                     in data.iteritems()]
+
+            final = '; '.join(list_)
+            return final
         elif isinstance(data, list):
-            return [self.__convert(element) for element in data]
+            final = ', '.join([('LI(%s)' % (self.__convert(element))) \
+                               for element \
+                               in data])
+            return final
         elif isinstance(data, unicode):
-            return data.encode('utf-8')
-        elif isinstance(data, (bool, float)):
+            return self.__utility.translate_filename_charset(data)
+        elif isinstance(data, Number):
             return str(data)
+        elif isinstance(data, datetime):
+            return get_flat_normal_fs_time_from_dt(data)
         else:
             return data
 
@@ -168,7 +182,9 @@ class NormalEntry(object):
             original = dict([(key.encode('ASCII'), value) 
                                 for key, value 
                                 in self.__raw_data.iteritems()])
+
             distilled = self.__info
+
             extra = dict([(key, getattr(self, key)) 
                                 for key 
                                 in self.__properties_extra])
@@ -177,33 +193,22 @@ class NormalEntry(object):
                          #'distilled': distilled,
                          'extra': extra}
 
-            def flatten_time(k):
-                data_dict['extra'][k] = \
-                    get_flat_normal_fs_time_from_dt(data_dict['extra'][k])
-
-            flatten_time('modified_date')
-            flatten_time('mtime_byme_date')
-            flatten_time('atime_byme_date')
-
             return data_dict
 
     @property
     def xattr_data(self):
         if self.__cache_data is None:
             data_dict = self.get_data()
-
-            # Normalize any values that might pose problems during 
-            # serialization.            
-            data_dict = self.__convert(data_dict)
             
             attrs = {}
             for a_type, a_dict in data_dict.iteritems():
+                self.__log.debug("Setting [%s]." % (a_type))
                 for key, value in a_dict.iteritems():
                     fqkey = ('user.%s.%s' % (a_type, key))
-                    attrs[fqkey] = json.dumps(value)
-                    
+                    attrs[fqkey] = self.__convert(value)
+ 
             self.__cache_data = attrs
-        
+
         return self.__cache_data
 
     @property
