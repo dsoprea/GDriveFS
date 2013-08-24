@@ -4,7 +4,7 @@ from os.path import exists
 from sys import platform
 
 default_logger = getLogger()
-default_logger.setLevel(WARNING)
+default_logger.setLevel(DEBUG)
 
 # Log to syslog.
 
@@ -23,8 +23,8 @@ default_logger.addHandler(log_syslog)
 
 # Log to physical file.
 
-#log_filepath = '/tmp/gdrivefs.log'
-#log_file = TimedRotatingFileHandler(log_filepath, 'D', backupCount=5)
-#log_file.setFormatter(Formatter('%(asctime)s [%(name)s %(levelname)s] %(message)s'))
-#default_logger.addHandler(log_file)
+log_filepath = '/tmp/gdrivefs.log'
+log_file = TimedRotatingFileHandler(log_filepath, 'D', backupCount=5)
+log_file.setFormatter(Formatter('%(asctime)s [%(name)s %(levelname)s] %(message)s'))
+default_logger.addHandler(log_file)
 

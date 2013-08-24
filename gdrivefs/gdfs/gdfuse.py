@@ -9,7 +9,7 @@ import os
 import atexit
 import resource
 
-from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM
+from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
                  LoggingMixIn
 from time import mktime, time
@@ -17,6 +17,7 @@ from sys import argv, exit, excepthook
 from mimetypes import guess_type
 from datetime import datetime
 from dateutil.tz import tzlocal, tzutc
+from os.path import split
 
 from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
@@ -37,7 +38,7 @@ from gdrivefs.gdfs.fsutility import strip_export_type, split_path,\
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
-from gdrivefs.time_support import build_rfc3339_phrase
+from gdrivefs.time_support import get_flat_normal_fs_time_from_epoch
 
 _static_log = logging.getLogger().getChild('(GDFS)')
 
@@ -88,10 +89,19 @@ class GDriveFS(LoggingMixIn,Operations):
                                   "(%d)." % (fh))
                 raise
 
-    def __get_entry_or_raise(self, raw_path):
+    def __get_entry_or_raise(self, raw_path, allow_normal_for_missing=False):
         try:
             result = split_path(raw_path, path_resolver)
             (parent_clause, path, filename, mime_type, is_hidden) = result
+        except GdNotFoundError:
+            self.__log.exception("Could not retrieve clause for non-existent "
+                                 "file-path [%s] (parent does not exist)." % 
+                                 (filepath))
+
+            if allow_normal_for_missing is True:
+                raise
+            else:
+                raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not process file-path [%s]." % 
                                  (raw_path))
@@ -104,8 +114,13 @@ class GDriveFS(LoggingMixIn,Operations):
             entry_clause = path_relations.get_clause_from_path(filepath)
         except GdNotFoundError:
             self.__log.exception("Could not retrieve clause for non-existent "
-                                 "file-path [%s]." % (filepath))
-            raise FuseOSError(ENOENT)
+                                 "file-path [%s] (parent exists)." % 
+                                 (filepath))
+
+            if allow_normal_for_missing is True:
+                raise
+            else:
+                raise FuseOSError(ENOENT)
         except:
             self.__log.exception("Could not retrieve clause for path [%s]. " %
                                  (filepath))
@@ -113,7 +128,11 @@ class GDriveFS(LoggingMixIn,Operations):
 
         if not entry_clause:
             self.__log.debug("Path [%s] does not exist for stat()." % (filepath))
-            raise FuseOSError(ENOENT)
+
+            if allow_normal_for_missing is True:
+                raise GdNotFoundError()
+            else:
+                raise FuseOSError(ENOENT)
 
         return (entry_clause[CLAUSE_ENTRY], path, filename)
 
@@ -586,15 +605,91 @@ class GDriveFS(LoggingMixIn,Operations):
 #            'f_favail': 0
         }
 
-# TODO: !! Finish this.
-#    @dec_hint(['old', 'new'])
-#    def rename(self, old, new):
-#        pass
+    @dec_hint(['filepath_old', 'filepath_new'])
+    def rename(self, filepath_old, filepath_new):
 
-# TODO: !! Finish this.
-#    @dec_hint(['path', 'length', 'fh'])
-#    def truncate(self, path, length, fh=None):
-#        pass
+        self.__log.debug("Renaming [%s] to [%s]." % 
+                         (filepath_old, filepath_new))
+
+        # Make sure the old filepath exists.
+        (entry, path, filename_old) = self.__get_entry_or_raise(filepath_old)
+
+        # Make sure there's no mime-type decoration. We might use this, in the
+        # future, to do some data conversions.
+        filepath_new = strip_export_type(filepath_new)[0]
+        (path, filename_new) = split(filepath_new)
+
+        self.__log.debug("Renaming from old entry [%s] filename [%s] to "
+                         "[%s]." % (entry, filename_old, filename_new))
+
+        # Make sure the new filepath doesn't exist.
+
+        try:
+            self.__get_entry_or_raise(filepath_new, True)
+        except GdNotFoundError:
+            pass
+
+        try:
+            entry = drive_proxy('rename', normalized_entry=entry, 
+                                new_filename=filename_new)
+        except:
+            self.__log.exception("Could not update entry [%s] for rename." %
+                                 (entry))
+            raise FuseOSError(EIO)
+
+        # Update our knowledge of the entry.
+
+        path_relations = PathRelations.get_instance()
+
+        try:
+            path_relations.register_entry(entry)
+        except:
+            self.__log.exception("Could not register renamed entry: %s" % 
+                                 (entry))
+            raise FuseOSError(EIO)
+
+    @dec_hint(['filepath', 'length', 'fh'])
+    def truncate(self, filepath, length, fh=None):
+        self.__log.debug("Truncating file-path [%s] with FH [%s]." % 
+                         (filepath, fh))
+
+        if fh is not None:
+            self.__log.debug("Doing truncate by FH (%d)." % (fh))
+        
+            try:
+                opened_file = OpenedManager.get_instance().get_by_fh(fh)
+            except:
+                self.__log.exception("Could not retrieve OpenedFile for handle "
+                                     "with ID (%d) (truncate)." % (fh))
+                raise FuseOSError(EIO)
+
+            self.__log.debug("Truncating and clearing FH: %s" % (opened_file))
+
+            opened_file.reset_state()
+
+            entry_id = opened_file.entry_id
+            cache = EntryCache.get_instance().cache
+
+            try:
+                entry = cache.get(entry_id)
+            except:
+                self.__log.exception("Could not fetch normalized entry with "
+                                     "ID [%s] for truncate with FH." % 
+                                     (entry_id))
+                raise
+        else:
+            (entry, path, filename) = self.__get_entry_or_raise(filepath)
+
+        self.__log.debug("Sending truncate request for [%s]." % (entry))
+
+        try:
+            entry = drive_proxy('truncate', normalized_entry=entry)
+        except:
+            self.__log.exception("Could not truncate entry [%s]." % (entry))
+            raise FuseOSError(EIO)
+
+        # We don't need to update our internal representation of the file (just 
+        # our file-handle and its related buffering).
 
     @dec_hint(['file_path'])
     def unlink(self, file_path):
@@ -686,11 +781,8 @@ class GDriveFS(LoggingMixIn,Operations):
 
         (entry, path, filename) = self.__get_entry_or_raise(raw_path)
 
-        tz_get = lambda dt: datetime.fromtimestamp(dt, tzlocal()).\
-                                     astimezone(tzutc())
-
-        mtime_phrase = build_rfc3339_phrase(tz_get(mtime))
-        atime_phrase = build_rfc3339_phrase(tz_get(atime))
+        mtime_phrase = get_flat_normal_fs_time_from_epoch(mtime)
+        atime_phrase = get_flat_normal_fs_time_from_epoch(atime)
 
         self.__log.debug("Updating entry [%s] with m-time [%s] and a-time "
                          "[%s]." % (entry, mtime_phrase, atime_phrase))

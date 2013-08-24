@@ -22,7 +22,7 @@ from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
-from gdrivefs.time_support import build_rfc3339_phrase
+from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -491,8 +491,7 @@ class _GdriveManager(object):
         if parents is None:
             parents = []
 
-        now_obj = datetime.now().replace(tzinfo=tzlocal()).astimezone(tzutc())
-        now_phrase = build_rfc3339_phrase(now_obj)
+        now_phrase = get_flat_normal_fs_time_from_dt()
 
         if modified_datetime is None:
             modified_datetime = now_phrase 
@@ -551,15 +550,15 @@ class _GdriveManager(object):
 
         return normalized_entry
 
-    def truncate_entry(self, normalized_entry):
+    def truncate(self, normalized_entry):
 
         self.__log.info("Truncating entry [%s]." % (normalized_entry.id))
 
         try:
-            self.update_entry(normalized_entry, data_filepath='/dev/null')
+            entry = self.update_entry(normalized_entry, data_filepath='/dev/null')
         except:
             self.__log.exception("Could not truncate entry with ID [%s]." % 
-                                 (normalized_enty.id))
+                                 (normalized_entry.id))
             raise
 
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
@@ -593,14 +592,11 @@ class _GdriveManager(object):
         if description is not None:
             body['description'] = description
 
-        self.__log.info("MTIME= [%s] [%s]" % 
-                        (modified_datetime, modified_datetime.__class__))
-
+        set_mtime = True
         if modified_datetime is not None:
-            set_mtime = True
             body['modifiedDate'] = modified_datetime
         else:
-            set_mtime = False
+            body['modifiedDate'] = get_flat_normal_fs_time_from_dt()
 
         if accessed_datetime is not None:
             set_atime = 1
@@ -621,7 +617,7 @@ class _GdriveManager(object):
             result = client.files().update(**args).execute()
         except:
             self.__log.exception("Could not send update for file [%s]." % 
-                              (filename))
+                                 (filename))
             raise
 
         try:
@@ -660,29 +656,12 @@ class _GdriveManager(object):
                                    data_filepath,
                                    **kwargs)
 
-# TODO: Finish this.
-#    def rename(self, normalized_entry, new_filename):
-## TODO: It doesn't seem as if the created file is being registered.
-#        # Even though we're supposed to provide an extension, we can get away 
-#        # without having one. We don't want to impose this when acting like a 
-#        # normal FS.
-#
-#        # If no data and no mime-type was given, default it.
-#        if mime_type == None:
-#            mime_type = Conf.get('file_default_mime_type')
-#            self.__log.debug("No mime-type was presented for file create/update. "
-#                          "Defaulting to [%s]." % (mime_type))
-#
-# update(fileId, body=None, newRevision=None, media_body=None, ocrLanguage=None, 
-#        ocr=None, pinned=None, updateViewedDate=None, timedTextTrackName=None, 
-#        convert=None, useContentAsIndexableText=None, setModifiedDate=None, 
-#        timedTextLanguage=None)
-#
-#        pass
-##        return self.__insert_entry(filename=filename, 
-##                                   data_filepath=data_filepath, 
-##                                   mime_type=mime_type, 
-##                                   **kwargs)
+    def rename(self, normalized_entry, new_filename):
+
+        self.__log.debug("Renaming entry [%s] to [%s]." % 
+                         (normalized_entry, new_filename))
+
+        return self.update_entry(normalized_entry, filename=new_filename)
 
     def remove_entry(self, normalized_entry):
 
@@ -691,8 +670,8 @@ class _GdriveManager(object):
         try:
             client = self.get_client()
         except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (remove_entry).")
+            self.__log.exception("There was an error while acquiring the "
+                                 "Google Drive client (remove_entry).")
             raise
 
         args = { 'fileId': normalized_entry.id }

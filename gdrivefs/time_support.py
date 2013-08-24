@@ -1,4 +1,6 @@
 from math import floor
+from datetime import datetime
+from dateutil.tz import tzlocal, tzutc
 
 DTF_DATETIME = '%Y%m%d-%H%M%S'
 DTF_DATETIMET = '%Y-%m-%dT%H:%M:%S'
@@ -23,4 +25,28 @@ def build_rfc3339_phrase(datetime_obj):
                             ))
 
     return datetime_phrase
+
+def get_normal_dt_from_epoch(epoch):
+    dt = datetime.fromtimestamp(epoch, tzlocal())
+    return normalize_dt(dt)
+
+def normalize_dt(dt=None):
+    if dt is None:
+        dt = datetime.now()
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tzlocal())
+
+    return dt.astimezone(tzutc())
+
+def get_flat_normal_fs_time_from_dt(dt=None):
+    if dt is None:
+        dt = datetime.now()
+
+    dt_normal = normalize_dt(dt)
+    return build_rfc3339_phrase(dt_normal)
+
+def get_flat_normal_fs_time_from_epoch(epoch):
+    dt_normal = get_normal_dt_from_epoch(epoch)
+    return build_rfc3339_phrase(dt_normal)
 

@@ -279,6 +279,10 @@ class OpenedFile(object):
         
         self.__mime_type = mime_type
         self.__cache = EntryCache.get_instance().cache
+
+        self.reset_state()
+
+    def reset_state(self):
         self.__buffer = None
         self.__is_loaded = False
         self.__is_dirty = False

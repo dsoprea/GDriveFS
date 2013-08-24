@@ -9,7 +9,7 @@ from mimetypes import guess_type
 from gdrivefs.conf import Conf
 from gdrivefs.utility import get_utility
 from gdrivefs.errors import ExportFormatError
-from gdrivefs.time_support import build_rfc3339_phrase
+from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
 
 
 class NormalEntry(object):
@@ -69,8 +69,7 @@ class NormalEntry(object):
             if u'downloadUrl' in raw_data:
                 self.__info['download_links'][self.__info['mime_type']] = raw_data[u'downloadUrl']
 
-            # This is encoded for displaying locally.
-            self.__info['title_fs'] = get_utility().translate_filename_charset(self.__info['title'])
+            self.__update_display_name()
 
             for parent in raw_data[u'parents']:
                 self.__parents.append(parent[u'id'])
@@ -89,6 +88,18 @@ class NormalEntry(object):
 
     def __repr__(self):
         return str(self)
+
+    def __update_display_name(self):
+        # This is encoded for displaying locally.
+        self.__info['title_fs'] = get_utility().translate_filename_charset(self.__info['title'])
+
+    def temp_rename(self, new_filename):
+        """Set the name to something else, here, while we, most likely, wait 
+        for the change at the server to propogate.
+        """
+    
+        self.__info['title'] = new_filename
+        self.__update_display_name()
 
     def normalize_download_mimetype(self, specific_mimetype=None):
         """If a mimetype is given, return it if there is a download-URL 
@@ -168,7 +179,7 @@ class NormalEntry(object):
 
             def flatten_time(k):
                 data_dict['extra'][k] = \
-                    build_rfc3339_phrase(data_dict['extra'][k])
+                    get_flat_normal_fs_time_from_dt(data_dict['extra'][k])
 
             flatten_time('modified_date')
             flatten_time('mtime_byme_date')
@@ -257,5 +268,4 @@ class NormalEntry(object):
         return mktime(self.atime_byme_date.timetuple()) \
                 if self.atime_byme_date \
                 else None
-
 

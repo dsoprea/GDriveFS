@@ -2,7 +2,7 @@ import logging
 import re
 
 from os.path import split
-from fuse import FuseOSError
+from fuse import FuseOSError, fuse_get_context
 
 def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
     """A decorator for the calling of functions to be emphasized in the 

@@ -279,7 +279,7 @@ class PathRelations(object):
 
         with PathRelations.rlock:
             self.__log.debug("Clipping entry with ID [%s] from PathRelations and "
-                          "EntryCache." % (entry_id))
+                             "EntryCache." % (entry_id))
 
             cache = EntryCache.get_instance().cache
 
