@@ -145,9 +145,12 @@ class GDriveFS(LoggingMixIn,Operations):
         self.__log.debug("Context: UID= (%d) GID= (%d) PID= (%d)" % (uid, gid, 
                                                                      pid))
 
-        effective_permission = 0o444
-        if entry.editable:
-            effective_permission |= 0o222
+        if entry.is_directory:
+            effective_permission = int(Conf.get('default_perm_folder'), 8)
+        elif entry.editable:
+            effective_permission = int(Conf.get('default_perm_file_editable'), 8)
+        else:
+            effective_permission = int(Conf.get('default_perm_file_noneditable'), 8)
 
         stat_result = { "st_mtime": entry.modified_date_epoch, # modified time.
                         "st_ctime": entry.modified_date_epoch, # changed time.
@@ -156,8 +159,6 @@ class GDriveFS(LoggingMixIn,Operations):
                         "st_gid":   gid}
         
         if entry.is_directory:
-            effective_permission |= 0o111
-
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
             # default size should be 4K.
             stat_result["st_size"] = 1024 * 4
@@ -819,7 +820,7 @@ class GDriveFS(LoggingMixIn,Operations):
         (entry, path, filename) = self.__get_entry_or_raise(raw_path)
 
         try:
-            return entry.xattr_data[name]
+            return entry.xattr_data[name] + "\n"
         except:
             return ''
         
@@ -836,7 +837,6 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
           option_string=None):
 
     fuse_opts = { }
-
     if option_string:
         for opt_parts in [opt.split('=', 1) \
                           for opt \
@@ -848,10 +848,11 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
             # to a bool, or anything with just a key to True.
             if len(opt_parts) == 2:
                 v = opt_parts[1]
+                v_lower = v.lower()
 
-                if v == 'True':
+                if v_lower == 'true':
                     v = True
-                elif v == 'False':
+                elif v_lower == 'false':
                     v = False
             else:
                 v = True
@@ -869,6 +870,11 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
                 logging.exception("Could not set option [%s]. It is probably "
                                   "invalid." % (k))
                 raise
+
+    logging.debug("PERMS: F=%s E=%s NE=%s" % 
+                  (Conf.get('default_perm_folder'), 
+                   Conf.get('default_perm_file_editable'), 
+                   Conf.get('default_perm_file_noneditable')))
 
     # Assume that any option that wasn't an application option is a FUSE 
     # option. The Python-FUSE interface that we're using is beautiful/elegant,

@@ -41,7 +41,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.11.0'
+version = '0.12.0'
 
 core.setup(name='gdrivefs',
       version=version,

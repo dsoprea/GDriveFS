@@ -34,6 +34,9 @@ class Conf(object):
     default_buffer_read_blocksize       = 65536
     default_mimetype                    = 'application/octet-stream'
     directory_mimetype                  = u'application/vnd.google-apps.folder'
+    default_perm_folder                 = '777'
+    default_perm_file_editable          = '666'
+    default_perm_file_noneditable       = '444'
 
     max_readahead_entries = 10
     """How many extra entries to retrieve when an entry is accessed that is 

@@ -242,8 +242,54 @@ as the location that the actual, requested file was stored to.
 Cache/Change Management
 =======================
 
-No cache is maintained. Updates are performed every few seconds using GD's
-"change" functionality.
+A cache of both the file/folder entries is maintained, as well as a knowledge 
+of file/folder relationships. However, updates are performed every few seconds 
+using GD's "change" functionality.
+
+
+Permissions
+===========
+
+The default UID/GID of files is that of the current user. The default 
+permissions (modes) are the following:
+
+Folder:            777
+Editable file:     666
+Non-editable file: 444
+
+Whether or not a file is "editable" is [obviously] an attribute reported by 
+Google Drive.
+
+These settings can be overridden via the "-o" comma-separated set of command-
+line options. See below.
+
+Permission-Related Options
+--------------------------
+
+  Related Standard FUSE
+  ---------------------
+
+    These options change the behavior at the FUSE level (above GDFS). See "man 
+    mount.fuse" for all options.
+
+    umask=M             Prescribe the umask value for -all- entries.
+    uid=N               Change the default UID.
+    gid=N               Change the default GID.
+    allow_other         Allow other users access.
+    default_permissions Enforce the permission modes (off, by default)
+    
+  GDFS-Specific
+  -------------
+    
+    default_perm_folder=nnn           Default mode for folders.
+    default_perm_file_noneditable=nnn Default mode for non-editable files.
+    default_perm_file_editable=nnn    Default mode for editable files (see 
+                                      above).
+
+  Example:
+
+    allow_other,default_permissions,default_perm_folder=770,
+        default_perm_file_noneditable=440,default_perm_file_editable=660
 
 
 Extended Attributes
@@ -251,7 +297,7 @@ Extended Attributes
 
 Extended attributes allow access to arbitrary, filesystem-specific data. You 
 may access any of the properties that Google Drive provides for a given entry, 
-plus a handful of extra ones. The values are JSON-encoded.
+plus a handful of extra ones.
 
     Listing attributes:
 
@@ -295,37 +341,20 @@ plus a handful of extra ones. The values are JSON-encoded.
 
     Getting specific attribute:
 
-        $ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg | json_reformat 
+        $ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg 
 
-        "0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs"
+        0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
 
-        $ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg | json_reformat 
+        $ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg
+        
+        2013-02-15T15:06:09.691Z
 
-        "2013-02-15T15:06:09.691Z"
+        $ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg
 
-        $ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg | json_reformat 
+        K(restricted)=V(False); K(starred)=V(False); K(viewed)=V(False); K(hidden)=V(False); K(trashed)=V(False)
 
-        {
-          "restricted": "False",
-          "starred": "False",
-          "trashed": "False",
-          "hidden": "False",
-          "viewed": "False"
-        }
-
-    You can use PHP to extract information from the JSON at the command-line:
-
-        $ getfattr --only-values -n user.original.id \
-            gdrivefs/American-Pika-with-Food.jpg | \
-            php -r "print(json_decode(fgets(STDIN)));"
-
-          Returns: 0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
-
-        $ getfattr --only-values -n user.original.labels \
-            gdrivefs/American-Pika-with-Food.jpg | \
-            php -r "print(json_decode(fgets(STDIN))->restricted);"
-
-          Returns: False
+    This used to be rendered as JSON, but since the XATTR utilities add their 
+    own quotes/etc.., it was more difficult to make sense of the values.
 
 
 Misc Notes
