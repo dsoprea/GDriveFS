@@ -181,3 +181,6 @@ def build_filepath(path, filename):
 
     return ('%s%s%s' % (path, separator, filename))
 
+def escape_filename_for_query(filename):
+    return filename.replace("\\", "\\\\").replace("'", "\\'")
+

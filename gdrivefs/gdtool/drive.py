@@ -21,7 +21,8 @@ from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
-from gdrivefs.gdfs.fsutility import split_path_nolookups
+from gdrivefs.gdfs.fsutility import split_path_nolookups, \
+                                    escape_filename_for_query
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
@@ -228,10 +229,11 @@ class _GdriveManager(object):
             raise
 
         if query_is_string:
-            query = ("title='%s'" % (query_is_string.replace("'", "\\'")))
+            query = ("title='%s'" % 
+                     (escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query = ("title contains '%s'" % 
-                     (query_contains_string.replace("'", "\\'")))
+                     (escape_filename_for_query(query_contains_string)))
         else:
             query = None
 
@@ -318,10 +320,10 @@ class _GdriveManager(object):
 
         if query_is_string:
             query_components.append("title='%s'" % 
-                                    (query_is_string.replace("'", "\\'")))
+                                    (escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query_components.append("title contains '%s'" % 
-                     (query_contains_string.replace("'", "\\'")))
+                                    (escape_filename_for_query(query_contains_string)))
 
         # Make sure that we don't get any entries that we would have to ignore.
 
