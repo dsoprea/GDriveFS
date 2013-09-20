@@ -1,11 +1,10 @@
 #!/usr/bin/env python2.7
 
-from setuptools import find_packages
-from distutils import core
-from distutils.command.install import install
+from setuptools import find_packages, setup
+from setuptools.command.install import install
 
 from sys import exit
-from os import symlink
+from os import symlink, unlink
 from os.path import dirname
 
 from gdrivefs import tools
@@ -18,18 +17,38 @@ def pre_install():
 def post_install():
     tool_path = dirname(tools.__file__)
 
+    # Set symlink 1.
+
     gdfs_filepath = ('%s/%s' % (tool_path, 'gdfs.py'))
     gdfs_symlink_filepath = '/usr/local/sbin/gdfs'
+
+    try:
+        unlink(gdfs_symlink_filepath)
+    except OSError:
+        pass
+    else:
+        print("Removed existing symlink: %s" % (gdfs_symlink_filepath))
+
+    print("Writing gdfs symlink (%s -> %s)." % 
+          (gdfs_symlink_filepath, gdfs_filepath))
+
+    symlink(gdfs_filepath, gdfs_symlink_filepath)
+
+    # Set symlink 2.
 
     gdfstool_filepath = ('%s/%s' % (tool_path, 'gdfstool.py'))
     gdfstool_symlink_filepath = '/usr/local/sbin/gdfstool'
 
-    print("Writing gdfs symlink (%s -> %s)." % 
-          (gdfs_symlink_filepath, gdfs_filepath))
-    symlink(gdfs_filepath, gdfs_symlink_filepath)
+    try:
+        unlink(gdfstool_symlink_filepath)
+    except OSError:
+        pass
+    else:
+        print("Removed existing symlink %s" % (gdfstool_symlink_filepath))
 
     print("Writing gdfstool symlink (%s -> %s)." % 
           (gdfstool_symlink_filepath, gdfstool_filepath))
+
     symlink(gdfstool_filepath, gdfstool_symlink_filepath)
 
 if not pre_install():
@@ -41,9 +60,9 @@ class custom_install(install):
 
         post_install()
 
-version = '0.12.2'
+version = '0.12.3'
 
-core.setup(name='gdrivefs',
+setup(name='gdrivefs',
       version=version,
       description="A complete FUSE adapter for Google Drive.",
       long_description="""\
