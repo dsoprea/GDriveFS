@@ -5,8 +5,8 @@ class Conf(object):
     """Manages options."""
 
     api_credentials = {
-        "web": { "client_id": "626378760250.apps.googleusercontent.com",
-                 "client_secret": "Moq_EFOt6bKXVmKnVak3jepV",
+        "web": { "client_id": "1056816309698.apps.googleusercontent.com",
+                 "client_secret": "R7FJFlbtWXgUoG3ZjIAWUAzv",
                  "redirect_uris": [],
                  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                  "token_uri": "https://accounts.google.com/o/oauth2/token"
