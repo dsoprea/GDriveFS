@@ -60,7 +60,7 @@ class custom_install(install):
 
         post_install()
 
-version = '0.12.3'
+version = '0.12.4'
 
 setup(name='gdrivefs',
       version=version,
