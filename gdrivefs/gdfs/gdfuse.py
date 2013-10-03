@@ -94,7 +94,7 @@ class GDriveFS(LoggingMixIn,Operations):
         except GdNotFoundError:
             self.__log.exception("Could not retrieve clause for non-existent "
                                  "file-path [%s] (parent does not exist)." % 
-                                 (filepath))
+                                 (raw_path))
 
             if allow_normal_for_missing is True:
                 raise
@@ -156,7 +156,7 @@ class GDriveFS(LoggingMixIn,Operations):
                         "st_ctime": entry.modified_date_epoch, # changed time.
                         "st_atime": time(),
                         "st_uid":   uid,
-                        "st_gid":   gid}
+                        "st_gid":   gid }
         
         if entry.is_directory:
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
@@ -865,6 +865,9 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
             try:
                 Conf.set(k, v)
             except (KeyError) as e:
+                logging.debug("Forwarding option [%s] with value [%s] to "
+                              "FUSE." % (k, v))
+
                 fuse_opts[k] = v
             except:
                 logging.exception("Could not set option [%s]. It is probably "

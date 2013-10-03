@@ -8,6 +8,7 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
 from gdrivefs.gdfs.fsutility import split_path, build_filepath
 from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath
 from gdrivefs.timer import Timers
+from gdrivefs.errors import GdNotFoundError
 
 def get_by_path(raw_path):
     try:

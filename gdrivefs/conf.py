@@ -55,7 +55,6 @@ class Conf(object):
     @staticmethod
     def set(key, value):
         if key not in Conf.__dict__:
-            logging.error("Can not set invalid configuration item [%s]." % (key))
             raise KeyError(key)
 
         setattr(Conf, key, value)

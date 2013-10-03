@@ -461,8 +461,8 @@ class _GdriveManager(object):
                                            in response_headers.iteritems() 
                                            if r.match(k)]
         if range_found:
-            logger.info("GD has returned Range-related headers: %s" % 
-                        (", ".join(found)))
+            self.__log.info("GD has returned Range-related headers: %s" % 
+                            (", ".join(found)))
 
         self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
                         (len(data), output_file_path))

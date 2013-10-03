@@ -11,6 +11,7 @@ from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
 from gdrivefs.cache.cacheclient_base import CacheClientBase
+from gdrivefs.errors import GdNotFoundError
 
 CLAUSE_ENTRY            = 0 # Normalized entry.
 CLAUSE_PARENT           = 1 # List of parent clauses.
@@ -24,7 +25,7 @@ def path_resolver(path):
     try:
         parent_clause = path_relations.get_clause_from_path(path)
     except:
-        logger.exception("Could not get clause from path [%s]." % (path))
+        logging.exception("Could not get clause from path [%s]." % (path))
         raise GdNotFoundError()
 
     if not parent_clause:

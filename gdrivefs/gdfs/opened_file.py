@@ -243,8 +243,8 @@ class OpenedFile(object):
         try:
             final_mimetype = entry.normalize_download_mimetype(mime_type)
         except ExportFormatError:
-            self.__log.exception("There was an export-format error "
-                                 "(create_for_requested_filesystem).")
+            _static_log.exception("There was an export-format error "
+                                  "(create_for_requested_filesystem).")
             raise FuseOSError(ENOENT)
         except:
             _static_log.exception("Could not normalize mime-type [%s] for "
