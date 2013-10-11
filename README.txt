@@ -38,6 +38,9 @@ To install from Mercurial, do the following:
   sudo python setup.py install
   sudo python setup.py install_egg_info
 
+Make sure it's added to your PYTHONPATH (otherwise you'll get some 
+"apiclient.." module errors).
+
 NOTE: I've also experienced a google-api-python-client installation problem
       when you don't already have it installed, and it's listed as a dependency
       in setup.py:

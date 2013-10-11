@@ -7,11 +7,12 @@ def main():
     sbin_parent = environ.get('PREFIX', '/usr/local')
     sbin_path = join(sbin_parent, 'sbin')
 
-    for tool_name in ('gdfs', 'gdfstool'):
+    for tool_name in ('gdfs', 'gdfstool', 'gdfsuninstall'):
         file_path = join(sbin_path, tool_name)
 
         print("Unlinking: %s" % (file_path))
         unlink(file_path)
 
-main()
+if __name__ == '__main__':
+    main()
 

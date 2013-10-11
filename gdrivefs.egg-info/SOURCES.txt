@@ -35,13 +35,11 @@ gdrivefs/gdtool/oauth_authorize.py
 gdrivefs/general/__init__.py
 gdrivefs/general/buffer_segments.py
 gdrivefs/general/livereader_base.py
-gdrivefs/random_utility/__init__.py
-gdrivefs/random_utility/setup_support.py
 gdrivefs/tools/__init__.py
-gdrivefs/tools/gdfs.py
-gdrivefs/tools/gdfsdumpentry.py
-gdrivefs/tools/gdfstool.py
-gdrivefs/tools/gdfsuninstall.py
+gdrivefs/tools/gdfs
+gdrivefs/tools/gdfstool
+gdrivefs/tools/gdfsuninstall
+tests/__init__.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py
 tests/gdtool/drive_proxy.py

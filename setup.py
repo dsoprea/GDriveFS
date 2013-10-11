@@ -5,27 +5,20 @@ from setuptools.command.install import install
 
 from sys import exit
 
-from gdrivefs.random_utility.setup_support import install_su_tool_symlink
-
 def pre_install():
-
 # TODO: Ensure FUSE.
     return True
 
 def post_install():
-    install_su_tool_symlink('gdrivefs.tools.gdfs')
-    install_su_tool_symlink('gdrivefs.tools.gdfstool')
-    install_su_tool_symlink('gdrivefs.tools.gdfsuninstall')
-
-if not pre_install():
-    exit(1)
+    pass
 
 class custom_install(install):
     def run(self):
+        pre_install()
         install.run(self)
         post_install()
 
-version = '0.13.0'
+version = '0.13.4'
 
 setup(name='gdrivefs',
       version=version,
@@ -49,7 +42,7 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       author_email='myselfasunder@gmail.com',
       url='https://github.com/dsoprea/GDriveFS',
       license='GPL',
-      packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
+      packages=find_packages(),
       include_package_data=True,
       zip_safe=True,
       install_requires=[
@@ -68,5 +61,8 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       """,
       cmdclass={'install': custom_install
                },
+      scripts=['gdrivefs/tools/gdfs',
+               'gdrivefs/tools/gdfstool',
+               'gdrivefs/tools/gdfsuninstall'],
       )
 
