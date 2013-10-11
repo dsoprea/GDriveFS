@@ -9,70 +9,73 @@ from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath, mount, \
                                  load_mount_parser_args
 from gdrivefs.gdtool.oauth_authorize import get_auth
 
-parser = ArgumentParser()
+def main():
+    parser = ArgumentParser()
 
-subparsers = parser.add_subparsers(help='subcommand help')
-parser_auth = subparsers.add_parser('auth', help='Authorization subcommand.')
+    subparsers = parser.add_subparsers(help='subcommand help')
+    parser_auth = subparsers.add_parser('auth', help='Authorization subcommand.')
 
-auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
-auth_xor.add_argument('-u', '--url', help='Get an authorization URL.', 
-                      action='store_true')
-auth_xor.add_argument('-a', '--auth', nargs=2,
-                      metavar=('auth_storage_file', 'authcode'), 
-                      help='Register an authorization-code from Google '
-                      'Drive.')
+    auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
+    auth_xor.add_argument('-u', '--url', help='Get an authorization URL.', 
+                          action='store_true')
+    auth_xor.add_argument('-a', '--auth', nargs=2,
+                          metavar=('auth_storage_file', 'authcode'), 
+                          help='Register an authorization-code from Google '
+                          'Drive.')
 
-mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
-load_mount_parser_args(mount_auth)
+    mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
+    load_mount_parser_args(mount_auth)
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-# An authorization URL was requested.
-if 'url' in args and args.url:
-    try:
-        authorize = get_auth()
-        url = authorize.step1_get_auth_url()
-    except Exception as e:
-        print("Could not produce auth-URL: %s" % (e))
-        exit()
+    # An authorization URL was requested.
+    if 'url' in args and args.url:
+        try:
+            authorize = get_auth()
+            url = authorize.step1_get_auth_url()
+        except Exception as e:
+            print("Could not produce auth-URL: %s" % (e))
+            exit()
 
-    print("To authorize FUSE to use your Google Drive account, visit the "
-          "following URL to produce an authorization code:\n\n%s\n" % 
-          (url))
+        print("To authorize FUSE to use your Google Drive account, visit the "
+              "following URL to produce an authorization code:\n\n%s\n" % 
+              (url))
 
-# An authorization from the URL needs to be submitted.
-elif 'auth' in args and args.auth:
-    (auth_storage_file, authcode) = args.auth
+    # An authorization from the URL needs to be submitted.
+    elif 'auth' in args and args.auth:
+        (auth_storage_file, authcode) = args.auth
 
-    set_auth_cache_filepath(auth_storage_file)
+        set_auth_cache_filepath(auth_storage_file)
 
-    try:
-        authorize = get_auth()
-        authorize.step2_doexchange(authcode)
+        try:
+            authorize = get_auth()
+            authorize.step2_doexchange(authcode)
 
-    except (Exception) as e:
-        message = ("Authorization failed: %s" % (str(e)))
+        except (Exception) as e:
+            message = ("Authorization failed: %s" % (str(e)))
 
-        logging.exception(message)
-        print(message)
-        exit()
+            logging.exception(message)
+            print(message)
+            exit()
 
-    print("Authorization code recorded.")
+        print("Authorization code recorded.")
 
-# Mount the service.
-elif 'mountpoint' in args and args.mountpoint:
+    # Mount the service.
+    elif 'mountpoint' in args and args.mountpoint:
 
-    option_string = args.opt[0] if args.opt else None
+        option_string = args.opt[0] if args.opt else None
 
-    try:
-        mount(auth_storage_filepath=args.auth_storage_file, 
-              mountpoint=args.mountpoint, debug=args.debug, 
-              nothreads=args.debug, option_string=option_string)
-    except (Exception) as e:
-        message = ("Mount failed: %s" % (str(e)))
+        try:
+            mount(auth_storage_filepath=args.auth_storage_file, 
+                  mountpoint=args.mountpoint, debug=args.debug, 
+                  nothreads=args.debug, option_string=option_string)
+        except (Exception) as e:
+            message = ("Mount failed: %s" % (str(e)))
 
-        logging.exception(message)
-        print(message)
-        exit()
+            logging.exception(message)
+            print(message)
+            exit()
 
+if __name__ == '__main__':
+    main()
 
