@@ -216,7 +216,7 @@ class GetDriveTestCase(TestCase):
 #        entry = drive_proxy('create_directory', filename=filename)
 
         filename = ("NewFile_%s.txt" % (datetime.datetime.now().strftime("%H%M%S")))
-        entry = drive_proxy('create_file', filename=filename, data_filepath='/tmp/tmpdata.txt', [])
+        entry = drive_proxy('create_file', filename=filename, data_filepath='/tmp/tmpdata.txt', parents=[])
 
         print(entry.id)
 
