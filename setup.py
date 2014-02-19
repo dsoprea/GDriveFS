@@ -42,9 +42,9 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       author_email='myselfasunder@gmail.com',
       url='https://github.com/dsoprea/GDriveFS',
       license='GPL 2',
-      packages=find_packages(),
+      packages=find_packages(exclude=['tests']),
       include_package_data=True,
-      zip_safe=True,
+      zip_safe=False,
       install_requires=[
         'ez_setup',
         'google_appengine',
@@ -61,8 +61,8 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       """,
       cmdclass={'install': custom_install
                },
-      scripts=['gdrivefs/tools/gdfs',
-               'gdrivefs/tools/gdfstool',
-               'gdrivefs/tools/gdfsuninstall'],
+      scripts=['tools/gdfs',
+               'tools/gdfstool',
+               'tools/gdfsuninstall'],
       )
 
