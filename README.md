@@ -224,6 +224,11 @@ file.
 $ cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
 
 $ cat /tmp/Copy\ of\ Dear\ Biola.docx#application+pdf 
+```
+
+where something like the following will be displayed:
+
+```json
 {"ImageMediaMetadata": null, 
  "Length": 58484, 
  "FilePath": "/tmp/gdrivefs/displaced/Copy of Dear Biola.docx.application+pdf", 
