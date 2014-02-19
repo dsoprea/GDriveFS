@@ -190,8 +190,8 @@ class OpenedManager(object):
 class OpenedFile(object):
     """This class describes a single open file, and manages changes."""
 
-    update_lock     = Lock()
-    download_lock   = Lock()
+    __update_lock = Lock()
+    __download_lock = Lock()
 
     @staticmethod
     def create_for_requested_filepath(filepath):
@@ -271,7 +271,7 @@ class OpenedFile(object):
 
         self.__log.info("Opened-file object created for entry-ID [%s] and "
                         "path (%s)." % (entry_id, path))
-# TODO: Refactor this to being all obfuscated property names.
+
         self.__entry_id = entry_id
         self.__path = path
         self.__filename = filename
@@ -338,7 +338,7 @@ class OpenedFile(object):
 
         self.__log.debug("__load_base_from_remote about to download.")
 
-        with self.download_lock:
+        with self.__class__.__download_lock:
             # Get the current version of the write-cache file, or note that we 
             # don't have it.
 
@@ -360,7 +360,7 @@ class OpenedFile(object):
                                                           entry))
                     raise
 
-# TODO: Accomodate the cache for displaced-files.
+# TODO: Accommodate the cache for displaced-files.
                 cache_fault = True
 
             else:
@@ -386,7 +386,7 @@ class OpenedFile(object):
 
             # We've either not loaded it, yet, or it has changed.
             if cache_fault or not self.__is_loaded:
-                with self.update_lock:
+                with self.__class__.__update_lock:
                     self.__log.debug("Checking queued items for fault.")
 
                     if cache_fault:
@@ -438,7 +438,7 @@ class OpenedFile(object):
 
         self.__log.debug("Base loaded for add_update.")
 
-        with self.update_lock:
+        with self.__class__.__update_lock:
             self.__buffer.apply_update(offset, data)
             self.__is_dirty = True
 
@@ -462,7 +462,7 @@ class OpenedFile(object):
                                  (entry))
             raise
     
-        with self.update_lock:
+        with self.__class__.__update_lock:
             if self.__is_dirty is False:
                 self.__log.debug("Flush will be skipped because there are no "
                                  "changes.")
