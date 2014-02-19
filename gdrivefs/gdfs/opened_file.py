@@ -350,7 +350,8 @@ class OpenedFile(object):
                 length = DisplacedFile.file_size
 
                 try:
-                    stub_data = DisplacedFile(entry).deposit_file(self.mime_type)
+                    d = DisplacedFile(entry)
+                    stub_data = d.deposit_file(self.mime_type)
 
                     with file(temp_file_path, 'w') as f:
                         f.write(stub_data)
@@ -405,7 +406,9 @@ class OpenedFile(object):
                         # Read the locally cached file in.
 
                         try:
-    # TODO: Read in steps?
+# TODO(dustin): This is the source of:
+# 1) An enormous slowdown where we first have to write the data, and then have to read it back.
+# 2) An enormous resource burden.
                             data = f.read()
 
                             read_blocksize = Conf.get('default_buffer_read_blocksize')

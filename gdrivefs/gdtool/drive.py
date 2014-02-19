@@ -432,6 +432,7 @@ class _GdriveManager(object):
         # Go and get the file.
 
         try:
+# TODO(dustin): This might establish a new connection. Not cool.
             authed_http = self.get_authed_http()
         except:
             self.__log.exception("Could not get authed Http instance for "
@@ -443,6 +444,7 @@ class _GdriveManager(object):
         self.__log.debug("Downloading file from [%s]." % (url))
 
         try:
+# TODO(dustin): Right now, we're downloading the complete body of data into memory, and then saving.
             data_tuple = authed_http.request(url)
         except:
             self.__log.exception("Could not download entry with ID [%s], type "
