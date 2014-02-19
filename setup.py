@@ -46,7 +46,6 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
       include_package_data=True,
       zip_safe=False,
       install_requires=[
-        'ez_setup',
         'google_appengine',
 # TODO: There's an issue when this is listed as a requirement here. It can be 
 #       installed separately, easily. The repository version is old, anyways.
