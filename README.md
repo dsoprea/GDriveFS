@@ -8,12 +8,13 @@ issues.
 
 Design goals:
 
-Thread for monitoring changes via "changes" functionality of API. (DONE)
-Complete stat() implementation. (DONE)
-Seamlessly work around duplicate-file allowances in Google Drive. (DONE)
-Seamlessly manage file-type versatility in Google Drive (Google Doc files do 
- not have a particular format). (DONE)
-Allow for the same file at multiple paths. (DONE)
+| Goal | Done |
+| ---- |:----:|
+| Thread for monitoring changes via "changes" functionality of API. | X |
+| Complete stat() implementation. | X |
+| Seamlessly work around duplicate-file allowances in Google Drive. | X |
+| Seamlessly manage file-type versatility in Google Drive (Google Doc files do not have a particular format). | X |
+| Allow for the same file at multiple paths. | X |
 
 Also, a design choice of other implementations is to make the user get API keys 
 for Google Drive, and this doesn't make sense. Our implementation is built 
@@ -381,5 +382,5 @@ software, make sure you add the prefixing dot.
 
 
 Dustin Oprea
-dustin, randomingenuity.com
+dustin-randomingenuity.com
 
