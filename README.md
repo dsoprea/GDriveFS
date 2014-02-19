@@ -62,6 +62,8 @@ Run:
 $ sudo pip install gdrivefs
 ```
 
+### Troubleshooting
+
 If your *setuptools* package is too old, you might see the following [annoying] 
 error:
 
@@ -75,37 +77,6 @@ Apparently, the solution is to make sure that you have a healthy copy of
 *Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem to 
 [always] work. You might prefer to use the "easy_install" method, below.
 
-
-## easy_install
-
-Run:
-
-```
-$ sudo easy_install gdrivefs
-```
-
-Go to whereever the package was installed (*easy_install* mentions this at 
-the end), and install the symlinks. For example:
-
-```
-$ cd /usr/local/sbin
-$ sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
-$ sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
-
-# This needs to be in the primary sbin/ directory.
-$ cd /sbin
-$ sudo ln -s /usr/local/sbin/gdfs mount.gdfs
-```
-
-## Manual Installation
-
-Expand into a directory named "gdrivefs" accessible from the Python path, and 
-run:
-
-```
-$ sudo ./setup.py install
-$ sudo ./setup.py install_egg_info
-```
 
 # Usage
 
