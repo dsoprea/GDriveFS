@@ -112,7 +112,7 @@ Before you can mount the account, you must authorize GDriveFS to access it. GDri
 
 Since this is FUSE, you must be running as root to mount.
 
-1) To get the authorization URL:
+1. To get the authorization URL:
 
     ```
     $ gdfstool auth -u
@@ -126,7 +126,7 @@ Since this is FUSE, you must be running as root to mount.
     https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
     ```
 
-2) To set the authorization-code, you must also provide the auth-storage file 
+2. To set the authorization-code, you must also provide the auth-storage file 
    that you would like to save it as. The name and location of this file is 
    arbitrary:
 
@@ -140,22 +140,22 @@ Since this is FUSE, you must be running as root to mount.
     Authorization code recorded.
     ```
 
-3) There are three ways to mount the account:
+3. There are three ways to mount the account:
 
-    a) Via script (either using the main script "gdfstool mount" or the helper 
-       scripts "gdfs"/"mount.gdfs"):
+    * Via script (either using the main script "gdfstool mount" or the helper 
+      scripts "gdfs"/"mount.gdfs"):
 
     ```
     $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
     ```
 
-    b) Via */etc/fstab*:
+    * Via */etc/fstab*:
 
     ```
     /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
     ```
 
-    c) Directly via *gdfstool*:
+    * Directly via *gdfstool*:
 
     ```
     $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
@@ -379,8 +379,4 @@ A file will be marked as hidden on Google Drive if it has a prefixing dot.
 However, Linux/Unix doesn't care about the "hidden" attribute. If you create a 
 file on Google Drive, somewhere else, and want it to truly be hidden via this 
 software, make sure you add the prefixing dot.
-
-
-Dustin Oprea
-dustin-randomingenuity.com
 
