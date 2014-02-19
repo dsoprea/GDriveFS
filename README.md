@@ -1,5 +1,4 @@
-GDriveFS
-========
+#GDriveFS
 
 An innovative FUSE wrapper for Google Drive developed under Python 2.7 .
 
@@ -22,8 +21,7 @@ against OAuth 2.0 as a native application. You should just have to visit the
 authorization URL once, plug-in the auth-code, and be done with it.
 
 
-IMPORTANT
-=========
+#IMPORTANT
 
 Both PyPI and the Google Code downloads for google_api_python_client have an
 old version of their libraries, prior to when they fixed some Unicode problems
@@ -49,11 +47,9 @@ NOTE: I've also experienced a google-api-python-client installation problem
      it automatically.
 
 
-Installation
-============
+#Installation
 
-pip
----
+##pip
 
 Run:
 
@@ -71,8 +67,7 @@ Distribute and to, then, uninstall setuptools. However, this doesn't seem to
 [always] work. You might prefer to use the "easy_install" method, below.
 
 
-easy_install
-------------
+##easy_install
 
 Run:
 
@@ -90,8 +85,7 @@ the end), and install the symlinks. For example:
     sudo ln -s /usr/local/sbin/gdfs mount.gdfs
 
 
-Manual Installation
--------------------
+##Manual Installation
 
   Expand into a directory named "gdrivefs" accessible from the Python path, and 
   run:
@@ -100,8 +94,7 @@ Manual Installation
     sudo ./setup.py install_egg_info
 
 
-Usage
-=====
+#Usage
 
 Before you can mount the account, you must authorize GDriveFS to access it. 
 GDriveFS works by producing a URL that you must visit in a browser. Google will
@@ -148,15 +141,13 @@ Since this is FUSE, you must be running as root to mount.
     gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
 
-Options
-=======
+#Options
 
 Any of the configuration values in conf.Conf can be overwritten as "-o" 
 options. You may pass the full array of FUSE options this way, as well.
 
 
-Format Management
-=================
+#Format Management
 
 Google Drive will store Google Document files without a standard format. If 
 you wish to download them, you have to select which format you'd like to 
@@ -198,8 +189,7 @@ drwxrwxrwx 2 root root    4096 Dec  1 19:21 testdir_1421#
 -rw-rw-rw- 1 root root    1000 Oct  4 02:13 Untitled document#
 
 
-Displaceables
-=============
+#Displaceables
 
 Google Documents stores all of its data on Google Drive. Google will store 
 these files in an agnostic file entry whose format will not be determined until 
@@ -239,16 +229,14 @@ mimetype, and now its a PDF mime-type. You can also see various flags, as well
 as the location that the actual, requested file was stored to.
 
 
-Cache/Change Management
-=======================
+#Cache/Change Management
 
 A cache of both the file/folder entries is maintained, as well as a knowledge 
 of file/folder relationships. However, updates are performed every few seconds 
 using GD's "change" functionality.
 
 
-Permissions
-===========
+#Permissions
 
 The default UID/GID of files is that of the current user. The default 
 permissions (modes) are the following:
@@ -263,8 +251,7 @@ Google Drive.
 These settings can be overridden via the "-o" comma-separated set of command-
 line options. See below.
 
-Permission-Related Options
---------------------------
+##Permission-Related Options
 
   Related Standard FUSE
   ---------------------
@@ -292,8 +279,7 @@ Permission-Related Options
         default_perm_file_noneditable=440,default_perm_file_editable=660
 
 
-Extended Attributes
-===================
+#Extended Attributes
 
 Extended attributes allow access to arbitrary, filesystem-specific data. You 
 may access any of the properties that Google Drive provides for a given entry, 
@@ -357,8 +343,7 @@ plus a handful of extra ones.
     own quotes/etc.., it was more difficult to make sense of the values.
 
 
-Misc Notes
-==========
+#Misc Notes
 
 A file will be marked as hidden on Google Drive if it has a prefixing dot. 
 However, Linux/Unix doesn't care about the "hidden" attribute. If you create a 
