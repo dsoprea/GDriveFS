@@ -1,8 +1,8 @@
 # GDriveFS
 
-An innovative FUSE wrapper for Google Drive developed under Python 2.7 .
+An innovative *FUSE* wrapper for *Google Drive* developed under *Python 2.7*.
 
-I could use some help in testing GDriveFS. Please let me know if you find 
+I could use some help in testing *GDriveFS*. Please let me know if you find 
 issues.
 
 
@@ -12,24 +12,24 @@ Design goals:
 | ---- |:----:|
 | Thread for monitoring changes via "changes" functionality of API. | X |
 | Complete stat() implementation. | X |
-| Seamlessly work around duplicate-file allowances in Google Drive. | X |
-| Seamlessly manage file-type versatility in Google Drive (Google Doc files do not have a particular format). | X |
+| Seamlessly work around duplicate-file allowances in *Google Drive*. | X |
+| Seamlessly manage file-type versatility in *Google Drive* (*Google Doc* files do not have a particular format). | X |
 | Allow for the same file at multiple paths. | X |
 
 Also, a design choice of other implementations is to make the user get API keys 
-for Google Drive, and this doesn't make sense. Our implementation is built 
-against OAuth 2.0 as a native application. You should just have to visit the 
+for *Google Drive*, and this doesn't make sense. Our implementation is built 
+against *OAuth 2.0* as a native application. You should just have to visit the 
 authorization URL once, plug-in the auth-code, and be done with it.
 
 
 # IMPORTANT
 
-Both PyPI and the Google Code downloads for google_api_python_client have an
+Both *PyPI* and the Google Code downloads for *google_api_python_client* have an
 old version of their libraries, prior to when they fixed some Unicode problems
 that might cause failure when dealing with downloads/uploads of certain types
 of files.
 
-To install from Mercurial, do the following:
+To install from *Mercurial*, do the following:
 
 ```
 $ hg clone https://code.google.com/p/google-api-python-client
@@ -39,7 +39,7 @@ $ sudo python setup.py install
 $ sudo python setup.py install_egg_info
 ```
 
-NOTE: I've also experienced a google-api-python-client installation problem
+NOTE: I've also experienced a *google-api-python-client* installation problem
       when you don't already have it installed, and it's listed as a dependency
       in setup.py:
 
@@ -47,7 +47,7 @@ NOTE: I've also experienced a google-api-python-client installation problem
 error: Installed distribution httplib2 0.7.7 conflicts with requirement httplib2>=0.8
 ```
 
-Therefore, google-api-python-client has been removed as an explicit 
+Therefore, *google-api-python-client* has been removed as an explicit 
 dependency. It should always be installed by hand, as we now won't install 
 it automatically.
 
@@ -62,7 +62,7 @@ Run:
 $ sudo pip install gdrivefs
 ```
 
-If your setuptools package is too old, you might see the following [annoying] 
+If your *setuptools* package is too old, you might see the following [annoying] 
 error:
 
 ```
@@ -72,7 +72,7 @@ error: option --single-version-externally-managed not recognized
 See [What does “error: option --single-version-externally-managed not recognized” indicate?](http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind).
       
 Apparently, the solution is to make sure that you have a healthy copy of
-Distribute and to, then, uninstall setuptools. However, this doesn't seem to 
+*Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem to 
 [always] work. You might prefer to use the "easy_install" method, below.
 
 
@@ -84,7 +84,7 @@ Run:
 $ sudo easy_install gdrivefs
 ```
 
-Go to whereever the package was installed (easy_install mentions this at 
+Go to whereever the package was installed (*easy_install* mentions this at 
 the end), and install the symlinks. For example:
 
 ```
@@ -99,7 +99,8 @@ $ sudo ln -s /usr/local/sbin/gdfs mount.gdfs
 
 ## Manual Installation
 
-Expand into a directory named "gdrivefs" accessible from the Python path, and run:
+Expand into a directory named "gdrivefs" accessible from the Python path, and 
+run:
 
 ```
 $ sudo ./setup.py install
@@ -108,19 +109,19 @@ $ sudo ./setup.py install_egg_info
 
 # Usage
 
-Before you can mount the account, you must authorize GDriveFS to access it. GDriveFS works by producing a URL that you must visit in a browser. Google will ask for your log-in information and authorization, and then give you an authorization code. You then pass this code back to the GDriveFS utility along with a file-path of where you want it to store the authorization information ("auth storage file"). Then, you can mount it whenever you'd like.
+Before you can mount the account, you must authorize *GDriveFS* to access it. 
+*GDriveFS* works by producing a URL that you must visit in a browser. Google 
+will ask for your log-in information and authorization, and then give you an 
+authorization code. You then pass this code back to the *GDriveFS* utility 
+along with a file-path of where you want it to store the authorization 
+information ("auth storage file"). Then, you can mount it whenever you'd like.
 
-Since this is FUSE, you must be running as root to mount.
+Since this is *FUSE*, you must be running as root to mount.
 
 1. To get the authorization URL:
 
     ```
     $ gdfstool auth -u
-    ```
-
-    Output:
-
-    ```
     To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
 
     https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
@@ -132,11 +133,6 @@ Since this is FUSE, you must be running as root to mount.
 
     ```
     $ gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
-    ```
-
-    Output:
-
-    ```
     Authorization code recorded.
     ```
 
@@ -163,22 +159,22 @@ Since this is FUSE, you must be running as root to mount.
 
 # Options
 
-Any of the configuration values in conf.Conf can be overwritten as "-o" 
-options. You may pass the full array of FUSE options this way, as well.
+Any of the configuration values in the *conf.Conf* module can be overwritten as 
+"-o" options. You may pass the full array of *FUSE* options this way, as well.
 
 
 # Format Management
 
-Google Drive will store Google Document files without a standard format. If 
+*Google Drive* will store *Google Document* files without a standard format. If 
 you wish to download them, you have to select which format you'd like to 
-download it as. One of the more exciting features of this FUSE implementation 
+download it as. One of the more exciting features of this *FUSE* implementation 
 is the flexibility in choosing which format to download on the fly. See the 
 section below labeled "Displaceables". 
 
 If a mime-type isn't provided when requesting a file that requires a mime-type 
-in order to download, GDFS will make a guess based on whether the extension in 
-the filename (if one exists) can be mapped to a mime-type that is available 
-among the export-types provided by GD for that specific file.
+in order to download, *GDFS* will make a guess based on whether the extension 
+in the filename (if one exists) can be mapped to a mime-type that is available 
+among the export-types provided by *GD* for that specific file.
 
 
 The following is an example directory-listing. Notice the following features:
@@ -212,7 +208,7 @@ drwxrwxrwx 2 root root    4096 Dec  1 19:21 testdir_1421#
 
 # Displaceables
 
-Google Documents stores all of its data on Google Drive. Google will store 
+*Google Documents* stores all of its data on *Google Drive*. Google will store 
 these files in an agnostic file entry whose format will not be determined until 
 you download it in a specific format. Because the file is not stored in a 
 particular format, it doesn't have a size. Because it doesn't have a size, the 
@@ -221,7 +217,8 @@ OS will not issue reads for more than (0) bytes.
 To get around this, a read of these types of files will only return exactly 
 1000 bytes of JSON-encoded "stub data".. Information about the entry, including 
 the file-path that we've stored it to. This example also shows how we've 
-specified a mime-type in order to get a PDF version of a Google Document file.
+specified a mime-type in order to get a PDF version of a *Google Document* 
+file.
 
 ```
 $ cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
@@ -247,7 +244,7 @@ $ cat /tmp/Copy\ of\ Dear\ Biola.docx#application+pdf
  "FinalMimeType": "application/pdf"}
 ```
 
-From this, you can tell that the file was originally a Google Documents' 
+From this, you can tell that the file was originally a *Google Documents'*
 mimetype, and now its a PDF mime-type. You can also see various flags, as well 
 as the location that the actual, requested file was stored to.
 
@@ -256,7 +253,7 @@ as the location that the actual, requested file was stored to.
 
 A cache of both the file/folder entries is maintained, as well as a knowledge 
 of file/folder relationships. However, updates are performed every few seconds 
-using GD's "change" functionality.
+using *GD's* "change" functionality.
 
 
 # Permissions
@@ -271,7 +268,7 @@ permissions (modes) are the following:
 | Non-editable file | 444  |
 
 Whether or not a file is "editable" is [obviously] an attribute reported by 
-Google Drive.
+*Google Drive*.
 
 These settings can be overridden via the "-o" comma-separated set of command-
 line options. See below.
@@ -280,8 +277,8 @@ line options. See below.
 
 ### Related Standard FUSE
 
-These options change the behavior at the FUSE level (above GDFS). See "man 
-mount.fuse" for all options.
+These options change the behavior at the *FUSE* level (above *GDFS*). See "*man 
+mount.fuse*" for all options.
 
 | Option              | Description                                    |
 | ------------------- | ---------------------------------------------- |
@@ -308,7 +305,7 @@ allow_other,default_permissions,default_perm_folder=770,default_perm_file_nonedi
 # Extended Attributes
 
 Extended attributes allow access to arbitrary, filesystem-specific data. You 
-may access any of the properties that Google Drive provides for a given entry, 
+may access any of the properties that *Google Drive* provides for a given entry, 
 plus a handful of extra ones.
 
 Listing attributes:
@@ -359,24 +356,28 @@ Getting specific attribute:
 $ getfattr --only-values -n user.original.id American-Pika-with-Food.jpg 
 
 0B5Ft2OXeDBqSSGFIanJ2Z2c3RWs
+```
 
+```
 $ getfattr --only-values -n user.original.modifiedDate American-Pika-with-Food.jpg
 
 2013-02-15T15:06:09.691Z
+```
 
+```
 $ getfattr --only-values -n user.original.labels American-Pika-with-Food.jpg
 
 K(restricted)=V(False); K(starred)=V(False); K(viewed)=V(False); K(hidden)=V(False); K(trashed)=V(False)
 ```
 
-This used to be rendered as JSON, but since the XATTR utilities add their 
+This used to be rendered as JSON, but since the *xattr* utilities add their 
 own quotes/etc.., it was more difficult to make sense of the values.
 
 
 # Misc Notes
 
-A file will be marked as hidden on Google Drive if it has a prefixing dot. 
+A file will be marked as hidden on *Google Drive* if it has a prefixing dot. 
 However, Linux/Unix doesn't care about the "hidden" attribute. If you create a 
-file on Google Drive, somewhere else, and want it to truly be hidden via this 
+file on *Google Drive*, somewhere else, and want it to truly be hidden via this 
 software, make sure you add the prefixing dot.
 
