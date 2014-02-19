@@ -1,4 +1,9 @@
 *.pyc
-logs
-dist
-build
+/logs
+/dist
+/build
+/local
+/lib
+/bin
+/include
+
