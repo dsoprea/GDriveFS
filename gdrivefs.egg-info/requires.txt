@@ -1,4 +1,3 @@
-ez_setup
 google_appengine
 httplib2
 python-dateutil

@@ -1,4 +1,3 @@
-README.txt
 setup.cfg
 setup.py
 gdrivefs/__init__.py
@@ -14,9 +13,9 @@ gdrivefs.egg-info/PKG-INFO
 gdrivefs.egg-info/SOURCES.txt
 gdrivefs.egg-info/dependency_links.txt
 gdrivefs.egg-info/entry_points.txt
+gdrivefs.egg-info/not-zip-safe
 gdrivefs.egg-info/requires.txt
 gdrivefs.egg-info/top_level.txt
-gdrivefs.egg-info/zip-safe
 gdrivefs/cache/__init__.py
 gdrivefs/cache/cache_agent.py
 gdrivefs/cache/cache_registry.py
@@ -35,12 +34,12 @@ gdrivefs/gdtool/oauth_authorize.py
 gdrivefs/general/__init__.py
 gdrivefs/general/buffer_segments.py
 gdrivefs/general/livereader_base.py
-gdrivefs/tools/__init__.py
-gdrivefs/tools/gdfs
-gdrivefs/tools/gdfstool
-gdrivefs/tools/gdfsuninstall
 tests/__init__.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py
 tests/gdtool/drive_proxy.py
 tests/gdtool/get_cache.py
+tools/__init__.py
+tools/gdfs
+tools/gdfstool
+tools/gdfsuninstall
