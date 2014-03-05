@@ -5,6 +5,8 @@ from sys import getfilesystemencoding
 
 from gdrivefs.conf import Conf
 
+# TODO(dustin): Make these individual functions.
+
 
 class _DriveUtility(object):
     """General utility functions loosely related to GD."""
@@ -83,15 +85,5 @@ class _DriveUtility(object):
         
         return original_filename.encode(self.local_character_set)
 
-def get_utility():
-    if get_utility.__instance == None:
-        try:
-            get_utility.__instance = _DriveUtility()
-        except:
-            logging.exception("Could not manufacture DriveUtility instance.")
-            raise
-
-    return get_utility.__instance
-
-get_utility.__instance = None
+utility = _DriveUtility()
 

@@ -4,7 +4,7 @@ from collections    import deque
 from threading      import RLock
 from datetime       import datetime
 
-from gdrivefs.utility import get_utility
+from gdrivefs.utility import utility
 from gdrivefs.conf import Conf
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
@@ -749,7 +749,7 @@ class PathRelations(object):
             num_parts = len(path_parts)
             results = [ ]
             while i < num_parts:
-                child_filename_to_search_fs = get_utility(). \
+                child_filename_to_search_fs = utility. \
                     translate_filename_charset(path_parts[i])
 
                 self.__log.debug("Checking for part (%d) [%s] under parent with "

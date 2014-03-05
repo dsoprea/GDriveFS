@@ -9,7 +9,7 @@ from numbers import Number
 from datetime import datetime
 
 from gdrivefs.conf import Conf
-from gdrivefs.utility import get_utility
+from gdrivefs.utility import utility
 from gdrivefs.errors import ExportFormatError
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
 
@@ -33,7 +33,6 @@ class NormalEntry(object):
         #                reusing the reference between objects.
 
         self.__log = logging.getLogger().getChild('NormalEntry')
-        self.__utility = get_utility()
 
         self.__info = {}
         self.__parents = []
@@ -94,7 +93,7 @@ class NormalEntry(object):
 
     def __update_display_name(self):
         # This is encoded for displaying locally.
-        self.__info['title_fs'] = self.__utility.translate_filename_charset(self.__info['title'])
+        self.__info['title_fs'] = utility.translate_filename_charset(self.__info['title'])
 
     def temp_rename(self, new_filename):
         """Set the name to something else, here, while we, most likely, wait 
@@ -170,7 +169,7 @@ class NormalEntry(object):
                                in data])
             return final
         elif isinstance(data, unicode):
-            return self.__utility.translate_filename_charset(data)
+            return utility.translate_filename_charset(data)
         elif isinstance(data, Number):
             return str(data)
         elif isinstance(data, datetime):

@@ -17,7 +17,6 @@ from dateutil.tz import tzlocal, tzutc
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
                             FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
-from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
