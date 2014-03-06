@@ -3,7 +3,9 @@
 import sys
 sys.path.insert(0, '.')
 
-from sys import exit
+# Allow for module-level init.
+import gdrivefs
+
 from argparse import ArgumentParser
 
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
@@ -19,7 +21,7 @@ def get_by_path(raw_path):
         (parent_clause, path, filename, mime_type, is_hidden) = result
     except:
         print("Could not process file-path [%s]." % (raw_path))
-        exit()
+        sys.exit()
 
     filepath = build_filepath(path, filename)
     
@@ -30,14 +32,14 @@ def get_by_path(raw_path):
     except GdNotFoundError:
         print("Could not retrieve clause for non-existent file-path [%s]." % 
               (filepath))
-        exit()
+        sys.exit()
     except:
         print("Could not retrieve clause for path [%s]. " % (filepath))
-        exit()
+        sys.exit()
 
     if not entry_clause:
         print("Path [%s] does not exist for stat()." % (filepath))
-        exit()
+        sys.exit()
 
     return entry_clause[CLAUSE_ENTRY]
 

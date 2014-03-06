@@ -3,6 +3,9 @@
 import sys
 sys.path.insert(0, '.')
 
+# Allow for module-level init.
+import gdrivefs
+
 import logging
 
 from argparse import ArgumentParser
