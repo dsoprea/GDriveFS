@@ -38,10 +38,9 @@ class Conf(object):
     default_perm_file_editable          = '666'
     default_perm_file_noneditable       = '444'
 
+    # How many extra entries to retrieve when an entry is accessed that is not
+    # currently cached.
     max_readahead_entries = 10
-    """How many extra entries to retrieve when an entry is accessed that is 
-    not currently cached.
-    """
 
     @staticmethod
     def get(key):
