@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from sys import getfilesystemencoding
 
@@ -84,6 +85,11 @@ class _DriveUtility(object):
         """Convert the given filename to the correct character set."""
         
         return original_filename.encode(self.local_character_set)
+
+    def make_safe_for_filename(text):
+        """Remove any filename-invalid characters."""
+    
+        return re.sub('[^a-z0-9\-_\.]+', '', filename)
 
 utility = _DriveUtility()
 
