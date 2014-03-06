@@ -34,6 +34,19 @@ def get_temp_filepath(normalized_entry, mime_type):
     return ("%s/local/%s" % (temp_path, temp_filename))
 
 
+
+# TODO(dustin): LCM runs in a greenlet pool. When we open a file that needs the
+#               existing data for a file (read, append), a switch is done to an
+#               LCM worker. If the data is absent or faulted, download the
+#               content. Then, switch back.
+
+class LocalCopyManager(object):
+    """Manages local copies of files."""
+    
+#    def 
+    pass
+
+
 class OpenedManager(object):
     """Manages all of the currently-open files."""
 

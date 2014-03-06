@@ -1,0 +1,4 @@
+[submodule "geventhttpclient"]
+	path = third_party/geventhttpclient
+	url = https://github.com/gwik/geventhttpclient.git
+

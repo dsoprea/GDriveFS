@@ -3,6 +3,9 @@
 # Allow for module-level init.
 import gdrivefs
 
+# Allow for module-level init.
+import gdrivefs
+
 import logging
 
 from argparse import ArgumentParser
