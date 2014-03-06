@@ -35,6 +35,7 @@ def get_temp_filepath(normalized_entry, mime_type):
 
 
 class OpenedManager(object):
+    """Manages all of the currently-open files."""
 
     __instance = None
     __singleton_lock = Lock()
@@ -368,6 +369,7 @@ class OpenedFile(object):
                 self.__log.debug("Executing the download.")
                 
                 try:
+# TODO(dustin): We're not inheriting an existing file (same mtime, same size).
                     result = drive_proxy('download_to_local', 
                                          output_file_path=temp_file_path,
                                          normalized_entry=entry,
@@ -580,9 +582,9 @@ class OpenedFile(object):
                                  (offset, buffer_len))
 
             if (offset + length) > buffer_len:
-                self.__log.debug("Requested length (%d) from offset (%d) exceeds "
-                                 "file length (%d). Truncated." % (length, offset, 
-                                                                   buffer_len)) 
+                self.__log.debug("Requested length (%d) from offset (%d) "
+                                 "exceeds file length (%d). Truncated." % 
+                                 (length, offset, buffer_len)) 
                 length = buffer_len
 
         data_blocks = [block for block in self.__buffer.read(offset, length)]
