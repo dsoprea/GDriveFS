@@ -17,13 +17,26 @@ client = auth.get_client()
 #response = client.about().get().execute()
 #request = client.files().media_get()
 #response = client.files().list().execute()
-response = client.files().get(fileId='1xxGrmEAv4-2ZM1MYj4UXpnxUp73d2VmtI9TdFERrSbM').execute()
+#response = client.files().get(fileId='1xxGrmEAv4-2ZM1MYj4UXpnxUp73d2VmtI9TdFERrSbM').execute()
 
-pprint(response.keys())
+#pprint(response.keys())
 
 #for entry in response['items']:
 #    pprint(dir(entry))
 #    sys.exit()
 
 #pprint(dir(response))
+
+from gdrivefs.gdtool.download_agent import download_agent_external
+from time import sleep
+
+download_agent_external.start()
+
+try:
+    while 1:
+        sleep 1
+except KeyboardInterrupt:
+    print("Test loop has ended.")
+
+download_agent_external.stop()
 
