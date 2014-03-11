@@ -89,7 +89,7 @@ class _DriveUtility(object):
     def make_safe_for_filename(self, text):
         """Remove any filename-invalid characters."""
     
-        return re.sub('[^a-z0-9\-_\.]+', '', filename)
+        return re.sub('[^a-z0-9\-_\.]+', '', text)
 
 utility = _DriveUtility()
 

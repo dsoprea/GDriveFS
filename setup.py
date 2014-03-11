@@ -54,6 +54,7 @@ A complete FUSE adapter for Google Drive. See Github for more information.""",
         'httplib2',
         'python-dateutil',
         'fusepy',
+        'file://third_party/geventhttpclient'
       ],
       entry_points="""
       # -*- Entry points: -*-

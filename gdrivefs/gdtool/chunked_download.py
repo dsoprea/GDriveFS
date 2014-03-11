@@ -5,6 +5,8 @@ from oauth2client import util
 from apiclient.http import MediaDownloadProgress
 from apiclient.errors import HttpError
 
+DEFAULT_CHUNK_SIZE = 1024 * 512
+
 
 class ChunkedDownload(object):
   """"Download an entry, chunk by chunk. This code is mostly identical to
