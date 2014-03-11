@@ -15,6 +15,7 @@ from os import makedirs, stat, utime, unlink
 from datetime import datetime
 from glob import glob
 from contextlib import contextmanager
+from dateutil.tz import tzlocal
 
 from gevent.pool import Pool
 
@@ -46,6 +47,9 @@ class DownloadAgentDownloadWorkerError(DownloadAgentDownloadError):
 class DownloadAgentResourceFaultedException(DownloadAgentDownloadException):
     pass
 
+class DownloadAgentDownloadStopException(DownloadAgentDownloadException):
+    pass
+
 
 class _DownloadedFileState(object):
     """This class is in charge of knowing where to store downloaded files, and
@@ -56,12 +60,16 @@ class _DownloadedFileState(object):
         self.__file_marker_locker = Lock()
 
         self.__typed_entry = download_request.typed_entry
-        self.__file_path = self.__get_stored_filepath()
+        self.__file_path = self.get_stored_filepath()
         self.__stamp_file_path = self.__get_downloading_stamp_filepath()
 
         self.__expected_mtime_dt = download_request.expected_mtime_dt
+        
+        expected_mtime_localized_dt = self.__expected_mtime_dt.astimezone(
+                                        tzlocal())
+
         self.__expected_mtime_epoch = \
-            mktime(self.__expected_mtime_dt.timetuple())
+            mktime(expected_mtime_localized_dt.timetuple())
 
     def is_up_to_date(self, bytes=None):
         with self.__file_marker_locker:
@@ -155,7 +163,7 @@ class _DownloadedFileState(object):
 
         return filename
 
-    def __get_stored_filepath(self):
+    def get_stored_filepath(self):
         filename = self.__get_stored_filename()
         return join(download_agent.DOWNLOAD_PATH, filename)
 
@@ -189,9 +197,7 @@ class _DownloadedFileState(object):
                 pass
 
             # ...and set its mtime.
-# TODO(dustin): Make sure the timezone matches the current system.
-            utime(self.__stamp_file_path, (self.__expected_mtime_epoch, 
-                                           self.__expected_mtime_epoch))
+            utime(self.__stamp_file_path, (self.__expected_mtime_epoch,) * 2)
 
             # If we either didn't have a stamp file or or we did and the mtime 
             # doesn't match, create an empty download file or truncate the 
@@ -204,9 +210,7 @@ class _DownloadedFileState(object):
         """Called after a download has completed."""
 
         with self.__file_marker_locker:
-            utime(self.__file_path, (self.__expected_mtime_epoch, 
-                                     self.__expected_mtime_epoch))
-# TODO(dustin): Make sure the timezone matches the current system.
+            utime(self.__file_path, (self.__expected_mtime_epoch,) * 2) 
             unlink(self.__stamp_file_path)
 
     @property
@@ -218,7 +222,7 @@ class _DownloadAgent(object):
     """Exclusively manages downloading files from Drive within another process.
     This is a singleton class (and there's only one worker process).
     """
-# TODO(dustin): We'll have to use multiprocessing's logging wrappers.
+
     def __init__(self, request_q, stop_ev):
         self.__request_q = request_q
         self.__stop_ev = stop_ev
@@ -261,8 +265,9 @@ class _DownloadAgent(object):
                         # Stop downloading this file, prhaps if all handles 
                         # were closed and the file is no longer needed.
                         if download_stop_ev.is_set() is True:
-                            raise DownloadAgentDownloadWorkerError(
-                                "Download worker was told to stop downloading.")
+                            raise DownloadAgentDownloadStopException(
+                                "Download worker was told to stop "
+                                "downloading.")
 
                         status, done = downloader.next_chunk()
                         ns.bytes_written = status.resumable_progress
@@ -271,10 +276,10 @@ class _DownloadAgent(object):
                             break
 
                     dfs.finish_download()
+                    ns.error = None
                 except Exception as e:
-                    error = ("[%s] %s" % (e.__class__.__name__, str(e)))
+                    ns.error = (e.__class__.__name__, str(e))
 
-        ns.error = error
         request_ev.set()
 
     def loop(self):
@@ -291,9 +296,8 @@ class _DownloadAgent(object):
 
             self.__worker_pool.spawn(self.download_worker, *request_info)
 
-        # The download loop has exited (we were told to stop).
-
-        # Signal the workers to stop what they're doing.
+        # The download loop has exited (we were told to stop). Signal the 
+        # workers to stop what they're doing.
 
         self.__kill_ev.set()
         start_epoch = time()
@@ -370,15 +374,17 @@ class _SyncedResourceHandle(object):
       handle.
     """
 
-    def __init__(self, resource, download_request):
+    def __init__(self, resource, dfs):
         self.__resource = resource
-        self.__download_request = download_request
+        self.__dfs = dfs
+        self.__is_faulted = False
+        self.__f = open(self.__dfs.get_stored_filepath(), 'rb')      
 
         # Start off opened.
         self.__open = True
 
-        self.__is_faulted = False
-
+        # We've finished initializing. Register ourselves as a handle on the 
+        # resource.        
         self.__resource.register_handle(self)
 
     def set_faulted(self):
@@ -405,54 +411,15 @@ class _SyncedResourceHandle(object):
 
     def __exit__(self, type, value, traceback):
         self.close()
-        
-# TODO(dustin): Implement these.
-    @__check_state
-    def close(self):
-        self.__open = False
-        self.__resource.decr_ref_count()
 
-        raise NotImplementedError()
-    
+    def close(self):
+        self.__resource.decr_ref_count()
+        self.__f.close()
+        self.__open = False
+
     @__check_state
-    def flush(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def next(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def read(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def readline(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def readlines(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def seek(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def tell(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def truncate(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def write(self):
-        raise NotImplementedError()
-    
-    @__check_state
-    def writelines(self):
-        raise NotImplementedError()
+    def __getattr__(self, name):
+        return getattr(self.__f, name)
 
 
 class _DownloadAgentExternal(object):
@@ -580,6 +547,9 @@ class _DownloadAgentExternal(object):
         way that can be caught and restarted.
         """
 
+        if download_request.expected_mtime_dt.tzinfo is None:
+            raise ValueError("expected_mtime_dt must be timezone-aware.")
+
         # We keep a registry/index of everything we're downloading so that all
         # subsequent attempts to download the same file will block on the same
         # request.
@@ -590,6 +560,9 @@ class _DownloadAgentExternal(object):
         # official request for tracking/locking purposes.
 
         typed_entry = download_request.typed_entry
+        expected_mtime_dt = download_request.expected_mtime_dt
+        bytes = download_request.bytes
+
         dfs = _DownloadedFileState(download_request)
 
         with self.__request_registry_locker:
@@ -641,23 +614,33 @@ class _DownloadAgentExternal(object):
             # file is no longer valid, the file-resource will still be faulted 
             # correctly.
 
-            if dfs.is_up_to_date(download_request.bytes) is False:
+            if dfs.is_up_to_date(bytes) is False:
                 while 1:
                     is_done = finish_ev.wait(download_agent.REQUEST_WAIT_PERIOD_S)
 
                     if ns.error is not None:
-# TODO(dustin): We need to catch and raise a specific exception when the 
-#               download errored out due to faulting, so that our caller can 
-#               restart us.
+                        # If the download was stopped while there was at least 
+                        # one watcher (which generally means that the file has 
+                        # changed and the  message has propagated from the 
+                        # notifying thread, to the download worker, to us), 
+                        # emit an exception so those callers can re-call us.
+                        #
+                        # If this error occurred when there were no watchers,
+                        # the stop most likely occurred because there -were-
+                        # no watchers.
+                        if ns.error[0] == 'DownloadAgentDownloadStopException':
+                            raise DownloadAgentDownloadStopException(
+                                ns.error[1])
+
                         raise DownloadAgentDownloadAgentError(
-                            "Download failed for [%s]: %s" % 
-                            (typed_entry.entry_id, ns.error))
+                            "Download failed for [%s]: [%s] %s" % 
+                            (typed_entry.entry_id, ns.error[0], ns.error[1]))
 
                     elif is_done is True:
                         break
 
-                    elif download_request.bytes is not None and \
-                         ns.bytes_received >= download_request.bytes:
+                    elif bytes is not None and \
+                         ns.bytes_received >= bytes:
                         break
 
             # We've now downloaded enough bytes, or already had enough bytes 
@@ -669,10 +652,11 @@ class _DownloadAgentExternal(object):
             # number of threads that have handles to an entry, regardless of 
             # mime-type (can be faulted when the content changes).
 
-# TODO(dustin): This resource still needs to know what typed-file and file-path were requested.
             resource = self.__get_resource(typed_entry.entry_id, 
-                                           download_request.expected_mtime_dt)
-            yield _SyncedResourceHandle(resource)
+                                           expected_mtime_dt)
+
+            with _SyncedResourceHandle(resource, dfs) as srh:
+                yield srh
         finally:
             # Decrement the reference count.
             with self.__request_registry_locker:
@@ -705,6 +689,9 @@ class _DownloadAgentExternal(object):
         whether anything has actually ever accessed this entry... Just whether 
         something currently has it open. It's essentially the same, and cheap.
         """
+
+        if mtime_dt.tzinfo is None:
+            raise ValueError("mtime_dt must be timezone-aware.")
 
         self.set_resource_faulted(entry_id)
 
