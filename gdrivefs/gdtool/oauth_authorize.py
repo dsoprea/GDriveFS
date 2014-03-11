@@ -43,7 +43,8 @@ class _OauthAuthorize(object):
         #self.flow.redirect_uri = OOB_CALLBACK_URN
 
     def __get_scopes(self):
-        scopes = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file"
+        scopes = "https://www.googleapis.com/auth/drive "\
+                 "https://www.googleapis.com/auth/drive.file"
                #'https://www.googleapis.com/auth/userinfo.email '
                #'https://www.googleapis.com/auth/userinfo.profile')
         return scopes
@@ -107,7 +108,8 @@ class _OauthAuthorize(object):
             # We couldn't decode the credentials. Kill the cache.
             self.__clear_cache()
 
-            self.__log.exception("Could not deserialize credentials. Ignoring.")
+            self.__log.exception("Could not deserialize credentials. "
+                                 "Ignoring.")
             return None
 
         self.credentials = credentials
@@ -184,9 +186,9 @@ class _OauthAuthorize(object):
         try:
             credentials = self.flow.step2_exchange(auth_code)
         except:
-            message = "Could not do auth-exchange (this was either a legitimate" \
-                      " error, or the auth-exchange was attempted when not " \
-                      "necessary)."
+            message = "Could not do auth-exchange (this was either a "\
+                      "legitimate error, or the auth-exchange was attempted "\
+                      "when not necessary)."
 
             self.__log.exception(message)
             raise AuthorizationFailureError(message)
@@ -201,15 +203,7 @@ class _OauthAuthorize(object):
         
         self.credentials = credentials
 
+oauth = _OauthAuthorize()
 def get_auth():
-    if get_auth.__instance == None:
-        try:
-            get_auth.__instance = _OauthAuthorize()
-        except:
-            logging.exception("Could not manufacture OauthAuthorize instance.")
-            raise
-    
-    return get_auth.__instance
-
-get_auth.__instance = None
+    return oauth
 
