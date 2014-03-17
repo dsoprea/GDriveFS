@@ -17,46 +17,34 @@ from dateutil.tz import tzlocal, tzutc
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
                             FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
-from gdrivefs.utility import get_utility
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
 from gdrivefs.gdfs.fsutility import split_path_nolookups, \
                                     escape_filename_for_query
 
-class _GdriveManager(object):
-    """Handles all basic communication with Google Drive. All methods should
-    try to invoke only one call, or make sure they handle authentication 
-    refreshing when necessary.
-    """
+_CONF_SERVICE_NAME = 'drive'
+_CONF_SERVICE_VERSION = 'v2'
 
-    __log = None
 
-    authorize   = None
-    credentials = None
-    client      = None
-
-    conf_service_name       = 'drive'
-    conf_service_version    = 'v2'
-    
+class GdriveAuth(object):
     def __init__(self):
-        self.__log = logging.getLogger().getChild('GdManager')
-        self.authorize = get_auth()
-        self.check_authorization()
+        self.__log = logging.getLogger().getChild('GdAuth')
+        self.__client = None
+        self.__authorize = get_auth()
+        self.__check_authorization()
 
-    def check_authorization(self):
-        self.credentials = self.authorize.get_credentials()
+    def __check_authorization(self):
+        self.__credentials = self.__authorize.get_credentials()
 
     def get_authed_http(self):
-
-        self.check_authorization()
-    
+        self.__check_authorization()
         self.__log.info("Getting authorized HTTP tunnel.")
             
         http = Http()
 
         try:
-            self.credentials.authorize(http)
+            self.__credentials.authorize(http)
         except:
             self.__log.exception("Could not get authorized HTTP client for "
                                  "Google Drive client.")
@@ -65,54 +53,63 @@ class _GdriveManager(object):
         return http
 
     def get_client(self):
+        if self.__client is None:
+            try:
+                authed_http = self.get_authed_http()
+            except:
+                self.__log.exception("Could not get authed Http instance.")
+                raise
 
-        if self.client != None:
-            return self.client
-
-        try:
-            authed_http = self.get_authed_http()
-        except:
-            self.__log.exception("Could not get authed Http instance.")
-            raise
-
-        self.__log.info("Building authorized client from Http.  TYPE= [%s]" % 
-                        (type(authed_http)))
-    
-        # Build a client from the passed discovery document path
+            self.__log.info("Building authorized client from Http.  TYPE= [%s]" % 
+                            (type(authed_http)))
         
-        discoveryUrl = Conf.get('google_discovery_service_url')
+            # Build a client from the passed discovery document path
+            
+            discoveryUrl = Conf.get('google_discovery_service_url')
 # TODO: We should cache this, since we have, so often, having a problem 
 #       retrieving it. If there's no other way, grab it directly, and then pass
 #       via a file:// URI.
         
-        try:
-            client = build(self.conf_service_name, 
-                           self.conf_service_version, 
-                           http=authed_http, 
-                           discoveryServiceUrl=discoveryUrl)
-        except HttpError as e:
-            # We've seen situations where the discovery URL's server is down,
-            # with an alternate one to be used.
-            #
-            # An error here shouldn't leave GDFS in an unstable state (the 
-            # current command should just fail). Hoepfully, the failure is 
-            # momentary, and the next command succeeds.
+            try:
+                client = build(_CONF_SERVICE_NAME, 
+                               _CONF_SERVICE_VERSION, 
+                               http=authed_http, 
+                               discoveryServiceUrl=discoveryUrl)
+            except HttpError as e:
+                # We've seen situations where the discovery URL's server is down,
+                # with an alternate one to be used.
+                #
+                # An error here shouldn't leave GDFS in an unstable state (the 
+                # current command should just fail). Hoepfully, the failure is 
+                # momentary, and the next command succeeds.
 
-            logging.exception("There was an HTTP response-code of (%d) while "
-                              "building the client with discovery URL [%s]." % 
-                              (e.resp.status, discoveryUrl))
-            raise
-        except:
-            raise
+                logging.exception("There was an HTTP response-code of (%d) while "
+                                  "building the client with discovery URL [%s]." % 
+                                  (e.resp.status, discoveryUrl))
+                raise
+            except:
+                raise
 
-        self.client = client
-        return self.client
+            self.__client = client
+
+        return self.__client
+
+
+class _GdriveManager(object):
+    """Handles all basic communication with Google Drive. All methods should
+    try to invoke only one call, or make sure they handle authentication 
+    refreshing when necessary.
+    """
+
+    def __init__(self):
+        self.__log = logging.getLogger().getChild('GdManager')
+        self.__auth = GdriveAuth()
 
     def get_about_info(self):
         """Return the 'about' information for the drive."""
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (get_about).")
@@ -137,7 +134,7 @@ class _GdriveManager(object):
                         "[%s]." % (start_change_id, page_token))
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (list_changes).")
@@ -191,7 +188,7 @@ class _GdriveManager(object):
         self.__log.info("Getting client for parent-listing.")
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_parents_containing_id).")
@@ -217,7 +214,7 @@ class _GdriveManager(object):
         self.__log.info("Getting client for child-listing.")
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_children_under_parent_id).")
@@ -270,7 +267,7 @@ class _GdriveManager(object):
     def get_entry(self, entry_id):
         
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the Google "
                               "Drive client (get_entry).")
@@ -307,7 +304,7 @@ class _GdriveManager(object):
                                    else '<none>'))
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (list_files).")
@@ -433,7 +430,7 @@ class _GdriveManager(object):
 
         try:
 # TODO(dustin): This might establish a new connection. Not cool.
-            authed_http = self.get_authed_http()
+            authed_http = self.__auth.get_authed_http()
         except:
             self.__log.exception("Could not get authed Http instance for "
                                  "download.")
@@ -508,7 +505,7 @@ class _GdriveManager(object):
                          modified_datetime, accessed_datetime))
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (insert_entry).")
@@ -575,7 +572,7 @@ class _GdriveManager(object):
         self.__log.info("Updating entry [%s]." % (normalized_entry))
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (update_entry).")
@@ -675,7 +672,7 @@ class _GdriveManager(object):
         self.__log.info("Removing entry with ID [%s]." % (normalized_entry.id))
 
         try:
-            client = self.get_client()
+            client = self.__auth.get_client()
         except:
             self.__log.exception("There was an error while acquiring the "
                                  "Google Drive client (remove_entry).")
@@ -702,11 +699,6 @@ class _GoogleProxy(object):
     Nothing inside the Google Drive wrapper class should call this. In general, 
     only external logic should invoke us.
     """
-    
-    __log = None
-    
-    authorize       = None
-    gdrive_wrapper  = None
     
     def __init__(self):
         self.__log = logging.getLogger().getChild('GoogleProxy')

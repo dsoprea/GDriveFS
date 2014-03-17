@@ -12,8 +12,7 @@ class Conf(object):
                  "token_uri": "https://accounts.google.com/o/oauth2/token"
                }}
     
-    auth_temp_path                      = '/var/cache/gdfs'
-    auth_cache_filepath                 = None #'credcache'
+    auth_cache_filepath                 = '/var/cache/gdfs/creds'
     gd_to_normal_mapping_filepath       = '/etc/gdfs/mime_mapping.json'
     extension_mapping_filepath          = '/etc/gdfs/extension_mapping.json'
     change_check_interval_s             = .5
@@ -38,10 +37,9 @@ class Conf(object):
     default_perm_file_editable          = '666'
     default_perm_file_noneditable       = '444'
 
+    # How many extra entries to retrieve when an entry is accessed that is not
+    # currently cached.
     max_readahead_entries = 10
-    """How many extra entries to retrieve when an entry is accessed that is 
-    not currently cached.
-    """
 
     @staticmethod
     def get(key):

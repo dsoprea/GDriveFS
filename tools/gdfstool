@@ -1,11 +1,13 @@
 #!/usr/bin/env python2.7
 
-import sys
-sys.path.insert(0, '.')
+# Allow for module-level init.
+import gdrivefs
+
+# Allow for module-level init.
+import gdrivefs
 
 import logging
 
-from sys import exit
 from argparse import ArgumentParser
 
 from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath, mount, \
@@ -38,7 +40,7 @@ def main():
             url = authorize.step1_get_auth_url()
         except Exception as e:
             print("Could not produce auth-URL: %s" % (e))
-            exit()
+            sys.exit()
 
         print("To authorize FUSE to use your Google Drive account, visit the "
               "following URL to produce an authorization code:\n\n%s\n" % 
@@ -59,7 +61,7 @@ def main():
 
             logging.exception(message)
             print(message)
-            exit()
+            sys.exit()
 
         print("Authorization code recorded.")
 
@@ -77,7 +79,7 @@ def main():
 
             logging.exception(message)
             print(message)
-            exit()
+            sys.exit()
 
 if __name__ == '__main__':
     main()

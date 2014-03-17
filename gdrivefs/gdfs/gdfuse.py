@@ -17,7 +17,6 @@ from datetime import datetime
 from dateutil.tz import tzlocal, tzutc
 from os.path import split
 
-from gdrivefs.utility import get_utility
 from gdrivefs.change import get_change_manager
 from gdrivefs.timer import Timers
 from gdrivefs.cache.volume import PathRelations, EntryCache, \
@@ -161,6 +160,7 @@ class GDriveFS(LoggingMixIn,Operations):
         if entry.is_directory:
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
             # default size should be 4K.
+# TODO(dustin): Should we just make this (0), since that's what it is?
             stat_result["st_size"] = 1024 * 4
             stat_result["st_mode"] = (stat.S_IFDIR | effective_permission)
             stat_result["st_nlink"] = 2

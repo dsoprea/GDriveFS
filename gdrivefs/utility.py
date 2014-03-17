@@ -1,9 +1,12 @@
 import json
 import logging
+import re
 
 from sys import getfilesystemencoding
 
 from gdrivefs.conf import Conf
+
+# TODO(dustin): Make these individual functions.
 
 
 class _DriveUtility(object):
@@ -83,15 +86,10 @@ class _DriveUtility(object):
         
         return original_filename.encode(self.local_character_set)
 
-def get_utility():
-    if get_utility.__instance == None:
-        try:
-            get_utility.__instance = _DriveUtility()
-        except:
-            logging.exception("Could not manufacture DriveUtility instance.")
-            raise
+    def make_safe_for_filename(text):
+        """Remove any filename-invalid characters."""
+    
+        return re.sub('[^a-z0-9\-_\.]+', '', filename)
 
-    return get_utility.__instance
-
-get_utility.__instance = None
+utility = _DriveUtility()
 
