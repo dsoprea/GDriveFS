@@ -5,6 +5,7 @@ the download-worker itself. Both are singleton classes.
 import gevent
 import multiprocessing
 import logging
+import gevent.lock
 
 from multiprocessing import Process, Manager, Queue
 from Queue import Empty
@@ -264,6 +265,10 @@ class _DownloadAgent(object):
         self.__http_pool = HttpPool(download_agent.HTTP_POOL_SIZE)
         self.__http = GdriveAuth().get_authed_http()
 
+        # This allows multiple green threads to communicate over the same IPC 
+        # resources.
+        self.__ipc_sem = gevent.lock.Semaphore()
+
     def download_worker(self, download_request, request_ev, download_stop_ev, 
                         ns):
         self.__log.info("Worker thread downloading: %s" % (download_request,))
@@ -295,27 +300,30 @@ class _DownloadAgent(object):
                     self.__log.info("Beginning download loop: %s" % (str(dfs)))
 
                     while 1:
-                        # Stop downloading if the process is coming down.
-                        if self.__kill_ev.is_set() is True:
-                            self.__log.info("Download loop has been "
-                                            "terminated because we're "
-                                            "shutting down.")
-                            raise DownloadAgentWorkerShutdownException(
-                                "Download worker terminated.")
+                        with self.__ipc_sem:
+                            # Stop downloading if the process is coming down.
+                            if self.__kill_ev.is_set() is True:
+                                self.__log.info("Download loop has been "
+                                                "terminated because we're "
+                                                "shutting down.")
+                                raise DownloadAgentWorkerShutdownException(
+                                    "Download worker terminated.")
 
-                        # Stop downloading this file, prhaps if all handles 
-                        # were closed and the file is no longer needed.
-                        if download_stop_ev.is_set() is True:
-                            self.__log.info("Download loop has been "
-                                            "terminated because we were told "
-                                            "to stop (the agent is still "
-                                            "running, though).")
-                            raise DownloadAgentDownloadStopException(
-                                "Download worker was told to stop "
-                                "downloading.")
+                            # Stop downloading this file, prhaps if all handles 
+                            # were closed and the file is no longer needed.
+                            if download_stop_ev.is_set() is True:
+                                self.__log.info("Download loop has been "
+                                                "terminated because we were told "
+                                                "to stop (the agent is still "
+                                                "running, though).")
+                                raise DownloadAgentDownloadStopException(
+                                    "Download worker was told to stop "
+                                    "downloading.")
 
                         status, done = downloader.next_chunk()
-                        ns.bytes_written = status.resumable_progress
+
+                        with self.__ipc_sem:
+                            ns.bytes_written = status.resumable_progress
 
                         if done is True:
                             break
@@ -325,12 +333,15 @@ class _DownloadAgent(object):
                     dfs.finish_download()
                 except DownloadAgentDownloadException as e:
                     self.__log.exception("Download exception.")
-                    ns.error = (e.__class__.__name__, str(e))
+
+                    with self.__ipc_sem()
+                        ns.error = (e.__class__.__name__, str(e))
         else:
             self.__log.info("Local copy is already up-to-date: %s" % 
                             (download_request))
 
-        request_ev.set()
+        with self.__ipc_sem():
+            request_ev.set()
 
     def loop(self):
         while True:
