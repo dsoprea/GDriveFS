@@ -12,7 +12,7 @@ class Conf(object):
                  "token_uri": "https://accounts.google.com/o/oauth2/token"
                }}
     
-    auth_cache_filepath                 = '/var/cache/gdfs/creds'
+    auth_cache_filepath                 = None
     gd_to_normal_mapping_filepath       = '/etc/gdfs/mime_mapping.json'
     extension_mapping_filepath          = '/etc/gdfs/extension_mapping.json'
     change_check_interval_s             = .5

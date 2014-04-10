@@ -13,6 +13,8 @@ from os import remove
 from gdrivefs.errors import AuthorizationFailureError, AuthorizationFaultError
 from gdrivefs.conf import Conf
 
+_logger = logging.getLogger(__name__)
+
 
 class _OauthAuthorize(object):
     """Manages authorization process."""
@@ -27,9 +29,14 @@ class _OauthAuthorize(object):
         self.__log = logging.getLogger().getChild('OauthAuth')
 
         cache_filepath  = Conf.get('auth_cache_filepath')
+        
+        if cache_filepath is None:
+            raise ValueError("Credentials file-path is not set.")
+        
         api_credentials = Conf.get('api_credentials')
 
         self.cache_filepath = cache_filepath
+        self.credentials = None
 
         with NamedTemporaryFile() as f:
             json.dump(api_credentials, f)
@@ -86,43 +93,37 @@ class _OauthAuthorize(object):
             
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
-        
-        if self.credentials != None:
-            return self.credentials
-        
-        self.__log.info("Checking for cached credentials.")
 
-        try:
-            with open(self.cache_filepath, 'r') as cache:
+        if self.credentials is None:
+            self.__log.info("Checking for cached credentials: %s" % 
+                            (self.cache_filepath))
+
+            with open(self.cache_filepath) as cache:
                 credentials_serialized = cache.read()
-        except:
-            return None
 
-        # If we're here, we have serialized credentials information.
+            # If we're here, we have serialized credentials information.
 
-        self.__log.info("Raw credentials retrieved from cache.")
-        
-        try:
-            credentials = pickle.loads(credentials_serialized)
-        except:
-            # We couldn't decode the credentials. Kill the cache.
-            self.__clear_cache()
-
-            self.__log.exception("Could not deserialize credentials. "
-                                 "Ignoring.")
-            return None
-
-        self.credentials = credentials
+            self.__log.info("Raw credentials retrieved from cache.")
             
-        # Credentials restored. Check expiration date.
-            
-        self.__log.info("Cached credentials found with expire-date [%s]." % 
-                     (credentials.token_expiry.strftime('%Y%m%d-%H%M%S')))
-        
-        self.credentials = credentials
+            try:
+                credentials = pickle.loads(credentials_serialized)
+            except:
+                # We couldn't decode the credentials. Kill the cache.
+                self.__clear_cache()
+                raise
 
-        self.check_credential_state()
-        
+            self.credentials = credentials
+                
+            # Credentials restored. Check expiration date.
+
+            expiry_phrase = self.credentials.token_expiry.strftime(
+                                '%Y%m%d-%H%M%S')
+                
+            self.__log.info("Cached credentials found with expire-date [%s]." % 
+                            (expiry_phrase))
+            
+            self.check_credential_state()
+
         return self.credentials
 
     def check_credential_state(self):
@@ -137,21 +138,7 @@ class _OauthAuthorize(object):
             return self.credentials
 
     def get_credentials(self):
-        try:
-            self.credentials = self.__step2_check_auth_cache()
-        except:
-            message = "Could not check cache for credentials."
-
-            self.__log.exception(message)
-            raise AuthorizationFailureError(message)
-    
-        if self.credentials == None:
-            message = "No credentials were established from the cache."
-
-            self.__log.exception(message)
-            raise AuthorizationFaultError(message)
-
-        return self.credentials
+        return self.__step2_check_auth_cache()
     
     def __update_cache(self, credentials):
 
@@ -203,7 +190,12 @@ class _OauthAuthorize(object):
         
         self.credentials = credentials
 
-oauth = _OauthAuthorize()
+oauth = None
 def get_auth():
+    global oauth
+    if oauth is None:
+        _logger.debug("Creating OauthAuthorize.")
+        oauth = _OauthAuthorize()
+    
     return oauth
 
