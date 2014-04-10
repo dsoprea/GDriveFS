@@ -1,6 +1,8 @@
-setup.cfg
+MANIFEST.in
 setup.py
+versioneer.py
 gdrivefs/__init__.py
+gdrivefs/_version.py
 gdrivefs/change.py
 gdrivefs/conf.py
 gdrivefs/errors.py
@@ -14,7 +16,6 @@ gdrivefs/utility.py
 gdrivefs.egg-info/PKG-INFO
 gdrivefs.egg-info/SOURCES.txt
 gdrivefs.egg-info/dependency_links.txt
-gdrivefs.egg-info/entry_points.txt
 gdrivefs.egg-info/not-zip-safe
 gdrivefs.egg-info/requires.txt
 gdrivefs.egg-info/top_level.txt
