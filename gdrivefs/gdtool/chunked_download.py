@@ -5,6 +5,8 @@ from oauth2client import util
 from apiclient.http import MediaDownloadProgress
 from apiclient.errors import HttpError
 
+DEFAULT_CHUNK_SIZE = 1024 * 512
+
 
 class ChunkedDownload(object):
   """"Download an entry, chunk by chunk. This code is mostly identical to
@@ -13,7 +15,7 @@ class ChunkedDownload(object):
   """
 
   @util.positional(4)
-  def __init__(self, fd, http, uri, chunksize=DEFAULT_CHUNK_SIZE):
+  def __init__(self, fd, http, uri, chunksize=DEFAULT_CHUNK_SIZE, start_at=0):
     """Constructor.
 
     Args:
@@ -27,7 +29,7 @@ class ChunkedDownload(object):
     self._http = http
     self._uri = uri
     self._chunksize = chunksize
-    self._progress = 0
+    self._progress = start_at
     self._total_size = None
     self._done = False
 

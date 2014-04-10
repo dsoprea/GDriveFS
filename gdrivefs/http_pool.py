@@ -1,9 +1,8 @@
 from contextlib import contextmanager
-
-from geventhttpclient import httplib
 from gevent.queue import Queue
 
-httplib.patch()
+from gevent import monkey; 
+monkey.patch_socket()
 
 from httplib2 import Http
 

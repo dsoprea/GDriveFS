@@ -1,5 +1,8 @@
 #!/usr/bin/env python2.7
 
+import sys
+sys.path.insert(0, '..')
+
 # Allow for module-level init.
 import gdrivefs
 
@@ -19,6 +22,9 @@ def main():
     args = parser.parse_args()
 
     option_string = args.opt[0] if args.opt else None
+
+    logging.debug("Mounting GD with creds at [%s]: %s", 
+                  args.auth_storage_file, args.mountpoint)
 
     try:
         mount(auth_storage_filepath=args.auth_storage_file, 

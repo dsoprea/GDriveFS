@@ -6,4 +6,6 @@
 /lib
 /bin
 /include
+/.Python
+/gdrivefs.egg-info/
 

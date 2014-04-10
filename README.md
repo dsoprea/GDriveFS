@@ -64,18 +64,25 @@ $ sudo pip install gdrivefs
 
 ### Troubleshooting
 
-If your *setuptools* package is too old, you might see the following [annoying] 
-error:
+- If your *setuptools* package is too old, you might see the following 
+  [annoying] error:
 
-```
-error: option --single-version-externally-managed not recognized
-```
+  ```
+  error: option --single-version-externally-managed not recognized
+  ```
 
-See [What does “error: option --single-version-externally-managed not recognized” indicate?](http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind).
-      
-Apparently, the solution is to make sure that you have a healthy copy of
-*Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem to 
-[always] work. You might prefer to use the "easy_install" method, below.
+  See [What does “error: option --single-version-externally-managed not recognized” indicate?](http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind).
+
+  Apparently, the solution is to make sure that you have a healthy copy of
+  *Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem 
+  to [always] work. You might prefer to use the "easy_install" method, below.
+
+- If you see an error about antlr-python-runtime, try the following to install
+  gdrivefs:
+
+  ```
+  $ sudo pip install --allow-unverified antlr-python-runtime --allow-external antlr-python-runtime gdrivefs
+  ```
 
 
 # Usage
