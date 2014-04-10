@@ -133,23 +133,22 @@ class GDriveFS(LoggingMixIn,Operations):
 
         return (entry_clause[CLAUSE_ENTRY], path, filename)
 
-    @dec_hint(['raw_path', 'fh'])
-    def getattr(self, raw_path, fh=None):
-        """Return a stat() structure."""
-# TODO: Implement handle.
-
-        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
+    def __build_stat_from_entry(self, entry):
         (uid, gid, pid) = fuse_get_context()
 
-        self.__log.debug("Context: UID= (%d) GID= (%d) PID= (%d)" % (uid, gid, 
-                                                                     pid))
+        self.__log.debug("Context: UID= (%d) GID= (%d) PID= (%d)" % 
+                         (uid, gid, pid))
 
         if entry.is_directory:
-            effective_permission = int(Conf.get('default_perm_folder'), 8)
+            effective_permission = int(Conf.get('default_perm_folder'), 
+                                       8)
         elif entry.editable:
-            effective_permission = int(Conf.get('default_perm_file_editable'), 8)
+            effective_permission = int(Conf.get('default_perm_file_editable'), 
+                                       8)
         else:
-            effective_permission = int(Conf.get('default_perm_file_noneditable'), 8)
+            effective_permission = int(Conf.get(
+                                            'default_perm_file_noneditable'), 
+                                       8)
 
         stat_result = { "st_mtime": entry.modified_date_epoch, # modified time.
                         "st_ctime": entry.modified_date_epoch, # changed time.
@@ -174,15 +173,23 @@ class GDriveFS(LoggingMixIn,Operations):
 
         return stat_result
 
+    @dec_hint(['raw_path', 'fh'])
+    def getattr(self, raw_path, fh=None):
+        """Return a stat() structure."""
+# TODO: Implement handle.
+
+        (entry, path, filename) = self.__get_entry_or_raise(raw_path)
+        return self.__build_stat_from_entry(entry)
+
     @dec_hint(['path', 'offset'])
     def readdir(self, path, offset):
         """A generator returning one base filename at a time."""
 
         # We expect "offset" to always be (0).
         if offset != 0:
-            self.__log.warning("readdir() has been invoked for path [%s] and non-"
-                            "zero offset (%d). This is not allowed." % 
-                            (path, offset))
+            self.__log.warning("readdir() has been invoked for path [%s] and "
+                               "non-zero offset (%d). This is not allowed." % 
+                               (path, offset))
 
 # TODO: Once we start working on the cache, make sure we don't make this call, 
 #       constantly.
@@ -213,9 +220,6 @@ class GDriveFS(LoggingMixIn,Operations):
                                  "[%s]." % (path))
             raise FuseOSError(EIO)
 
-# TODO(dustin): fusepy allows us to return the stats, too. That would be 
-#               massively faster.
-
         yield utility.translate_filename_charset('.')
         yield utility.translate_filename_charset('..')
 
@@ -226,7 +230,9 @@ class GDriveFS(LoggingMixIn,Operations):
             if entry.requires_mimetype:
                 filename += utility.translate_filename_charset('#')
         
-            yield filename
+            yield (filename,
+                   self.__build_stat_from_entry(entry),
+                   0)
 
     @dec_hint(['raw_path', 'length', 'offset', 'fh'])
     def read(self, raw_path, length, offset, fh):
