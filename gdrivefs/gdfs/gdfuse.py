@@ -17,6 +17,7 @@ from datetime import datetime
 from dateutil.tz import tzlocal, tzutc
 from os.path import split
 
+from gdrivefs.utility import utility
 from gdrivefs.change import get_change_manager
 from gdrivefs.timer import Timers
 from gdrivefs.cache.volume import PathRelations, EntryCache, \
@@ -24,14 +25,13 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_CHILDREN, CLAUSE_ID, \
                                   CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf import Conf
-from gdrivefs.gdfs.fsutility import dec_hint
 from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
 from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
 from gdrivefs.gdfs.fsutility import strip_export_type, split_path,\
-                                    build_filepath
+                                    build_filepath, dec_hint
 from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
@@ -210,18 +210,21 @@ class GDriveFS(LoggingMixIn,Operations):
                             (entry_clause[CLAUSE_ID])
         except:
             self.__log.exception("Could not render list of filenames under path "
-                             "[%s]." % (path))
+                                 "[%s]." % (path))
             raise FuseOSError(EIO)
 
-        yield '.'
-        yield '..'
+# TODO(dustin): fusepy allows us to return the stats, too. That would be 
+#               massively faster.
+
+        yield utility.translate_filename_charset('.')
+        yield utility.translate_filename_charset('..')
 
         for (filename, entry) in entry_tuples:
 
             # Decorate any file that -requires- a mime-type (all files can 
             # merely accept a mime-type)
             if entry.requires_mimetype:
-                filename += '#'
+                filename += utility.translate_filename_charset('#')
         
             yield filename
 
