@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sys
 
 from sys import getfilesystemencoding
 
@@ -83,8 +84,24 @@ class _DriveUtility(object):
 
     def translate_filename_charset(self, original_filename):
         """Convert the given filename to the correct character set."""
-        
-        return original_filename.encode(self.local_character_set)
+
+        # fusepy doesn't support the Python 2.x Unicode type. Expect a native
+        # string (anything but a byte string).
+        return original_filename
+       
+#        # If we're in an older version of Python that still defines the Unicode
+#        # class and the filename isn't unicode, translate it.
+#
+#        try:
+#            sys.modules['__builtin__'].unicode
+#        except AttributeError:
+#            pass
+#        else:
+#            if issubclass(original_filename.__class__, unicode) is False:
+#                return unicode(original_filename)#original_filename.decode(self.local_character_set)
+#
+#        # It's already unicode. Don't do anything.
+#        return original_filename
 
     def make_safe_for_filename(self, text):
         """Remove any filename-invalid characters."""

@@ -37,10 +37,10 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
                 pid = 0
         
             if not prefix:
-                log.info('--------------------------------------------------')
+                log.debug('--------------------------------------------------')
 
-            log.info("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)" % 
-                     (prefix, f.__name__, sn, pid))
+            log.debug("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)" % 
+                      (prefix, f.__name__, sn, pid))
         
             if args or kwargs:
                 condensed = {}
@@ -75,16 +75,16 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
             try:
                 result = f(*args, **kwargs)
             except FuseOSError as e:
-                log.info("FUSE error [%s] (%s) will be forwarded back to "
-                         "GDFS: %s" % (e.__class__.__name__, e.errno, str(e)))
+                log.error("FUSE error [%s] (%s) will be forwarded back to "
+                          "GDFS: %s", e.__class__.__name__, e.errno, str(e))
                 raise
             except Exception as e:
                 log.exception("There was an exception.")
-                suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
+                suffix = (' (E(%s): "%s")', e.__class__.__name__, str(e))
                 raise
             finally:
-                log.info("%s<<<<<<<<<< %s(%d) (%d)%s" % 
-                         (prefix, f.__name__, sn, pid, suffix))
+                log.debug("%s<<<<<<<<<< %s(%d) (%d)%s", 
+                          prefix, f.__name__, sn, pid, suffix)
             
             return result
         return wrapper

@@ -1,11 +1,12 @@
-from logging import getLogger, Formatter, DEBUG, WARNING
+import logging
+
+from logging import getLogger, Formatter
 from logging.handlers import SysLogHandler, TimedRotatingFileHandler
 from os.path import exists
 from sys import platform
 
 default_logger = getLogger()
-default_logger.setLevel(WARNING)
-#default_logger.setLevel(DEBUG)
+default_logger.setLevel(logging.WARNING)
 
 # Log to syslog.
 
