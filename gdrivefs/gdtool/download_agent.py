@@ -2,34 +2,46 @@
 the download-worker itself. Both are singleton classes.
 """
 
-import gevent
 import multiprocessing
 import logging
+import Queue
+import time
+import threading
+import collections
+import os
+import os.path
+import datetime
+import glob
+import contextlib
+import dateutil.tz
+
+import gevent
 import gevent.lock
-
-from multiprocessing import Process, Manager, Queue
-from Queue import Empty
-from time import time, mktime
-from threading import Lock
-from collections import namedtuple
-from os.path import join, exists, basename
-from os import makedirs, stat, utime, unlink
-from datetime import datetime
-from glob import glob
-from contextlib import contextmanager
-from dateutil.tz import tzlocal
-
-from gevent.pool import Pool
+import gevent.pool
+import gevent.monkey
+import gevent.queue
 
 from gdrivefs.config import download_agent
-#from gdrivefs.http_pool import HttpPool
 from gdrivefs.utility import utility
 from gdrivefs.gdtool.chunked_download import ChunkedDownload
 from gdrivefs.gdtool.drive import GdriveAuth
 
-DownloadRequest = namedtuple('DownloadRequestInfo', 
-                             ['typed_entry', 'url', 'bytes', 
-                              'expected_mtime_dt'])
+_RT_PROGRESS = 'p'
+_RT_ERROR = 'e'
+_RT_DONE = 'd'
+_RT_THREAD_KILL = 'k'
+_RT_THREAD_STOP = 's'
+
+DownloadRegistration = collections.namedtuple(
+                        'DownloadRegistration', 
+                        ['typed_entry', 
+                         'url', 
+                         'bytes', 
+                         'expected_mtime_tuple'])
+
+DownloadRequest = collections.namedtuple(
+                        'DownloadRequest', 
+                        ['typed_entry', 'url', 'bytes', 'expected_mtime_dt'])
 
 
 class DownloadAgentDownloadException(Exception):
@@ -37,20 +49,24 @@ class DownloadAgentDownloadException(Exception):
 
     pass
 
+
 class DownloadAgentDownloadError(DownloadAgentDownloadException):
     """Base error for download errors."""
 
     pass
+
 
 class DownloadAgentDownloadAgentError(DownloadAgentDownloadError):
     """Raised to external callers when a sync failed."""
 
     pass
 
+
 class DownloadAgentWorkerShutdownException(DownloadAgentDownloadException):
     """Raised by download worker when it's told to shutdown."""
 
     pass
+
 
 class DownloadAgentResourceFaultedException(DownloadAgentDownloadException):
     """Raised externally by _SyncedResourceHandle when the represented file 
@@ -58,6 +74,7 @@ class DownloadAgentResourceFaultedException(DownloadAgentDownloadException):
     """
 
     pass
+
 
 class DownloadAgentDownloadStopException(DownloadAgentDownloadException):
     """Raised to external callers when the file being actively downloaded has 
@@ -72,22 +89,22 @@ class _DownloadedFileState(object):
     how to check validness.
     """
 
-    def __init__(self, download_request):
-        self.__typed_entry = download_request.typed_entry
+    def __init__(self, download_reg):
+        self.__typed_entry = download_reg.typed_entry
         self.__log = logging.getLogger('%s(%s)' % 
                         (self.__class__.__name__, self.__typed_entry))
 
-        self.__file_marker_locker = Lock()
+        self.__file_marker_locker = threading.Lock()
         self.__file_path = self.get_stored_filepath()
         self.__stamp_file_path = self.__get_downloading_stamp_filepath()
 
-        self.__expected_mtime_dt = download_request.expected_mtime_dt
-        
-        expected_mtime_localized_dt = self.__expected_mtime_dt.astimezone(
-                                        tzlocal())
+        # The mtime should've already been adjusted to the local TZ.
 
-        self.__expected_mtime_epoch = \
-            mktime(expected_mtime_localized_dt.timetuple())
+        self.__expected_mtime_epoch = time.mktime(
+                                        download_reg.expected_mtime_tuple)
+        self.__expected_mtime_dt = datetime.datetime.fromtimestamp(
+                                    self.__expected_mtime_epoch).\
+                                    replace(tzinfo=dateutil.tz.tzlocal())
 
     def __str__(self):
         return ('<DOWN-FILE-STATE %s>' % (self.__typed_entry,))
@@ -97,15 +114,15 @@ class _DownloadedFileState(object):
             self.__log.debug('is_up_to_date()')
 
             # If the requested file doesn't exist, at all, we're out of luck.
-            if exists(self.__file_path) is False:
+            if os.path.exists(self.__file_path) is False:
                 return False
 
             # If the mtime of the requested file matches, we have the whole
             # thing (the mtime can only be set after the file has been 
             # completely written).
 
-            main_stat = stat(self.__file_path)
-            mtime_dt = datetime.fromtimestamp(main_stat.st_mtime)
+            main_stat = os.stat(self.__file_path)
+            mtime_dt = datetime.datetime.fromtimestamp(main_stat.st_mtime)
 
             if mtime_dt == self.__expected_mtime_dt:
                 return True
@@ -124,14 +141,14 @@ class _DownloadedFileState(object):
             # The file is not up to date, but check if we're, downloading it, 
             # at least.
 
-            if exists(self.__stamp_file_path) is False:
+            if os.path.exists(self.__stamp_file_path) is False:
                 return False
 
             # Determine if we're downloading (or recently attempted to 
             # download) the same version that was requested.
 
-            stamp_stat = stat(self.__stamp_file_path)
-            stamp_mtime_dt = datetime.fromtimestamp(
+            stamp_stat = os.stat(self.__stamp_file_path)
+            stamp_mtime_dt = datetime.datetime.fromtimestamp(
                                 stamp_stat.st_mtime)
 
             if stamp_mtime_dt != self.__expected_mtime_dt:
@@ -154,21 +171,21 @@ class _DownloadedFileState(object):
         with self.__file_marker_locker:
             self.__log.debug('get_partial_offset()')
 
-            if exists(self.__file_path) is False:
+            if os.path.exists(self.__file_path) is False:
                 return 0
 
-            main_stat = stat(self.__file_path)
+            main_stat = os.stat(self.__file_path)
 
             # Assume that if the "downloading" stamp isn't present, the file is 
             # completely downloaded.
-            if exists(self.__stamp_file_path) is False:
+            if os.path.exists(self.__stamp_file_path) is False:
                 return None
 
             # Determine if we're downloading (or recently attempted to 
             # download) the same version that was requested.
 
-            stamp_stat = stat(self.__stamp_file_path)
-            stamp_mtime_dt = datetime.fromtimestamp(
+            stamp_stat = os.stat(self.__stamp_file_path)
+            stamp_mtime_dt = datetime.datetime.fromtimestamp(
                                 stamp_stat.st_mtime)
 
             if stamp_mtime_dt != self.__expected_mtime_dt:
@@ -189,7 +206,7 @@ class _DownloadedFileState(object):
 
     def get_stored_filepath(self):
         filename = self.__get_stored_filename()
-        return join(download_agent.DOWNLOAD_PATH, filename)
+        return os.path.join(download_agent.DOWNLOAD_PATH, filename)
 
     def __get_downloading_stamp_filename(self):
         filename = self.__get_stored_filename()
@@ -201,7 +218,7 @@ class _DownloadedFileState(object):
 
     def __get_downloading_stamp_filepath(self):
         stamp_filename = self.__get_downloading_stamp_filename()
-        return join(download_agent.DOWNLOAD_PATH, stamp_filename)
+        return os.path.join(download_agent.DOWNLOAD_PATH, stamp_filename)
 
     def stage_download(self):
         """Called before a download has started."""
@@ -213,7 +230,7 @@ class _DownloadedFileState(object):
             self.__log.debug('stage_download()')
 
             try:
-                stamp_stat = stat(self.__stamp_file_path)
+                stamp_stat = os.stat(self.__stamp_file_path)
             except OSError:
                 existing_mtime_epoch = None
             else:
@@ -224,7 +241,8 @@ class _DownloadedFileState(object):
                 pass
 
             # ...and set its mtime.
-            utime(self.__stamp_file_path, (self.__expected_mtime_epoch,) * 2)
+            os.utime(self.__stamp_file_path, 
+                     (self.__expected_mtime_epoch,) * 2)
 
             # If we either didn't have a stamp file or or we did and the mtime 
             # doesn't match, create an empty download file or truncate the 
@@ -239,8 +257,8 @@ class _DownloadedFileState(object):
         with self.__file_marker_locker:
             self.__log.debug('finish_download()')
 
-            utime(self.__file_path, (self.__expected_mtime_epoch,) * 2) 
-            unlink(self.__stamp_file_path)
+            os.utime(self.__file_path, (self.__expected_mtime_epoch,) * 2) 
+            os.unlink(self.__stamp_file_path)
 
     @property
     def file_path(self):
@@ -253,25 +271,34 @@ class _DownloadAgent(object):
     """
 
     def __init__(self, request_q, stop_ev):
-        # This patches the socket library. We might be able to get by it by only
-        # loading within the agent process.
-        from gdrivefs.http_pool import HttpPool
+        # This patches the socket library. Only the agent needs gevent and it 
+        # might interrupt multiprocessing if we put it as the top of the 
+        # module.
+
+# TODO(dustin): Using gevent in the worker is interrupting the worker's ability 
+#               to communicate with the main process. Try to send a standard 
+#               Python Unix pipe to the process while still using 
+#               multiprocessing to manage it. 
+
+#        gevent.monkey.patch_socket()
+#        from gdrivefs.http_pool import HttpPool
 
         self.__log = logging.getLogger(self.__class__.__name__)
         self.__request_q = request_q
         self.__stop_ev = stop_ev
         self.__kill_ev = gevent.event.Event()
-        self.__worker_pool = Pool(size=download_agent.NUM_WORKERS)
-        self.__http_pool = HttpPool(download_agent.HTTP_POOL_SIZE)
-        self.__http = GdriveAuth().get_authed_http()
+        self.__worker_pool = gevent.pool.Pool(size=download_agent.NUM_WORKERS)
+#        self.__http_pool = HttpPool(download_agent.HTTP_POOL_SIZE)
+#        self.__http = GdriveAuth().get_authed_http()
 
         # This allows multiple green threads to communicate over the same IPC 
         # resources.
         self.__ipc_sem = gevent.lock.Semaphore()
 
-    def download_worker(self, download_request, request_ev, download_stop_ev, 
-                        ns):
-        self.__log.info("Worker thread downloading: %s" % (download_request,))
+        self.__ops = {}
+
+    def download_worker(self, download_reg, download_id, sender, receiver):
+        self.__log.info("Worker thread downloading: %s" % (download_reg,))
 
 # TODO(dustin): We're just assuming that we can signal a multiprocessing event
 #               from a green thread (the event still has value switching 
@@ -281,7 +308,7 @@ class _DownloadAgent(object):
 
         # This will allow us to determine how up to date we are, as well as to
         # to resume an existing, partial download (if possible).
-        dfs = _DownloadedFileState(download_request)
+        dfs = _DownloadedFileState(download_reg)
 
         if dfs.is_up_to_date() is False:
             self.__log.info("File is not up-to-date: %s" % (str(dfs)))
@@ -293,37 +320,50 @@ class _DownloadAgent(object):
                     downloader = ChunkedDownload(
                         f, 
                         self.__http, 
-                        download_request.url, 
+                        download_reg.url, 
                         chunksize=download_agent.CHUNK_SIZE,
                         start_at=dfs.get_partial_offset())
 
                     self.__log.info("Beginning download loop: %s" % (str(dfs)))
 
                     while 1:
-                        with self.__ipc_sem:
-                            # Stop downloading if the process is coming down.
-                            if self.__kill_ev.is_set() is True:
+                        try:
+                            (report_type, datum) = receiver.get(False)
+                        except Queue.Empty:
+                            pass
+                        else:
+                            self.__log.debug("Worker thread [%s] received "
+                                             "report: [%s]" % 
+                                             (download_reg, report_type))
+
+                            if report_type == _RT_THREAD_KILL:
+                                # Stop downloading if the process is coming 
+                                # down.
                                 self.__log.info("Download loop has been "
                                                 "terminated because we're "
                                                 "shutting down.")
                                 raise DownloadAgentWorkerShutdownException(
                                     "Download worker terminated.")
-
-                            # Stop downloading this file, prhaps if all handles 
-                            # were closed and the file is no longer needed.
-                            if download_stop_ev.is_set() is True:
+                            elif report_type == _RT_THREAD_STOP:
+                                # Stop downloading this file, prhaps if all handles 
+                                # were closed and the file is no longer needed.
                                 self.__log.info("Download loop has been "
-                                                "terminated because we were told "
-                                                "to stop (the agent is still "
-                                                "running, though).")
+                                                "terminated because we were"
+                                                "told to stop (the agent is"
+                                                "still running, though).")
                                 raise DownloadAgentDownloadStopException(
                                     "Download worker was told to stop "
                                     "downloading.")
+                            else:
+                                raise ValueError("Worker thread does not "
+                                                 "understand report-type: %s" % 
+                                                 (report_type))
 
                         status, done = downloader.next_chunk()
 
-                        with self.__ipc_sem:
-                            ns.bytes_written = status.resumable_progress
+                        sender.put(download_id, 
+                                   _RT_PROGRESS, 
+                                   status.resumable_progress)
 
                         if done is True:
                             break
@@ -334,33 +374,91 @@ class _DownloadAgent(object):
                 except DownloadAgentDownloadException as e:
                     self.__log.exception("Download exception.")
 
-                    with self.__ipc_sem()
-                        ns.error = (e.__class__.__name__, str(e))
+                    sender.put(download_id, 
+                               _RT_ERROR, 
+                               (e.__class__.__name__, str(e)))
         else:
             self.__log.info("Local copy is already up-to-date: %s" % 
-                            (download_request))
+                            (download_reg))
 
-        with self.__ipc_sem():
-            request_ev.set()
+        sender.put(download_id, 
+                   _RT_DONE, 
+                   ())
 
     def loop(self):
+        global_receiver = gevent.queue.Queue()
         while True:
             if self.__stop_ev.is_set() is True:
                 self.__log.debug("Download-agent stop-flag has been set.")
+                break
             
+            # Check if we've received a message from a worker thread.
+            
+            try:
+                (id_, report_type, datum) = global_receiver.get(False)
+            except Queue.Empty:
+                pass
+            else:
+                # We have. Translate it to a message back to the request
+                # interface.
+
+                dr = self.__ops[id_][0]
+
+                self.__log.debug("Worker received report [%s] from thread: "
+                                 "%s" % (report_type, dr))
+
+                if report_type == _RT_PROGRESS:
+                    (bytes,) = datum
+                    ns = dr[3]
+                    ns.bytes_written = bytes
+                elif report_type == _RT_ERROR:
+                    (err_type, err_msg) = datum
+                    ns = dr[3]
+                    ns.error = (err_type, err_msg)
+                elif report_type == _RT_DONE:
+                    finish_ev = dr[1]
+                    finish_ev.set()
+                else:
+                    raise ValueError("Worker process does not "
+                                     "understand report-type: %s" % 
+                                     (report_type))
+
+            # Check for a kill event to be broadcast.
+            if self.__kill_ev.set() is True:
+                for id_, op in self.__ops.items():
+                    op[1].put((_RT_THREAD_KILL, ()))
+
+            # Check for a stop event on specific downloads.
+            for id_, op in self.__ops.items():
+                download_stop_ev = op[0][2]
+                if download_stop_ev.is_set() is True:
+                    op[1].put((_RT_THREAD_STOP, ()))
+
             try:
                 request_info = self.__request_q.get(
                     timeout=download_agent.REQUEST_QUEUE_TIMEOUT_S)
-            except Empty:
-                self.__log.debug("Didn't find a request.")
+            except Queue.Empty:
+                self.__log.debug("Didn't find any new download requests.")
                 continue
 
-            if self.__worker_pool.free_count() == 0:
-                self.__log.warn("It looks like we'll have to wait for a "
-                                "download worker to free up.")
+            sender = gevent.queue.Queue()
+            id_ = len(self.__ops)
+            self.__ops[id_] = (request_info, sender)
+
+#            if self.__worker_pool.free_count() == 0:
+#                self.__log.warn("It looks like we'll have to wait for a "
+#                                "download worker to free up.")
 
             self.__log.debug("Spawning download worker.")
-            self.__worker_pool.spawn(self.download_worker, *request_info)
+
+
+#            self.__worker_pool.spawn(self.download_worker, 
+#                                     request_info[0],
+#                                     id_, 
+#                                     global_receiver,
+#                                     sender)
+
+            self.__log.info("DEBUG!")
 
         # The download loop has exited (we were told to stop). Signal the 
         # workers to stop what they're doing.
@@ -370,23 +468,24 @@ class _DownloadAgent(object):
         self.__log.info("Download agent is shutting down.")
 
         self.__kill_ev.set()
-        start_epoch = time()
-        all_exited = False
-        while (time() - start_epoch) < \
-                download_agent.GRACEFUL_WORKER_EXIT_WAIT_S:
-            if self.__worker_pool.size <= self.__worker_pool.free_count():
-                all_exited = True
-                break
 
-        if all_exited is False:
-            self.__.error("Not all download workers exited in time: %d != %d",
-                          self.__worker_pool.size,
-                          self.__worker_pool.free_count())
+#        start_epoch = time.time()
+#        all_exited = False
+#        while (time.time() - start_epoch) < \
+#                download_agent.GRACEFUL_WORKER_EXIT_WAIT_S:
+#            if self.__worker_pool.size <= self.__worker_pool.free_count():
+#                all_exited = True
+#                break
+#
+#        if all_exited is False:
+#            self.__.error("Not all download workers exited in time: %d != %d",
+#                          self.__worker_pool.size,
+#                          self.__worker_pool.free_count())
 
         # Kill and join the unassigned (and stubborn, still-assigned) workers.
 # TODO(dustin): We're assuming this is a hard kill that will always kill all 
 #               workers.
-        self.__worker_pool.kill()
+#        self.__worker_pool.kill()
 
         self.__log.info("Download agent is terminating. (%d) requested files "
                         "will be abandoned.", self.__request_q.qsize())
@@ -514,23 +613,23 @@ class _DownloadAgentExternal(object):
     def __init__(self):
         self.__log = logging.getLogger(self.__class__.__name__)
         self.__p = None
-        self.__m = Manager()
+        self.__m = multiprocessing.Manager()
 
 #        self.__abc = self.__m.Event()
 
-        self.__request_q = Queue()
+        self.__request_q = multiprocessing.Queue()
         self.__request_loop_ev = multiprocessing.Event()
         
         self.__request_registry_context = { }
         self.__request_registry_types = { }
-        self.__request_registry_locker = Lock()
+        self.__request_registry_locker = threading.Lock()
 
         # [entry_id] = [resource, counter]
         self.__accessor_resources = {}
-        self.__accessor_resources_locker = Lock()
+        self.__accessor_resources_locker = threading.Lock()
 
-        if exists(download_agent.DOWNLOAD_PATH) is False:
-            makedirs(download_agent.DOWNLOAD_PATH)
+        if os.path.exists(download_agent.DOWNLOAD_PATH) is False:
+            os.makedirs(download_agent.DOWNLOAD_PATH)
 
     def deregister_resource(self, resource):
         """Called at the end of a file-resource's lifetime (on close)."""
@@ -551,7 +650,7 @@ class _DownloadAgentExternal(object):
         """
 
         key = ('%s-%s' % (entry_id, 
-                          mktime(expected_mtime_dt.timetuple())))
+                          time.mktime(expected_mtime_dt.timetuple())))
 
         with self.__accessor_resources_locker:
             try:
@@ -587,7 +686,7 @@ class _DownloadAgentExternal(object):
         args = (self.__request_q, 
                 self.__request_loop_ev)
 
-        self.__p = Process(target=_agent_boot, args=args)
+        self.__p = multiprocessing.Process(target=_agent_boot, args=args)
         self.__p.start()
 
     def stop(self):
@@ -598,9 +697,9 @@ class _DownloadAgentExternal(object):
 
         self.__request_loop_ev.set()
         
-        start_epoch = time()
+        start_epoch = time.time()
         is_exited = False
-        while (time() - start_epoch) <= \
+        while (time.time() - start_epoch) <= \
                 download_agent.GRACEFUL_WORKER_EXIT_WAIT_S:
             if self.__p.is_alive() is False:
                 is_exited = True
@@ -628,11 +727,13 @@ class _DownloadAgentExternal(object):
 #               files.
     def __find_stored_files_for_entry(self, entry_id):
         pattern = ('%s:*' % (utility.make_safe_for_filename(entry_id)))
-        full_pattern = join(download_agent.DOWNLOAD_PATH, pattern)
+        full_pattern = os.path.join(download_agent.DOWNLOAD_PATH, pattern)
 
-        return [basename(file_path) for file_path in glob(full_pattern)]
+        return [os.path.basename(file_path) 
+                for file_path 
+                in glob.glob(full_pattern)]
 
-    @contextmanager
+    @contextlib.contextmanager
     def sync_to_local(self, download_request):
         """Send the download request to the download-agent, and wait for it to
         finish. If the file is already found locally, and the number of request 
@@ -660,10 +761,17 @@ class _DownloadAgentExternal(object):
         # official request for tracking/locking purposes.
 
         typed_entry = download_request.typed_entry
-        expected_mtime_dt = download_request.expected_mtime_dt
+        expected_mtime_dt = download_request.expected_mtime_dt.astimezone(
+                                dateutil.tz.tzlocal())
         bytes_ = download_request.bytes
 
-        dfs = _DownloadedFileState(download_request)
+        download_reg = DownloadRegistration(typed_entry=typed_entry,
+                                            expected_mtime_tuple=\
+                                                expected_mtime_dt.timetuple(),
+                                            url=download_request.url,
+                                            bytes=bytes_)
+
+        dfs = _DownloadedFileState(download_reg)
 
         with self.__request_registry_locker:
             try:
@@ -671,6 +779,9 @@ class _DownloadAgentExternal(object):
             except KeyError:
                 # This is the first download of this entry/mime-type.
 
+                self.__log.info("Initiating a new download: %s", download_reg)
+
+# TODO(dustin): We might need to send a semaphore in order to control access.
                 finish_ev = self.__m.Event()
                 download_stop_ev = self.__m.Event()
                 ns = self.__m.Namespace()
@@ -683,19 +794,22 @@ class _DownloadAgentExternal(object):
                             'download_stop_event': download_stop_ev,
                             'ns': ns
                         }
+
+                # Push the request to the worker process.
+                self.__request_q.put((download_reg, 
+                                      finish_ev, 
+                                      download_stop_ev, 
+                                      ns))
             else:
                 # There was already another download of this entry/mime-type.
+
+                self.__log.info("Watching an existing download: %s",
+                                download_reg)
 
                 context['watchers'] += 1
                 finish_ev = context['finish_event']
                 download_stop_ev = context['download_stop_event']
                 ns = context['ns']
-
-                # Push the request to the worker process.
-                self.__request_q.put((download_request, 
-                                      finish_ev, 
-                                      download_stop_ev, 
-                                      ns))
 
             try:
                 # We weren't already download this entry for any mime-type.

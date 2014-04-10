@@ -5,11 +5,24 @@ sys.path.insert(0, '..')
 
 from pprint import pprint
 
+from gdrivefs.conf import Conf
+Conf.set('auth_cache_filepath', '/var/cache/creds/gdfs')
+
 from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath
 from gdrivefs.gdtool.drive import GdriveAuth
 
 auth = GdriveAuth()
 client = auth.get_client()
+
+
+#from logging.handlers import StreamHandler
+#
+#logger = logging.getLogger()
+#logger.setLevel(DEBUG)
+#
+#log_syslog = logging.StreamHandler()
+#logger.addHandler(log_syslog)
+
 
 #client.files()
 #sys.exit()
@@ -44,6 +57,7 @@ dae.start()
 
 te = TypedEntry(entry_id='0B5Ft2OXeDBqSRGxHajVMT0pob1k', 
                 mime_type='application/pdf')
+
 url='https://doc-0c-1c-docs.googleusercontent.com/docs/securesc/svig2vvms8dc5kautokn617oteonvt69/vaj2tcji2mjes3snt7t8brteu3slfqhp/1394452800000/06779401675395806531/06779401675395806531/0B5Ft2OXeDBqSRGxHajVMT0pob1k?h=16653014193614665626&e=download&gd=true'
 mtime_dt = get_normal_dt_from_rfc3339_phrase('2014-03-09T19:46:25.191Z')
 
