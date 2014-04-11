@@ -29,10 +29,6 @@ class _OauthAuthorize(object):
         self.__log = logging.getLogger().getChild('OauthAuth')
 
         cache_filepath  = Conf.get('auth_cache_filepath')
-        
-        if cache_filepath is None:
-            raise ValueError("Credentials file-path is not set.")
-        
         api_credentials = Conf.get('api_credentials')
 
         self.cache_filepath = cache_filepath
@@ -57,17 +53,14 @@ class _OauthAuthorize(object):
         return scopes
 
     def step1_get_auth_url(self):
-        try:
-            return self.flow.step1_get_authorize_url()
-        except (Exception) as e:
-            self.__log.exception("Could not get authorization URL: %s" % (e))
-            raise        
+        return self.flow.step1_get_authorize_url()
 
     def __clear_cache(self):
-        try:
-            remove(self.cache_filepath)
-        except:
-            pass
+        if self.cache_filepath is not None:
+            try:
+                remove(self.cache_filepath)
+            except:
+                pass
     
     def __refresh_credentials(self):
         self.__log.info("Doing credentials refresh.")
@@ -78,21 +71,17 @@ class _OauthAuthorize(object):
             self.credentials.refresh(http)
         except (Exception) as e:
             message = "Could not refresh credentials."
-
-            self.__log.exception(message)
             raise AuthorizationFailureError(message)
 
-        try:
-            self.__update_cache(self.credentials)
-        except:
-            self.__log.exception("Could not update cache. We've nullified the "
-                              "in-memory credentials.")
-            raise
+        self.__update_cache(self.credentials)
             
         self.__log.info("Credentials have been refreshed.")
             
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
+
+        if self.cache_filepath is None:
+            raise ValueError("Credentials file-path is not set.")
 
         if self.credentials is None:
             self.__log.info("Checking for cached credentials: %s" % 
@@ -141,29 +130,21 @@ class _OauthAuthorize(object):
         return self.__step2_check_auth_cache()
     
     def __update_cache(self, credentials):
+        if self.cache_filepath is None:
+            raise ValueError("Credentials file-path is not set.")
 
         # Serialize credentials.
 
         self.__log.info("Serializing credentials for cache.")
 
-        credentials_serialized = None
-        
-        try:
-            credentials_serialized = pickle.dumps(credentials)
-        except:
-            self.__log.exception("Could not serialize credentials.")
-            raise
+        credentials_serialized = pickle.dumps(credentials)
 
         # Write cache file.
 
         self.__log.info("Writing credentials to cache.")
 
-        try:
-            with open(self.cache_filepath, 'w') as cache:
-                cache.write(credentials_serialized)
-        except:
-            self.__log.exception("Could not write credentials to cache.")
-            raise
+        with open(self.cache_filepath, 'w') as cache:
+            cache.write(credentials_serialized)
 
     def step2_doexchange(self, auth_code):
         # Do exchange.
@@ -172,22 +153,16 @@ class _OauthAuthorize(object):
         
         try:
             credentials = self.flow.step2_exchange(auth_code)
-        except:
-            message = "Could not do auth-exchange (this was either a "\
-                      "legitimate error, or the auth-exchange was attempted "\
-                      "when not necessary)."
+        except Exception as e:
+            message = ("Could not do auth-exchange (this was either a "\
+                       "legitimate error, or the auth-exchange was attempted "\
+                       "when not necessary): %s" % (e))
 
-            self.__log.exception(message)
             raise AuthorizationFailureError(message)
         
         self.__log.info("Credentials established.")
 
-        try:
-            self.__update_cache(credentials)
-        except:
-            self.__log.exception("Could not update cache. Process cancelled.")
-            raise
-        
+        self.__update_cache(credentials)
         self.credentials = credentials
 
 oauth = None

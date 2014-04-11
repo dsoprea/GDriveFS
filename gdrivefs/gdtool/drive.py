@@ -1,6 +1,11 @@
 import logging
 import re
 import dateutil.parser
+import random
+import json
+import time
+import httplib
+import ssl
 
 from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
@@ -715,7 +720,7 @@ class _GoogleProxy(object):
                               "Action is not valid." % (action))
             raise
 
-        def proxied_method(auto_refresh = True, **kwargs):
+        def proxied_method(auto_refresh=True, **kwargs):
             # Now, try to invoke the mechanism. If we succeed, return 
             # immediately. If we get an authorization-fault (a resolvable 
             # authorization problem), fall through and attempt to fix it. Allow 
@@ -723,58 +728,60 @@ class _GoogleProxy(object):
             
             self.__log.debug("Attempting to invoke method for action [%s]." % 
                              (action))
-                
-            try:
-                return method(**kwargs)
-            except AuthorizationFaultError:
-                if not auto_refresh:
-                    self.__log.exception("There was an authorization fault under "
-                                      "proxied action [%s], and we were told "
-                                      "to NOT auto-refresh." % (action))
-                    raise
-            except HttpError as e:
-                logging.exception("There was an HTTP response-code of (%d) "
-                                  "while trying to do [%s]." % 
-                                  (e.resp.status, action))      
-                raise
-            except NameError:
-                raise
-            except:
-                self.__log.exception("There was an unhandled exception during the"
-                                  " execution of the Drive logic for action "
-                                  "[%s]." % (action))
-                raise
-                
-            # We had a resolvable authorization problem.
 
-            self.__log.info("There was an authorization fault under action [%s]. "
-                         "Attempting refresh." % (action))
-            
-            try:
-                authorize = get_auth()
-                authorize.check_credential_state()
-            except:
-                self.__log.exception("There was an error while trying to fix an "
-                                  "authorization fault.")
-                raise
+            for n in range(0, 5):
+                try:
+                    return method(**kwargs)
+                except (ssl.SSLError, httplib.BadStatusLine) as e:
+                    # These happen sporadically. Use backoff.
+                    self.__log.exception("There was a transient connection "
+                                         "error (%s). Trying again (%d): %s" %
+                                         (e.__class__.__name__, str(e), n))
 
-            # Re-attempt the action.
+                    time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
+                except HttpError as e:
+                    error = json.loads(e.content)
+                    if error.get('code') == 403 and \
+                       error.get('errors')[0].get('reason') \
+                       in ['rateLimitExceeded', 'userRateLimitExceeded']:
+                        # Apply exponential backoff.
+                        self.__log.exception("There was a transient HTTP "
+                                             "error (%s). Trying again (%d): "
+                                             "%s" %
+                                             (e.__class__.__name__, str(e), n))
 
-            self.__log.info("Refresh seemed successful. Reattempting action "
-                         "[%s]." % (action))
-            
-            try:
-                return method(**kwargs)
-            except:
-                self.__log.exception("There was an unhandled exception during "
-                                  "the execution of the Drive logic for action"
-                                  " [%s], and refreshing either didn't help it"
-                                  " or wasn't sufficient." % (action))
-                raise
-        
+                        time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
+                    else:
+                        # Other error, re-raise.
+                        raise
+                except AuthorizationFaultError:
+                    # If we're not allowed to refresh the token, or we've
+                    # already done it in the last attempt.
+                    if not auto_refresh or n == 1:
+                        raise
+
+                    # We had a resolvable authorization problem.
+
+                    self.__log.info("There was an authorization fault under "
+                                    "action [%s]. Attempting refresh." % 
+                                    (action))
+                    
+                    try:
+                        authorize = get_auth()
+                        authorize.check_credential_state()
+                    except:
+                        self.__log.exception("There was an error while trying "
+                                             "to fix an authorization fault.")
+                        raise
+
+                    # Re-attempt the action.
+
+                    self.__log.info("Refresh seemed successful. Reattempting "
+                                    "action [%s]." % (action))
+                        
         return proxied_method
                 
-def drive_proxy(action, auto_refresh = True, **kwargs):
+def drive_proxy(action, auto_refresh=True, **kwargs):
     if drive_proxy.gp == None:
         try:
             drive_proxy.gp = _GoogleProxy()
