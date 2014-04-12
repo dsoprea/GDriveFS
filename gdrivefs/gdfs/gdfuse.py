@@ -6,6 +6,7 @@ import json
 import os
 import atexit
 import resource
+import os.path
 
 from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
@@ -910,6 +911,11 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
+    if os.path.exists(auth_storage_filepath) is False:
+        raise ValueError("The credentials file does not exist.")
+        
+    auth_storage_filepath = os.path.abspath(auth_storage_filepath)
+
     Conf.set('auth_cache_filepath', auth_storage_filepath)
 
 
