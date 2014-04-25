@@ -616,7 +616,8 @@ class _GdriveManager(object):
                  }
 
         if data_filepath:
-            args['media_body'] = MediaFileUpload(data_filepath, mime_type)
+            args['media_body'] = MediaFileUpload(data_filepath, 
+                                                 mimetype=mime_type)
 
         try:
             result = client.files().update(**args).execute()
