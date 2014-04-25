@@ -379,7 +379,7 @@ class OpenedFile(object):
                 cache_fault = True
 
             else:
-                self.__log.debug("Executing the download.")
+                self.__log.info("Executing the download.")
                 
                 try:
 # TODO(dustin): We're not inheriting an existing file (same mtime, same size).
@@ -397,13 +397,14 @@ class OpenedFile(object):
                                          "[%s]." % (entry))
                     raise
 
-            self.__log.debug("Download complete.  cache_fault= [%s] "
-                             "__is_loaded= [%s]" % (cache_fault, self.__is_loaded))
+            self.__log.info("Download complete.  cache_fault= [%s] "
+                            "__is_loaded= [%s]" % 
+                            (cache_fault, self.__is_loaded))
 
             # We've either not loaded it, yet, or it has changed.
             if cache_fault or not self.__is_loaded:
                 with self.__class__.__update_lock:
-                    self.__log.debug("Checking queued items for fault.")
+                    self.__log.info("Checking queued items for fault.")
 
                     if cache_fault:
                         if self.__is_dirty:
@@ -444,8 +445,8 @@ class OpenedFile(object):
     def add_update(self, offset, data):
         """Queue an update to this file."""
 
-        self.__log.debug("Applying update for offset (%d) and length (%d)." % 
-                         (offset, len(data)))
+        self.__log.info("Applying update for offset (%d) and length (%d)." % 
+                        (offset, len(data)))
 
         try:
             self.__load_base_from_remote()
