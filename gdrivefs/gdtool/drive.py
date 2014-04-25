@@ -47,23 +47,13 @@ class GdriveAuth(object):
         self.__log.info("Getting authorized HTTP tunnel.")
             
         http = Http()
-
-        try:
-            self.__credentials.authorize(http)
-        except:
-            self.__log.exception("Could not get authorized HTTP client for "
-                                 "Google Drive client.")
-            raise
+        self.__credentials.authorize(http)
 
         return http
 
     def get_client(self):
         if self.__client is None:
-            try:
-                authed_http = self.get_authed_http()
-            except:
-                self.__log.exception("Could not get authed Http instance.")
-                raise
+            authed_http = self.get_authed_http()
 
             self.__log.info("Building authorized client from Http.  TYPE= [%s]" % 
                             (type(authed_http)))
@@ -92,8 +82,6 @@ class GdriveAuth(object):
                                   "building the client with discovery URL [%s]." % 
                                   (e.resp.status, discoveryUrl))
                 raise
-            except:
-                raise
 
             self.__client = client
 
@@ -113,18 +101,8 @@ class _GdriveManager(object):
     def get_about_info(self):
         """Return the 'about' information for the drive."""
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (get_about).")
-            raise
-
-        try:
-            response = client.about().get().execute()
-        except:
-            self.__log.exception("Problem while getting 'about' information.")
-            raise
+        client = self.__auth.get_client()
+        response = client.about().get().execute()
         
         return response
 
@@ -138,21 +116,12 @@ class _GdriveManager(object):
         self.__log.info("Listing changes starting at ID [%s] with page_token "
                         "[%s]." % (start_change_id, page_token))
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (list_changes).")
-            raise
+        client = self.__auth.get_client()
+
 # TODO: We expected that this reports all changes to all files. If this is the 
 #       case, than what's the point of the watch() call in Files?
-        try:
-            response = client.changes().list(pageToken=page_token, \
-                            startChangeId=start_change_id).execute()
-        except:
-            self.__log.exception("Problem while listing changes. Reverting to "
-                              "saying that there were NO changes.")
-            raise
+        response = client.changes().list(pageToken=page_token, \
+                        startChangeId=start_change_id).execute()
 
         items             = response[u'items']
         largest_change_id = int(response[u'largestChangeId'])
@@ -180,7 +149,7 @@ class _GdriveManager(object):
                                         else NormalEntry('list_changes', entry)
             except:
                 self.__log.exception("Could not normalize entry embedded in "
-                                  "change with ID (%d)." % (change_id))
+                                     "change with ID (%d)." % (change_id))
                 raise
 
             changes[change_id] = (entry_id, was_deleted, normalized_entry)
@@ -192,21 +161,12 @@ class _GdriveManager(object):
         
         self.__log.info("Getting client for parent-listing.")
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (get_parents_containing_id).")
-            raise
+        client = self.__auth.get_client()
 
         self.__log.info("Listing entries over child with ID [%s]." %
                         (child_id))
 
-        try:
-            response = client.parents().list(fileId=child_id).execute()
-        except:
-            self.__log.exception("Problem while listing files.")
-            raise
+        response = client.parents().list(fileId=child_id).execute()
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
@@ -218,12 +178,7 @@ class _GdriveManager(object):
 
         self.__log.info("Getting client for child-listing.")
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (get_children_under_parent_id).")
-            raise
+        client = self.__auth.get_client()
 
         if query_contains_string and query_is_string:
             self.__log.exception("The query_contains_string and query_is_string "
@@ -242,13 +197,9 @@ class _GdriveManager(object):
         self.__log.info("Listing entries under parent with ID [%s].  QUERY= "
                      "[%s]" % (parent_id, query))
 
-        try:
-            response = client.children().list(q=query, folderId=parent_id, \
-                                              maxResults=max_results). \
-                                              execute()
-        except:
-            self.__log.exception("Problem while listing files.")
-            raise
+        response = client.children().list(q=query, folderId=parent_id, \
+                                          maxResults=max_results). \
+                                          execute()
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
@@ -260,7 +211,7 @@ class _GdriveManager(object):
                 entry = drive_proxy('get_entry', entry_id=entry_id)
             except:
                 self.__log.exception("Could not retrieve entry with ID [%s]." % 
-                                  (entry_id))
+                                     (entry_id))
                 raise
 
             retrieved[entry_id] = entry
@@ -270,19 +221,13 @@ class _GdriveManager(object):
         return retrieved
 
     def get_entry(self, entry_id):
-        
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the Google "
-                              "Drive client (get_entry).")
-            raise
+        client = self.__auth.get_client()
 
         try:
             entry_raw = client.files().get(fileId=entry_id).execute()
         except:
             self.__log.exception("Could not get the file with ID [%s]." % 
-                              (entry_id))
+                                 (entry_id))
             raise
 
         try:
@@ -308,12 +253,7 @@ class _GdriveManager(object):
                          parent_id if parent_id is not None 
                                    else '<none>'))
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (list_files).")
-            raise
+        client = self.__auth.get_client()
 
         query_components = []
 
@@ -344,12 +284,8 @@ class _GdriveManager(object):
                              "token [%s] and page-number (%d): %s" % 
                              (page_token, page_num, query))
 
-            try:
-                result = client.files().list(q=query, pageToken=page_token).\
-                            execute()
-            except:
-                self.__log.exception("Could not get the list of files.")
-                raise
+            result = client.files().list(q=query, pageToken=page_token).\
+                        execute()
 
             self.__log.debug("(%d) entries were presented for page-number "
                              "(%d)." % 
@@ -359,8 +295,9 @@ class _GdriveManager(object):
                 try:
                     entry = NormalEntry('list_files', entry_raw)
                 except:
-                    self.__log.exception("Could not normalize raw-data for entry "
-                                         "with ID [%s]." % (entry_raw[u'id']))
+                    self.__log.exception("Could not normalize raw-data for "
+                                         "entry with ID [%s]." % 
+                                         (entry_raw[u'id']))
                     raise
 
                 entries.append(entry)
@@ -382,8 +319,8 @@ class _GdriveManager(object):
         the data has changed since any prior attempts.
         """
 
-        self.__log.info("Downloading entry with ID [%s] and mime-type [%s]." % 
-                        (normalized_entry.id, mime_type))
+        self.__log.debug("Downloading entry with ID [%s] and mime-type [%s].", 
+                         (normalized_entry.id, mime_type))
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -407,8 +344,8 @@ class _GdriveManager(object):
 
         gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
 
-        self.__log.info("File will be downloaded to [%s]." % 
-                        (output_file_path))
+        self.__log.debug("File will be downloaded to [%s].", 
+                         (output_file_path))
 
         use_cache = False
         if allow_cache and isfile(output_file_path):
@@ -427,31 +364,27 @@ class _GdriveManager(object):
         if use_cache:
             # Use the cache. It's fine.
 
-            self.__log.info("File retrieved from the previously downloaded, "
+            self.__log.debug("File retrieved from the previously downloaded, "
                             "still-current file.")
             return (stat_info.st_size, False)
 
         # Go and get the file.
 
-        try:
 # TODO(dustin): This might establish a new connection. Not cool.
-            authed_http = self.__auth.get_authed_http()
-        except:
-            self.__log.exception("Could not get authed Http instance for "
-                                 "download.")
-            raise
+        authed_http = self.__auth.get_authed_http()
 
         url = normalized_entry.download_links[mime_type]
 
         self.__log.debug("Downloading file from [%s]." % (url))
+
 
         try:
 # TODO(dustin): Right now, we're downloading the complete body of data into memory, and then saving.
             data_tuple = authed_http.request(url)
         except:
             self.__log.exception("Could not download entry with ID [%s], type "
-                              "[%s], and URL [%s]." % (normalized_entry.id, 
-                                                       mime_type, url))
+                                 "[%s], and URL [%s]." % (normalized_entry.id, 
+                                                          mime_type, url))
             raise
 
         (response_headers, data) = data_tuple
@@ -468,17 +401,11 @@ class _GdriveManager(object):
             self.__log.info("GD has returned Range-related headers: %s" % 
                             (", ".join(found)))
 
-        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
+        self.__log.info("Downloaded file is (%d) bytes. Written to [%s]." % 
                         (len(data), output_file_path))
 
-        try:
-            with open(output_file_path, 'wb') as f:
-                f.write(data)
-        except:
-            self.__log.exception("Could not cached downloaded file. Skipped.")
-
-        else:
-            self.__log.info("File written to cache successfully.")
+        with open(output_file_path, 'wb') as f:
+            f.write(data)
 
         try:
             utime(output_file_path, (time(), gd_mtime_epoch))
@@ -509,12 +436,7 @@ class _GdriveManager(object):
                         (filename, ', '.join(parents), mime_type, 
                          modified_datetime, accessed_datetime))
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (insert_entry).")
-            raise
+        client = self.__auth.get_client()
 
         body = { 
                 'title': filename, 
@@ -544,11 +466,7 @@ class _GdriveManager(object):
             self.__log.exception("Could not insert file [%s]." % (filename))
             raise
 
-        try:
-            normalized_entry = NormalEntry('insert_entry', result)
-        except:
-            self.__log.exception("Could not normalize created entry.")
-            raise
+        normalized_entry = NormalEntry('insert_entry', result)
             
         self.__log.info("New entry created with ID [%s]." % 
                         (normalized_entry.id))
@@ -574,14 +492,9 @@ class _GdriveManager(object):
         if not mime_type:
             mime_type = normalized_entry.mime_type
 
-        self.__log.info("Updating entry [%s]." % (normalized_entry))
+        self.__log.debug("Updating entry [%s].", normalized_entry)
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (update_entry).")
-            raise
+        client = self.__auth.get_client()
 
         body = { 'mimeType': mime_type }
 
@@ -619,20 +532,10 @@ class _GdriveManager(object):
             args['media_body'] = MediaFileUpload(data_filepath, 
                                                  mimetype=mime_type)
 
-        try:
-            result = client.files().update(**args).execute()
-        except:
-            self.__log.exception("Could not send update for file [%s]." % 
-                                 (filename))
-            raise
-
-        try:
-            normalized_entry = NormalEntry('update_entry', result)
-        except:
-            self.__log.exception("Could not normalize updated entry.")
-            raise
+        result = client.files().update(**args).execute()
+        normalized_entry = NormalEntry('update_entry', result)
             
-        self.__log.info("Entry with ID [%s] updated." % (normalized_entry.id))
+        self.__log.debug("Entry with ID [%s] updated." % (normalized_entry.id))
 
         return normalized_entry
 
@@ -677,12 +580,7 @@ class _GdriveManager(object):
 
         self.__log.info("Removing entry with ID [%s]." % (normalized_entry.id))
 
-        try:
-            client = self.__auth.get_client()
-        except:
-            self.__log.exception("There was an error while acquiring the "
-                                 "Google Drive client (remove_entry).")
-            raise
+        client = self.__auth.get_client()
 
         args = { 'fileId': normalized_entry.id }
 
@@ -693,8 +591,9 @@ class _GdriveManager(object):
                str(e).find('File not found') != -1:
                 raise NameError(normalized_entry.id)
 
-            self.__log.exception("Could not send delete for entry with ID [%s]." %
-                              (normalized_entry.id))
+            self.__log.exception("Could not send delete for entry with ID "
+                                 "[%s]." %
+                                 (normalized_entry.id))
             raise
 
         self.__log.info("Entry deleted successfully.")
@@ -712,7 +611,7 @@ class _GoogleProxy(object):
         self.gdrive_wrapper = _GdriveManager()
 
     def __getattr__(self, action):
-        self.__log.info("Proxied action [%s] requested." % (action))
+        self.__log.debug("Proxied action [%s] requested." % (action))
     
         try:
             method = getattr(self.gdrive_wrapper, action)
@@ -767,13 +666,8 @@ class _GoogleProxy(object):
                                     "action [%s]. Attempting refresh." % 
                                     (action))
                     
-                    try:
-                        authorize = get_auth()
-                        authorize.check_credential_state()
-                    except:
-                        self.__log.exception("There was an error while trying "
-                                             "to fix an authorization fault.")
-                        raise
+                    authorize = get_auth()
+                    authorize.check_credential_state()
 
                     # Re-attempt the action.
 
@@ -784,22 +678,10 @@ class _GoogleProxy(object):
                 
 def drive_proxy(action, auto_refresh=True, **kwargs):
     if drive_proxy.gp == None:
-        try:
-            drive_proxy.gp = _GoogleProxy()
-        except:
-            logging.exception("There was an exception while creating the proxy"
-                              " singleton.")
-            raise
+        drive_proxy.gp = _GoogleProxy()
 
-    try:    
-        method = getattr(drive_proxy.gp, action)
-        return method(auto_refresh, **kwargs)
-    except (NameError):
-        raise
-    except:
-        logging.exception("There was an exception while invoking proxy "
-                          "action.")
-        raise
+    method = getattr(drive_proxy.gp, action)
+    return method(auto_refresh, **kwargs)
     
 drive_proxy.gp = None
 
