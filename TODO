@@ -1,0 +1,24 @@
+Use multiprocessing for other threads (like change-watching)
+
+We can use PATCH requests to send updates of everything but file content.
+
+Consider batch API.
+
+We can send ETag caching headers by sending a cache directory path: 
+
+    http = httplib2.Http(cache=".cache")
+
+
+Immediate File Fixes
+====================
+
+Cache to directories named and permissioned only for the accessing user.
+
+
+Read Strategy
+=============
+
+* Re-use an existing, cached file if it matches size/mtime.
+* Map read requests into another process that manages a process pool. 
+  > Use greenlets for queries to it.
+    --> We can only use it if we update get_authed_http to use https://github.com/gwik/geventhttpclient .
