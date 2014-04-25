@@ -911,9 +911,6 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
-    if os.path.exists(auth_storage_filepath) is False:
-        raise ValueError("The credentials file does not exist.")
-        
     auth_storage_filepath = os.path.abspath(auth_storage_filepath)
 
     Conf.set('auth_cache_filepath', auth_storage_filepath)
