@@ -546,14 +546,16 @@ class GDriveFS(LoggingMixIn,Operations):
     # Not supported. Google Drive doesn't fit within this model.
     @dec_hint(['filepath', 'mode'])
     def chmod(self, filepath, mode):
-
-        raise FuseOSError(EPERM) # Operation not permitted.
+        # Return successfully, or rsync might have a problem.
+#        raise FuseOSError(EPERM) # Operation not permitted.
+        pass
 
     # Not supported. Google Drive doesn't fit within this model.
     @dec_hint(['filepath', 'uid', 'gid'])
     def chown(self, filepath, uid, gid):
-
-        raise FuseOSError(EPERM) # Operation not permitted.
+        # Return successfully, or rsync might have a problem.
+#        raise FuseOSError(EPERM) # Operation not permitted.
+        pass
 
     # Not supported.
     @dec_hint(['target', 'source'])
