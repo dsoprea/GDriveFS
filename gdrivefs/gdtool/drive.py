@@ -735,7 +735,7 @@ class _GoogleProxy(object):
                 except (ssl.SSLError, httplib.BadStatusLine) as e:
                     # These happen sporadically. Use backoff.
                     self.__log.exception("There was a transient connection "
-                                         "error (%s). Trying again (%d): %s" %
+                                         "error (%s). Trying again (%s): %d" %
                                          (e.__class__.__name__, str(e), n))
 
                     time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
