@@ -19,6 +19,8 @@ from os.path import isdir, isfile
 from os import makedirs, stat, utime
 from dateutil.tz import tzlocal, tzutc
 
+import gdrivefs.gdtool.chunked_download
+
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
                             FilenameQuantityError, ExportFormatError
 from gdrivefs.conf import Conf
@@ -445,40 +447,50 @@ class _GdriveManager(object):
 
         self.__log.debug("Downloading file from [%s]." % (url))
 
-        try:
-# TODO(dustin): Right now, we're downloading the complete body of data into memory, and then saving.
-            data_tuple = authed_http.request(url)
-        except:
-            self.__log.exception("Could not download entry with ID [%s], type "
-                              "[%s], and URL [%s]." % (normalized_entry.id, 
-                                                       mime_type, url))
-            raise
+#        try:
+#            data_tuple = authed_http.request(url)
+#        except:
+#            self.__log.exception("Could not download entry with ID [%s], type "
+#                              "[%s], and URL [%s]." % (normalized_entry.id, 
+#                                                       mime_type, url))
+#            raise
+#
+#        (response_headers, data) = data_tuple
+#
+#        # Throw a log-item if we see any "Range" response-headers. If GD ever
+#        # starts supporting "Range" headers, we'll be able to write smarter 
+#        # download mechanics (resume, etc..).
+#
+#        r = re.compile('Range')
+#        range_found = [("%s: %s" % (k, v)) for k, v 
+#                                           in response_headers.iteritems() 
+#                                           if r.match(k)]
+#        if range_found:
+#            self.__log.info("GD has returned Range-related headers: %s" % 
+#                            (", ".join(found)))
+#
+#        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
+#                        (len(data), output_file_path))
+#
+#        try:
+#            with open(output_file_path, 'wb') as f:
+#                f.write(data)
+#        except:
+#            self.__log.exception("Could not cached downloaded file. Skipped.")
+#
+#        else:
+#            self.__log.info("File written to cache successfully.")
 
-        (response_headers, data) = data_tuple
+        with open(output_file_path, 'wb') as f:
+            downloader = gdrivefs.gdtool.chunked_download.ChunkedDownload(
+                            f, 
+                            authed_http, 
+                            url)
 
-        # Throw a log-item if we see any "Range" response-headers. If GD ever
-        # starts supporting "Range" headers, we'll be able to write smarter 
-        # download mechanics (resume, etc..).
-
-        r = re.compile('Range')
-        range_found = [("%s: %s" % (k, v)) for k, v 
-                                           in response_headers.iteritems() 
-                                           if r.match(k)]
-        if range_found:
-            self.__log.info("GD has returned Range-related headers: %s" % 
-                            (", ".join(found)))
-
-        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
-                        (len(data), output_file_path))
-
-        try:
-            with open(output_file_path, 'wb') as f:
-                f.write(data)
-        except:
-            self.__log.exception("Could not cached downloaded file. Skipped.")
-
-        else:
-            self.__log.info("File written to cache successfully.")
+            while 1:
+                status, done = downloader.next_chunk()
+                if done is True:
+                    break
 
         try:
             utime(output_file_path, (time(), gd_mtime_epoch))
