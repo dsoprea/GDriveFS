@@ -546,14 +546,16 @@ class GDriveFS(LoggingMixIn,Operations):
     # Not supported. Google Drive doesn't fit within this model.
     @dec_hint(['filepath', 'mode'])
     def chmod(self, filepath, mode):
-
-        raise FuseOSError(EPERM) # Operation not permitted.
+        # Return successfully, or rsync might have a problem.
+#        raise FuseOSError(EPERM) # Operation not permitted.
+        pass
 
     # Not supported. Google Drive doesn't fit within this model.
     @dec_hint(['filepath', 'uid', 'gid'])
     def chown(self, filepath, uid, gid):
-
-        raise FuseOSError(EPERM) # Operation not permitted.
+        # Return successfully, or rsync might have a problem.
+#        raise FuseOSError(EPERM) # Operation not permitted.
+        pass
 
     # Not supported.
     @dec_hint(['target', 'source'])
@@ -911,9 +913,6 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
                 nothreads=nothreads, fsname=name, **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
-    if os.path.exists(auth_storage_filepath) is False:
-        raise ValueError("The credentials file does not exist.")
-        
     auth_storage_filepath = os.path.abspath(auth_storage_filepath)
 
     Conf.set('auth_cache_filepath', auth_storage_filepath)
