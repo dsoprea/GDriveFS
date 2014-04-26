@@ -20,6 +20,7 @@ import gevent.lock
 import gevent.pool
 import gevent.monkey
 import gevent.queue
+import gipc
 
 from gdrivefs.config import download_agent
 from gdrivefs.utility import utility
@@ -683,11 +684,13 @@ class _DownloadAgentExternal(object):
         if self.__p is not None:
             raise ValueError("The download-worker is already started.")
 
-        args = (self.__request_q, 
-                self.__request_loop_ev)
+#        args = (self.__request_q, 
+#                self.__request_loop_ev)
+        (r, w) = gevent.pipe()
+        args = (r, w)
 
-        self.__p = multiprocessing.Process(target=_agent_boot, args=args)
-        self.__p.start()
+        self.__p = gipc.start_process(target=_agent_boot, args=args)
+#        self.__p.start()
 
     def stop(self):
         self.__log.debug("Sending stop signal to download agent.")
