@@ -2,4 +2,3 @@ google_appengine
 httplib2
 python-dateutil
 fusepy
-gipc
