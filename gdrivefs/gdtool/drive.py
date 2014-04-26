@@ -322,7 +322,7 @@ class _GdriveManager(object):
         """
 
         self.__log.debug("Downloading entry with ID [%s] and mime-type [%s].", 
-                         (normalized_entry.id, mime_type))
+                         normalized_entry.id, mime_type)
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -377,8 +377,8 @@ class _GdriveManager(object):
 
         url = normalized_entry.download_links[mime_type]
 
-        self.__log.debug("Downloading file from [%s]." % (url))
-
+#        self.__log.debug("Downloading file from [%s]." % (url))
+#
 #        try:
 #            data_tuple = authed_http.request(url)
 #        except:
@@ -657,7 +657,12 @@ class _GoogleProxy(object):
 
                     time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
                 except HttpError as e:
-                    error = json.loads(e.content)
+                    try:
+                        error = json.loads(e.content)
+                    except ValueError:
+                        _logger.error("Non-JSON error while doing chunked "
+                                      "download: %s", e.content) 
+                    
                     if error.get('code') == 403 and \
                        error.get('errors')[0].get('reason') \
                        in ['rateLimitExceeded', 'userRateLimitExceeded']:

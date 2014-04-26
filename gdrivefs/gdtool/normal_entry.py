@@ -201,7 +201,7 @@ class NormalEntry(object):
             
             attrs = {}
             for a_type, a_dict in data_dict.iteritems():
-                self.__log.debug("Setting [%s]." % (a_type))
+#                self.__log.debug("Setting [%s]." % (a_type))
                 for key, value in a_dict.iteritems():
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)

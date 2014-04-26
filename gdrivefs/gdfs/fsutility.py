@@ -130,8 +130,8 @@ def split_path(filepath_original, pathresolver_cb):
                       (filepath_original))
         raise
 
-    log.debug("File-path [%s] split into filepath [%s] and mime_type "
-              "[%s]." % (filepath_original, filepath, mime_type))
+#    log.debug("File-path [%s] split into filepath [%s] and mime_type "
+#              "[%s]." % (filepath_original, filepath, mime_type))
 
     # Split the file-path into a path and a filename.
 
@@ -141,22 +141,23 @@ def split_path(filepath_original, pathresolver_cb):
 
     try:
         path_resolution = pathresolver_cb(path)
+# TODO(dustin): We need to specify the exception for when a file doesn't exist.
     except:
         log.exception("Exception while getting entry from path [%s]." % (path))
         raise GdNotFoundError()
 
     if not path_resolution:
-        log.debug("Path [%s] does not exist for split." % (path))
+#        log.debug("Path [%s] does not exist for split." % (path))
         raise GdNotFoundError()
 
     (parent_entry, parent_clause) = path_resolution
 
     is_hidden = (filename[0] == '.') if filename else False
 
-    log.debug("File-path [%s] split into parent with ID [%s], path [%s], "
-              "unverified filename [%s], mime-type [%s], and is_hidden [%s]." % 
-              (filepath_original, parent_entry.id, path, filename, 
-               mime_type, is_hidden))
+#    log.debug("File-path [%s] split into parent with ID [%s], path [%s], "
+#              "unverified filename [%s], mime-type [%s], and is_hidden [%s]." % 
+#              (filepath_original, parent_entry.id, path, filename, 
+#               mime_type, is_hidden))
 
     return (parent_clause, path, filename, mime_type, is_hidden)
 

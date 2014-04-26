@@ -467,19 +467,8 @@ class OpenedFile(object):
 
         self.__log.debug("Retrieving entry for write-flush.")
 
-        try:
-            entry = self.__get_entry_or_raise()
-        except:
-            self.__log.exception("Could not get entry with ID [%s] for "
-                                 "write-flush." % (self.__entry_id))
-            raise
-
-        try:
-             cache_fault = self.__load_base_from_remote()
-        except:
-            self.__log.exception("Could not load local cache for entry [%s]." % 
-                                 (entry))
-            raise
+        entry = self.__get_entry_or_raise()
+        cache_fault = self.__load_base_from_remote()
     
         with self.__class__.__update_lock:
             if self.__is_dirty is False:

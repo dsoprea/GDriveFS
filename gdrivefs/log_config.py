@@ -7,6 +7,7 @@ from sys import platform
 
 default_logger = getLogger()
 default_logger.setLevel(logging.WARNING)
+#default_logger.setLevel(logging.DEBUG)
 
 # Log to syslog.
 

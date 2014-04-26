@@ -24,7 +24,7 @@ def path_resolver(path):
 
     parent_clause = path_relations.get_clause_from_path(path)
     if not parent_clause:
-        logging.debug("Path [%s] does not exist for split.", path)
+#        logging.debug("Path [%s] does not exist for split.", path)
         raise GdNotFoundError()
 
     return (parent_clause[CLAUSE_ENTRY], parent_clause)
@@ -93,12 +93,7 @@ class PathRelations(object):
             else:
                 stat_files += 1
 
-            try:
-                result = self.__remove_entry(current_entry_id, is_update)
-            except:
-                self.__log.debug("Could not remove entry with ID [%s] "
-                                 "(recursive).", current_entry_id)
-                raise
+            result = self.__remove_entry(current_entry_id, is_update)
 
             removed[current_entry_id] = True
 
@@ -356,8 +351,8 @@ class PathRelations(object):
 
             entry_id = normalized_entry.id
 
-            self.__log.debug("Registering entry with ID [%s] within path-"
-                             "relations.", entry_id)
+#            self.__log.debug("Registering entry with ID [%s] within path-"
+#                             "relations.", entry_id)
 
             if self.is_cached(entry_id, include_placeholders=False):
 #                self.__log.debug("Entry to register with ID [%s] already "
@@ -464,28 +459,28 @@ class PathRelations(object):
         return entry_clause
 
     def __load_all_children(self, parent_id):
-        self.__log.debug("Loading children under parent with ID [%s].",
-                         parent_id)
+#        self.__log.debug("Loading children under parent with ID [%s].",
+#                         parent_id)
 
         with PathRelations.rlock:
             children = drive_proxy('list_files', parent_id=parent_id)
 
             child_ids = [ ]
             if children:
-                self.__log.debug("(%d) children returned and will be "
-                                 "registered.", len(children))
+#                self.__log.debug("(%d) children returned and will be "
+#                                 "registered.", len(children))
 
                 for child in children:
                         self.register_entry(child)
 
-                self.__log.debug("Looking up parent with ID [%s] for all-"
-                                 "children update.", parent_id)
+#                self.__log.debug("Looking up parent with ID [%s] for all-"
+#                                 "children update.", parent_id)
 
                 parent_clause = self.__get_entry_clause_by_id(parent_id)
 
                 parent_clause[4] = True
 
-                self.__log.debug("All children have been loaded.")
+#                self.__log.debug("All children have been loaded.")
 
         return children
 
@@ -494,7 +489,7 @@ class PathRelations(object):
         entry-ID.
         """
 
-        self.__log.debug("Getting children under entry with ID [%s].",entry_id)
+#        self.__log.debug("Getting children under entry with ID [%s].",entry_id)
 
         with PathRelations.rlock:
             entry_clause = self.__get_entry_clause_by_id(entry_id)
@@ -523,8 +518,8 @@ class PathRelations(object):
                 self.__log.error(message)
                 raise Exception(message)
 
-            self.__log.debug("(%d) children found.",
-                             len(entry_clause[CLAUSE_CHILDREN]))
+#            self.__log.debug("(%d) children found.",
+#                             len(entry_clause[CLAUSE_CHILDREN]))
 
             return entry_clause[CLAUSE_CHILDREN]
 
@@ -540,7 +535,7 @@ class PathRelations(object):
 
     def get_clause_from_path(self, filepath):
 
-        self.__log.debug("Getting clause for path [%s].", filepath)
+#        self.__log.debug("Getting clause for path [%s].", filepath)
 
         with PathRelations.rlock:
             path_results = self.find_path_components_goandget(filepath)
@@ -550,7 +545,7 @@ class PathRelations(object):
                 return None
 
             entry_id = path_results[0][-1]
-            self.__log.debug("Found entry with ID [%s].", entry_id)
+#            self.__log.debug("Found entry with ID [%s].", entry_id)
 
             # Make sure the entry is more than a placeholder.
             self.__get_entry_clause_by_id(entry_id)
@@ -567,8 +562,8 @@ class PathRelations(object):
             previous_results = []
             i = 0
             while 1:
-                self.__log.debug("Attempting to find path-components (go and "
-                                 "get) for path [%s].  CYCLE= (%d)", path, i)
+#                self.__log.debug("Attempting to find path-components (go and "
+#                                 "get) for path [%s].  CYCLE= (%d)", path, i)
 
                 # See how many components can be found in our current cache.
 
@@ -626,8 +621,9 @@ class PathRelations(object):
 
                 filenames_phrase = ', '.join([ candidate.id for candidate
                                                             in children ])
-                self.__log.debug("(%d) candidate children were found: %s",
-                                 len(children), filenames_phrase)
+
+#                self.__log.debug("(%d) candidate children were found: %s",
+#                                 len(children), filenames_phrase)
 
                 i += 1
 
@@ -651,7 +647,7 @@ class PathRelations(object):
             return self.path_cache[path]
 
         with PathRelations.rlock:
-            self.__log.debug("Locating entry information for path [%s].", path)
+#            self.__log.debug("Locating entry information for path [%s].", path)
             root_id = AccountInfo.get_instance().root_id
 
             # Ensure that the root node is loaded.
@@ -668,9 +664,9 @@ class PathRelations(object):
                 child_filename_to_search_fs = utility. \
                     translate_filename_charset(path_parts[i])
 
-                self.__log.debug("Checking for part (%d) [%s] under parent "
-                                 "with ID [%s].",
-                                 i, child_filename_to_search_fs, entry_ptr)
+#                self.__log.debug("Checking for part (%d) [%s] under parent "
+#                                 "with ID [%s].",
+#                                 i, child_filename_to_search_fs, entry_ptr)
 
                 current_clause = self.entry_ll[entry_ptr]
             
@@ -752,20 +748,20 @@ class EntryCache(CacheClientBase):
         parent_ids = drive_proxy('get_parents_containing_id', 
                                  child_id=requested_entry_id)
 
-        self.__log.debug("Found (%d) parents.", len(parent_ids))
+#        self.__log.debug("Found (%d) parents.", len(parent_ids))
 
         affected_entries = [ requested_entry_id ]
         considered_entries = { }
         max_readahead_entries = Conf.get('max_readahead_entries')
         for parent_id in parent_ids:
-            self.__log.debug("Retrieving children for parent with ID [%s].",
-                             parent_id)
+#            self.__log.debug("Retrieving children for parent with ID [%s].",
+#                             parent_id)
 
             child_ids = drive_proxy('get_children_under_parent_id', 
                                     parent_id=parent_id)
 
-            self.__log.debug("(%d) children found under parent with ID [%s].",
-                             len(child_ids), parent_id)
+#            self.__log.debug("(%d) children found under parent with ID [%s].",
+#                             len(child_ids), parent_id)
 
             for child_id in child_ids:
                 if child_id == requested_entry_id:
@@ -817,15 +813,15 @@ class EntryCache(CacheClientBase):
         for entry_id, entry in retrieved.iteritems():
             path_relations.register_entry(entry)
 
-        self.__log.debug("(%d) entries were loaded.", len(retrieved))
+#        self.__log.debug("(%d) entries were loaded.", len(retrieved))
 
         return retrieved
 
     def fault_handler(self, resource_name, requested_entry_id):
         """A requested entry wasn't stored."""
 
-        self.__log.debug("EntryCache has faulted on entry with ID [%s].",
-                         requested_entry_id)
+#        self.__log.debug("EntryCache has faulted on entry with ID [%s].",
+#                         requested_entry_id)
 
         retrieved = self.__do_update_for_missing_entry(requested_entry_id)
 
