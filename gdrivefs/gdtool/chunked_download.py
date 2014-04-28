@@ -96,5 +96,7 @@ class ChunkedDownload(object):
     if self._progress == self._total_size:
         self._done = True
 
-    return MediaDownloadProgress(self._progress, self._total_size), self._done
+    return (MediaDownloadProgress(self._progress, self._total_size), 
+            self._done,
+            self._total_size)
 

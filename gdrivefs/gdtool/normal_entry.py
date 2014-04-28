@@ -2,6 +2,7 @@ import logging
 import re
 import dateutil.parser
 import json
+import time
 
 from time import mktime
 from mimetypes import guess_type
@@ -243,8 +244,10 @@ class NormalEntry(object):
 
     @property
     def modified_date_epoch(self):
-        return mktime(self.modified_date.timetuple())
-
+        # mktime() only works in terms of the local timezone, so compensate 
+        # (this works with DST, too).
+        return mktime(self.modified_date.timetuple()) - time.timezone
+        
     @property  
     def mtime_byme_date(self):
         if 'modified_byme_date' not in self.__cache_dict:
@@ -255,7 +258,7 @@ class NormalEntry(object):
 
     @property
     def mtime_byme_date_epoch(self):
-        return mktime(self.mtime_byme_date.timetuple())
+        return mktime(self.mtime_byme_date.timetuple()) - time.timezone
 
     @property
     def atime_byme_date(self):
@@ -269,7 +272,7 @@ class NormalEntry(object):
 
     @property
     def atime_byme_date_epoch(self):
-        return mktime(self.atime_byme_date.timetuple()) \
+        return mktime(self.atime_byme_date.timetuple()) - time.timezone \
                 if self.atime_byme_date \
                 else None
 

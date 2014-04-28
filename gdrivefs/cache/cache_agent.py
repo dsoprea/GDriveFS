@@ -40,17 +40,26 @@ class CacheAgent(object):
         self.fault_handler = fault_handler
         self.cleanup_pretrigger = cleanup_pretrigger
 
-        self.report = Report.get_instance()
-        self.report_source_name = ("cache-%s" % (self.resource_name))
+#        self.report = Report.get_instance()
+#        self.report_source_name = ("cache-%s" % (self.resource_name))
 
         # Run a clean-up cycle to get it scheduled.
 #        self.__cleanup_check()
-        self.__post_status()
+
+# TODO(dustin): Currently disabled. The system doesn't rely on it, and it's 
+#               just another thread that unnecessarily runs, and trips up our 
+#               ability to test individual components in simple isolation. It
+#               needs to be refactored.
+#
+#               We'd like to either refactor into a multiprocessing worker, or
+#               just send to statsd (which would be kindof cool).
+#        self.__post_status()
 
     def __del__(self):
 
-        if self.report.is_source(self.report_source_name):
-            self.report.remove_all_values(self.report_source_name)
+#        if self.report.is_source(self.report_source_name):
+#            self.report.remove_all_values(self.report_source_name)
+        pass
 
     def __post_status(self):
         """Send the current status to our reporting tool."""

@@ -420,7 +420,7 @@ class _GdriveManager(object):
                             url)
 
             while 1:
-                status, done = downloader.next_chunk()
+                status, done, total_size = downloader.next_chunk()
                 if done is True:
                     break
 
@@ -431,7 +431,7 @@ class _GdriveManager(object):
                                  (output_file_path))
             raise
 
-        return (len(data), True)
+        return (total_size, True)
 
     def __insert_entry(self, filename, mime_type, parents, data_filepath=None, 
                        modified_datetime=None, accessed_datetime=None, 
@@ -551,7 +551,7 @@ class _GdriveManager(object):
 
         result = client.files().update(**args).execute()
         normalized_entry = NormalEntry('update_entry', result)
-            
+
         self.__log.debug("Entry with ID [%s] updated." % (normalized_entry.id))
 
         return normalized_entry
