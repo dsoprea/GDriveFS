@@ -36,12 +36,8 @@ def main():
 
     # An authorization URL was requested.
     if 'url' in args and args.url:
-        try:
-            authorize = get_auth()
-            url = authorize.step1_get_auth_url()
-        except Exception as e:
-            print("Could not produce auth-URL: %s" % (e))
-            sys.exit()
+        authorize = get_auth()
+        url = authorize.step1_get_auth_url()
 
         print("To authorize FUSE to use your Google Drive account, visit the "
               "following URL to produce an authorization code:\n\n%s\n" % 
@@ -53,16 +49,8 @@ def main():
 
         set_auth_cache_filepath(auth_storage_file)
 
-        try:
-            authorize = get_auth()
-            authorize.step2_doexchange(authcode)
-
-        except (Exception) as e:
-            message = ("Authorization failed: %s" % (str(e)))
-
-            logging.exception(message)
-            print(message)
-            sys.exit()
+        authorize = get_auth()
+        authorize.step2_doexchange(authcode)
 
         print("Authorization code recorded.")
 
@@ -71,16 +59,9 @@ def main():
 
         option_string = args.opt[0] if args.opt else None
 
-        try:
-            mount(auth_storage_filepath=args.auth_storage_file, 
-                  mountpoint=args.mountpoint, debug=args.debug, 
-                  nothreads=args.debug, option_string=option_string)
-        except (Exception) as e:
-            message = ("Mount failed: %s" % (str(e)))
-
-            logging.exception(message)
-            print(message)
-            sys.exit()
+        mount(auth_storage_filepath=args.auth_storage_file, 
+              mountpoint=args.mountpoint, debug=args.debug, 
+              nothreads=args.debug, option_string=option_string)
 
 if __name__ == '__main__':
     main()

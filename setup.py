@@ -44,6 +44,6 @@ setuptools.setup(
     install_requires=install_requires,
     scripts=['gdrivefs/resources/scripts/gdfs',
              'gdrivefs/resources/scripts/gdfstool',
-             'gdrivefs/resources/scripts/gdfsuninstall'],
+             'gdrivefs/resources/scripts/gdfsdumpentry'],
 )
 

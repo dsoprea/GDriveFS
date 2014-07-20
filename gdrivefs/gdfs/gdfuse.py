@@ -27,7 +27,6 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_CHILDREN, CLAUSE_ID, \
                                   CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf import Conf
-from gdrivefs.gdtool.oauth_authorize import get_auth
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.general.buffer_segments import BufferSegments
@@ -764,6 +763,10 @@ def load_mount_parser_args(parser):
 def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, 
           option_string=None):
 
+    if os.path.exists(auth_storage_filepath) is False:
+        raise ValueError("Credential path is not valid: [%s]" %
+                         (auth_storage_filepath))
+
     logging.debug("Debug: %s" % (debug))
 
     fuse_opts = { }
@@ -826,6 +829,9 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
 #    atexit.register(Timers.get_instance().cancel_all)
     if debug:
         Timers.get_instance().set_autostart_default(False)
+
+    # Make sure we can connect.
+    gdrivefs.gdtool.account_info.AccountInfo().get_data()
 
     fuse = FUSE(GDriveFS(), mountpoint, debug=debug, foreground=debug, 
                 nothreads=nothreads, fsname=name, **fuse_opts)

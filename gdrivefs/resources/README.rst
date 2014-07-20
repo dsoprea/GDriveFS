@@ -80,7 +80,7 @@ Troubleshooting
 
   Apparently, the solution is to make sure that you have a healthy copy of
   *Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem 
-  to [always] work. You might prefer to use the "easy_install" method, below.
+  to [always] work. You might try to install using "easy_install".
 
 - If you see an error about antlr-python-runtime, try the following to install
   gdrivefs::

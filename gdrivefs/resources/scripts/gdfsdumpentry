@@ -17,30 +17,18 @@ from gdrivefs.timer import Timers
 from gdrivefs.errors import GdNotFoundError
 
 def get_by_path(raw_path):
-    try:
-        result = split_path(raw_path, path_resolver)
-        (parent_clause, path, filename, mime_type, is_hidden) = result
-    except:
-        print("Could not process file-path [%s]." % (raw_path))
-        sys.exit()
+    result = split_path(raw_path, path_resolver)
+    (parent_clause, path, filename, mime_type, is_hidden) = result
 
     filepath = build_filepath(path, filename)
     
     path_relations = PathRelations.get_instance()
 
-    try:
-        entry_clause = path_relations.get_clause_from_path(filepath)
-    except GdNotFoundError:
-        print("Could not retrieve clause for non-existent file-path [%s]." % 
-              (filepath))
-        sys.exit()
-    except:
-        print("Could not retrieve clause for path [%s]. " % (filepath))
-        sys.exit()
+    entry_clause = path_relations.get_clause_from_path(filepath)
 
     if not entry_clause:
         print("Path [%s] does not exist for stat()." % (filepath))
-        sys.exit()
+        sys.exit(1)
 
     return entry_clause[CLAUSE_ENTRY]
 

@@ -46,7 +46,6 @@ gdrivefs/resources/requirements.txt
 gdrivefs/resources/scripts/gdfs
 gdrivefs/resources/scripts/gdfsdumpentry
 gdrivefs/resources/scripts/gdfstool
-gdrivefs/resources/scripts/gdfsuninstall
 tests/__init__.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py

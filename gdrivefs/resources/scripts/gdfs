@@ -24,14 +24,12 @@ def main():
     logging.debug("Mounting GD with creds at [%s]: %s", 
                   args.auth_storage_file, args.mountpoint)
 
-    try:
-        mount(auth_storage_filepath=args.auth_storage_file, 
-              mountpoint=args.mountpoint, debug=args.debug, 
-              nothreads=args.debug, option_string=option_string)
-    except (Exception) as e:
-        message = ("Could not do mount [%s]: %s" % (e.__class__.__name__, str(e)))
-        logging.exception(message)
-        print(message)
+    mount(
+        auth_storage_filepath=args.auth_storage_file, 
+        mountpoint=args.mountpoint, 
+        debug=args.debug, 
+        nothreads=args.debug, 
+        option_string=option_string)
 
 if __name__ == '__main__':
     main()

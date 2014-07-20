@@ -11,7 +11,6 @@ from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
 from apiclient.errors import HttpError
 
-from time import mktime, time
 from datetime import datetime
 from httplib2 import Http
 from collections import OrderedDict
@@ -344,7 +343,8 @@ class _GdriveManager(object):
                                      "path [%s]." % (temp_path))
                 raise
 
-        gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
+        gd_mtime_epoch = time.mktime(
+                            normalized_entry.modified_date.timetuple())
 
         self.__log.debug("File will be downloaded to [%s].", 
                          (output_file_path))
@@ -425,7 +425,7 @@ class _GdriveManager(object):
                     break
 
         try:
-            utime(output_file_path, (time(), gd_mtime_epoch))
+            utime(output_file_path, (time.time(), gd_mtime_epoch))
         except:
             self.__log.exception("Could not set time on [%s]." % 
                                  (output_file_path))
