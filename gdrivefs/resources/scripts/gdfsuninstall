@@ -1,23 +1,20 @@
 #!/usr/bin/env python2.7
 
 import sys
-sys.path.insert(0, '..')
-
-# Allow for module-level init.
-import gdrivefs
-
-# Allow for module-level init.
-import gdrivefs
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
 
 from os import unlink, environ
-from os.path import join
+
+import gdrivefs.log_config
 
 def main():
     sbin_parent = environ.get('PREFIX', '/usr/local')
-    sbin_path = join(sbin_parent, 'sbin')
+    sbin_path = os.path.join(sbin_parent, 'sbin')
 
     for tool_name in ('gdfs', 'gdfstool', 'gdfsuninstall'):
-        file_path = join(sbin_path, tool_name)
+        file_path = os.path.join(sbin_path, tool_name)
 
         print("Unlinking: %s" % (file_path))
         unlink(file_path)

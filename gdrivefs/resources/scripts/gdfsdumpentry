@@ -1,12 +1,13 @@
 #!/usr/bin/env python2.7
 
 import sys
-sys.path.insert(0, '..')
-
-# Allow for module-level init.
-import gdrivefs
+import os.path
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, dev_path)
 
 from argparse import ArgumentParser
+
+import gdrivefs.log_config
 
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ENTRY
