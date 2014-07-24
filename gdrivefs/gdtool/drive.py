@@ -367,7 +367,8 @@ class _GdriveManager(object):
             # Use the cache. It's fine.
 
             self.__log.debug("File retrieved from the previously downloaded, "
-                            "still-current file.")
+                             "still-current file.")
+
             return (stat_info.st_size, False)
 
         # Go and get the file.
@@ -376,42 +377,6 @@ class _GdriveManager(object):
         authed_http = self.__auth.get_authed_http()
 
         url = normalized_entry.download_links[mime_type]
-
-#        self.__log.debug("Downloading file from [%s]." % (url))
-#
-#        try:
-#            data_tuple = authed_http.request(url)
-#        except:
-#            self.__log.exception("Could not download entry with ID [%s], type "
-#                              "[%s], and URL [%s]." % (normalized_entry.id, 
-#                                                       mime_type, url))
-#            raise
-#
-#        (response_headers, data) = data_tuple
-#
-#        # Throw a log-item if we see any "Range" response-headers. If GD ever
-#        # starts supporting "Range" headers, we'll be able to write smarter 
-#        # download mechanics (resume, etc..).
-#
-#        r = re.compile('Range')
-#        range_found = [("%s: %s" % (k, v)) for k, v 
-#                                           in response_headers.iteritems() 
-#                                           if r.match(k)]
-#        if range_found:
-#            self.__log.info("GD has returned Range-related headers: %s" % 
-#                            (", ".join(found)))
-#
-#        self.__log.info("Downloaded file is (%d) bytes. Writing to [%s]." % 
-#                        (len(data), output_file_path))
-#
-#        try:
-#            with open(output_file_path, 'wb') as f:
-#                f.write(data)
-#        except:
-#            self.__log.exception("Could not cached downloaded file. Skipped.")
-#
-#        else:
-#            self.__log.info("File written to cache successfully.")
 
         with open(output_file_path, 'wb') as f:
             downloader = gdrivefs.gdtool.chunked_download.ChunkedDownload(
@@ -424,12 +389,7 @@ class _GdriveManager(object):
                 if done is True:
                     break
 
-        try:
-            utime(output_file_path, (time.time(), gd_mtime_epoch))
-        except:
-            self.__log.exception("Could not set time on [%s]." % 
-                                 (output_file_path))
-            raise
+        utime(output_file_path, (time.time(), gd_mtime_epoch))
 
         return (total_size, True)
 

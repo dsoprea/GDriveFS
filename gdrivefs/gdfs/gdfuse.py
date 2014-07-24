@@ -610,8 +610,6 @@ class GDriveFS(LoggingMixIn,Operations):
                                      "with ID (%d) (truncate)." % (fh))
                 raise FuseOSError(EIO)
 
-            opened_file.reset_state()
-
             entry_id = opened_file.entry_id
             cache = EntryCache.get_instance().cache
 
@@ -622,6 +620,8 @@ class GDriveFS(LoggingMixIn,Operations):
                                      "ID [%s] for truncate with FH." % 
                                      (entry_id))
                 raise
+
+            opened_file.truncate(length)
         else:
             (entry, path, filename) = get_entry_or_raise(filepath)
 
@@ -630,6 +630,9 @@ class GDriveFS(LoggingMixIn,Operations):
         except:
             _logger.exception("Could not truncate entry [%s]." % (entry))
             raise FuseOSError(EIO)
+
+# TODO(dustin): It would be a lot quicker if we truncate our temporary file 
+#               here, and make sure its mtime matches.
 
         # We don't need to update our internal representation of the file (just 
         # our file-handle and its related buffering).
