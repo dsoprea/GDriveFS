@@ -14,11 +14,11 @@ class AccountInfo(LiveReaderBase):
              'quota_bytes_used': (u'quotaBytesUsed', int)}
 
     def __init__(self):
-        LiveReaderBase.__init__(self)
+        super(LiveReaderBase, self).__init__()
 
         self.__log = logging.getLogger().getChild('AccountInfo')
 
-    def get_data(self, key):
+    def get_data(self):
         try:
             return drive_proxy('get_about_info')
         except:

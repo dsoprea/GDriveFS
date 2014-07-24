@@ -11,7 +11,6 @@ from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
 from apiclient.errors import HttpError
 
-from time import mktime, time
 from datetime import datetime
 from httplib2 import Http
 from collections import OrderedDict
@@ -322,7 +321,7 @@ class _GdriveManager(object):
         """
 
         self.__log.debug("Downloading entry with ID [%s] and mime-type [%s].", 
-                         (normalized_entry.id, mime_type))
+                         normalized_entry.id, mime_type)
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -344,7 +343,8 @@ class _GdriveManager(object):
                                      "path [%s]." % (temp_path))
                 raise
 
-        gd_mtime_epoch = mktime(normalized_entry.modified_date.timetuple())
+        gd_mtime_epoch = time.mktime(
+                            normalized_entry.modified_date.timetuple())
 
         self.__log.debug("File will be downloaded to [%s].", 
                          (output_file_path))
@@ -377,8 +377,8 @@ class _GdriveManager(object):
 
         url = normalized_entry.download_links[mime_type]
 
-        self.__log.debug("Downloading file from [%s]." % (url))
-
+#        self.__log.debug("Downloading file from [%s]." % (url))
+#
 #        try:
 #            data_tuple = authed_http.request(url)
 #        except:
@@ -420,18 +420,18 @@ class _GdriveManager(object):
                             url)
 
             while 1:
-                status, done = downloader.next_chunk()
+                status, done, total_size = downloader.next_chunk()
                 if done is True:
                     break
 
         try:
-            utime(output_file_path, (time(), gd_mtime_epoch))
+            utime(output_file_path, (time.time(), gd_mtime_epoch))
         except:
             self.__log.exception("Could not set time on [%s]." % 
                                  (output_file_path))
             raise
 
-        return (len(data), True)
+        return (total_size, True)
 
     def __insert_entry(self, filename, mime_type, parents, data_filepath=None, 
                        modified_datetime=None, accessed_datetime=None, 
@@ -551,7 +551,7 @@ class _GdriveManager(object):
 
         result = client.files().update(**args).execute()
         normalized_entry = NormalEntry('update_entry', result)
-            
+
         self.__log.debug("Entry with ID [%s] updated." % (normalized_entry.id))
 
         return normalized_entry
@@ -657,7 +657,12 @@ class _GoogleProxy(object):
 
                     time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
                 except HttpError as e:
-                    error = json.loads(e.content)
+                    try:
+                        error = json.loads(e.content)
+                    except ValueError:
+                        _logger.error("Non-JSON error while doing chunked "
+                                      "download: %s", e.content) 
+                    
                     if error.get('code') == 403 and \
                        error.get('errors')[0].get('reason') \
                        in ['rateLimitExceeded', 'userRateLimitExceeded']:

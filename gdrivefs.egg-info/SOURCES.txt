@@ -1,6 +1,6 @@
 MANIFEST.in
+README.rst
 setup.py
-versioneer.py
 gdrivefs/__init__.py
 gdrivefs/_version.py
 gdrivefs/change.py
@@ -41,11 +41,13 @@ gdrivefs/gdtool/oauth_authorize.py
 gdrivefs/general/__init__.py
 gdrivefs/general/buffer_segments.py
 gdrivefs/general/livereader_base.py
+gdrivefs/resources/README.rst
+gdrivefs/resources/requirements.txt
+gdrivefs/resources/scripts/gdfs
+gdrivefs/resources/scripts/gdfsdumpentry
+gdrivefs/resources/scripts/gdfstool
 tests/__init__.py
 tests/gdtool/Conf.py
 tests/gdtool/__init__.py
 tests/gdtool/drive_proxy.py
 tests/gdtool/get_cache.py
-tools/gdfs
-tools/gdfstool
-tools/gdfsuninstall

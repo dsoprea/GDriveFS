@@ -1,0 +1,1 @@
+gdrivefs/resources/README.rst

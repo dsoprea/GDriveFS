@@ -10,10 +10,11 @@ from gdrivefs.conf import Conf
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
 from gdrivefs.report import Report
 
+_logger = logging.getLogger(__name__)
+
+
 class CacheAgent(object):
     """A particular namespace within the cache."""
-
-    __log = None
 
     registry        = None
     resource_name   = None
@@ -27,9 +28,7 @@ class CacheAgent(object):
 
     def __init__(self, resource_name, max_age, fault_handler=None, 
                  cleanup_pretrigger=None):
-        self.__log = logging.getLogger().getChild('CacheAgent')
-
-        self.__log.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
+        _logger.debug("CacheAgent(%s,%s,%s,%s)" % (resource_name, max_age, 
                                                    type(fault_handler), 
                                                    cleanup_pretrigger))
 
@@ -40,35 +39,34 @@ class CacheAgent(object):
         self.fault_handler = fault_handler
         self.cleanup_pretrigger = cleanup_pretrigger
 
-        self.report = Report.get_instance()
-        self.report_source_name = ("cache-%s" % (self.resource_name))
+#        self.report = Report.get_instance()
+#        self.report_source_name = ("cache-%s" % (self.resource_name))
 
         # Run a clean-up cycle to get it scheduled.
 #        self.__cleanup_check()
-        self.__post_status()
+
+# TODO(dustin): Currently disabled. The system doesn't rely on it, and it's 
+#               just another thread that unnecessarily runs, and trips up our 
+#               ability to test individual components in simple isolation. It
+#               needs to be refactored.
+#
+#               We'd like to either refactor into a multiprocessing worker, or
+#               just send to statsd (which would be kindof cool).
+#        self.__post_status()
 
     def __del__(self):
 
-        if self.report.is_source(self.report_source_name):
-            self.report.remove_all_values(self.report_source_name)
+#        if self.report.is_source(self.report_source_name):
+#            self.report.remove_all_values(self.report_source_name)
+        pass
 
     def __post_status(self):
         """Send the current status to our reporting tool."""
 
-        try:
-            num_values = self.registry.count(self.resource_name)
-        except:
-            self.__log.exception("Could not get count of values for resource "
-                                 "with name [%s]." % (self.resource_name))
-            raise
+        num_values = self.registry.count(self.resource_name)
 
-        try:
-            self.report.set_values(self.report_source_name, 'count', 
-                                   num_values)
-        except:
-            self.__log.exception("Cache could not post status for resource "
-                                 "with name [%s]." % (self.resource_name))
-            raise
+        self.report.set_values(self.report_source_name, 'count', 
+                               num_values)
 
         status_post_interval_s = Conf.get('cache_status_post_frequency_s')
         status_timer = Timer(status_post_interval_s, self.__post_status)
@@ -80,15 +78,10 @@ class CacheAgent(object):
         removed.
         """
 
-        self.__log.debug("Doing clean-up for cache resource with name [%s]." % 
+        _logger.debug("Doing clean-up for cache resource with name [%s]." % 
                       (self.resource_name))
 
-        try:
-            cache_dict = self.registry.list_raw(self.resource_name)
-        except:
-            self.__log.exception("Could not do clean-up check with resource-"
-                                 "name [%s]." % (self.resource_name))
-            raise
+        cache_dict = self.registry.list_raw(self.resource_name)
 
         total_keys = [ (key, value_tuple[1]) for key, value_tuple \
                             in cache_dict.iteritems() ]
@@ -98,28 +91,22 @@ class CacheAgent(object):
                             if (datetime.now() - value_tuple[1]).seconds > \
                                     self.max_age ]
 
-        self.__log.info("Found (%d) entries to clean-up from entry-cache." % 
-                        (len(cleanup_keys)))
+        _logger.info("Found (%d) entries to clean-up from entry-cache." % 
+                     (len(cleanup_keys)))
 
         if cleanup_keys:
             for key in cleanup_keys:
-                self.__log.debug("Cache entry [%s] under resource-name [%s] "
-                                 "will be cleaned-up." % (key, 
-                                                          self.resource_name))
+                _logger.debug("Cache entry [%s] under resource-name [%s] "
+                              "will be cleaned-up." % 
+                              (key, self.resource_name))
 
                 if self.exists(key, no_fault_check=True) == False:
-                    self.__log.debug("Entry with ID [%s] has already been "
-                                     "cleaned-up." % (key))
+                    _logger.debug("Entry with ID [%s] has already been "
+                                  "cleaned-up." % (key))
                 else:
-                    try:
-                        self.remove(key)
-                    except:
-                        self.__log.exception("Cache entry [%s] under resource-"
-                                             "name [%s] could not be cleaned-"
-                                             "up." % (key, self.resource_name))
-                        raise
+                    self.remove(key)
 
-            self.__log.debug("Scheduled clean-up complete.")
+            _logger.debug("Scheduled clean-up complete.")
 
         cleanup_interval_s = Conf.get('cache_cleanup_check_frequency_s')
         cleanup_timer = Timer(cleanup_interval_s, self.__cleanup_check)
@@ -127,12 +114,12 @@ class CacheAgent(object):
         Timers.get_instance().register_timer('cleanup', cleanup_timer)
 
     def set(self, key, value):
-        self.__log.debug("CacheAgent.set(%s,%s)" % (key, value))
+        _logger.debug("CacheAgent.set(%s,%s)" % (key, value))
 
         return self.registry.set(self.resource_name, key, value)
 
     def remove(self, key):
-        self.__log.debug("CacheAgent.remove(%s)" % (key))
+        _logger.debug("CacheAgent.remove(%s)" % (key))
 
         return self.registry.remove(self.resource_name, 
                                     key, 
@@ -143,7 +130,7 @@ class CacheAgent(object):
         if handle_fault == None:
             handle_fault = True
 
-        self.__log.debug("CacheAgent.get(%s)" % (key))
+        _logger.debug("CacheAgent.get(%s)" % (key))
 
         try:
             result = self.registry.get(self.resource_name, 
@@ -151,26 +138,20 @@ class CacheAgent(object):
                                        max_age=self.max_age, 
                                        cleanup_pretrigger=self.cleanup_pretrigger)
         except CacheFault:
-            self.__log.debug("There was a cache-miss while requesting item "
-                             "with ID (key).")
+            _logger.debug("There was a cache-miss while requesting item with "
+                          "ID (key).")
 
             if self.fault_handler == None or not handle_fault:
                 raise
 
-            try:
-                result = self.fault_handler(self.resource_name, key)
-            except:
-                self.__log.exception("There was an exception in the fault-"
-                                     "handler, handling for key [%s].", key)
-                raise
-
-            if result == None:
+            result = self.fault_handler(self.resource_name, key)
+            if result is None:
                 raise
 
         return result
 
     def exists(self, key, no_fault_check=False):
-        self.__log.debug("CacheAgent.exists(%s)" % (key))
+        _logger.debug("CacheAgent.exists(%s)" % (key))
 
         return self.registry.exists(self.resource_name, key, 
                                     max_age=self.max_age,

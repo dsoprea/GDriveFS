@@ -7,18 +7,11 @@ from sys import platform
 
 default_logger = getLogger()
 default_logger.setLevel(logging.WARNING)
+#default_logger.setLevel(logging.DEBUG)
 
 # Log to syslog.
 
-if platform == "darwin":
-    # Apple made 10.5 more secure by disabling network syslog:
-    address = "/var/run/syslog"
-elif exists('/dev/log'):
-    address = '/dev/log'
-else:
-    address = ('localhost', 514)
-
-log_syslog = SysLogHandler(address, facility=SysLogHandler.LOG_LOCAL0)
+log_syslog = SysLogHandler(facility=SysLogHandler.LOG_LOCAL0)
 log_format = 'GD: %(name)-12s %(levelname)-7s %(message)s'
 log_syslog.setFormatter(Formatter(log_format))
 default_logger.addHandler(log_syslog)

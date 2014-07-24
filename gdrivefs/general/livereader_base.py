@@ -20,7 +20,7 @@ class LiveReaderBase(object):
             pass
 
         try:
-            self.__data = self.get_data(key)
+            self.__data = self.get_data()
         except:
             self.__log.exception("Could not retrieve data for live-updater "
                                  "wrapping [%s]." % (child_name))
@@ -34,7 +34,7 @@ class LiveReaderBase(object):
                                  "[%s]." % (child_name, key))
             raise
 
-    def get_data(self, key):
+    def get_data(self):
         raise NotImplementedError("get_data() method must be implemented in "
                                   "the LiveReaderBase child.")
 
