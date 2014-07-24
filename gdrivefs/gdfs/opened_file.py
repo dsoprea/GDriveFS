@@ -422,6 +422,8 @@ class OpenedFile(object):
                         # Read the locally cached file in.
 
                         try:
+# TODO(dustin): Our accounting is broken when it comes to loading and/or update-tracking. If we have a guarantee thawrites only appear in sequence and in increasing order, we can dump BufferSegments.
+
 # TODO(dustin): This is the source of:
 # 1) An enormous slowdown where we first have to write the data, and then have to read it back.
 # 2) An enormous resource burden.
@@ -469,7 +471,7 @@ class OpenedFile(object):
 
         entry = self.__get_entry_or_raise()
         cache_fault = self.__load_base_from_remote()
-    
+
         with self.__class__.__update_lock:
             if self.__is_dirty is False:
                 self.__log.debug("Flush will be skipped because there are no "
@@ -567,11 +569,7 @@ class OpenedFile(object):
         
         self.__log.debug("Checking write-cache file (flush).")
 
-        try:
-            self.__load_base_from_remote()
-        except:
-            self.__log.exception("Could not load write-cache file.")
-            raise
+        self.__load_base_from_remote()
 
 # TODO: Refactor this into a paging mechanism.
 
