@@ -2,12 +2,13 @@ import logging
 
 from gdrivefs.cache.cache_agent import CacheAgent
 
+_logger = logging.getLogger(__name__)
+
+
 class CacheClientBase(object):
     """Meant to be inherited by a class. Is used to configure a particular 
     namespace within the cache.
     """
-
-    __log = None
 
     @property
     def cache(self):
@@ -23,11 +24,10 @@ class CacheClientBase(object):
         return self._cache
 
     def __init__(self):
-        self.__log = logging.getLogger().getChild('CacheClientBase')
         child_type = self.__class__.__bases__[0].__name__
         max_age = self.get_max_cache_age_seconds()
         
-        self.__log.debug("CacheClientBase(%s,%s)" % (child_type, max_age))
+        _logger.debug("CacheClientBase(%s,%s)" % (child_type, max_age))
 
         self.child_type = child_type
         self.max_age = max_age
