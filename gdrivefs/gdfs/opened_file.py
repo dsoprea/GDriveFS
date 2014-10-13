@@ -1,8 +1,6 @@
 import logging
 import resource
 import re
-import time
-import os
 
 from errno import *
 from threading import Lock, RLock
@@ -19,6 +17,7 @@ from gdrivefs.gdfs.displaced_file import DisplacedFile
 from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
                                   CLAUSE_ID, CLAUSE_ENTRY
 from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.general.buffer_segments import BufferSegments
 
 _logger = logging.getLogger(__name__)
 
@@ -33,6 +32,19 @@ def get_temp_filepath(normalized_entry, mime_type):
 
     temp_path = Conf.get('file_download_temp_path')
     return ("%s/local/%s" % (temp_path, temp_filename))
+
+
+
+# TODO(dustin): LCM runs in a greenlet pool. When we open a file that needs the
+#               existing data for a file (read, append), a switch is done to an
+#               LCM worker. If the data is absent or faulted, download the
+#               content. Then, switch back.
+
+class LocalCopyManager(object):
+    """Manages local copies of files."""
+    
+#    def 
+    pass
 
 
 class OpenedManager(object):
@@ -263,16 +275,8 @@ class OpenedFile(object):
 
         self.reset_state()
 
-        try:
-            entry = self.__get_entry_or_raise()
-        except:
-            _logger.exception("Could not get entry with ID [%s] for "
-                              "write-flush.", self.__entry_id)
-            raise
-
-        self.__temp_filepath = get_temp_filepath(entry, self.mime_type)
-
     def reset_state(self):
+        self.__buffer = None
         self.__is_loaded = False
         self.__is_dirty = False
 
@@ -313,7 +317,7 @@ class OpenedFile(object):
 
         _logger.debug("Ensuring local availability of [%s].", entry)
 
-        temp_filepath = get_temp_filepath(entry, self.mime_type)
+        temp_file_path = get_temp_filepath(entry, self.mime_type)
 
         _logger.debug("__load_base_from_remote about to download.")
 
@@ -341,10 +345,9 @@ class OpenedFile(object):
                 _logger.debug("Executing the download.")
                 
                 try:
-# TODO(dustin): Confirm that this will inherit an existing file (same mtime, 
-#               same size).
+# TODO(dustin): We're not inheriting an existing file (same mtime, same size).
                     result = drive_proxy('download_to_local', 
-                                         output_file_path=temp_filepath,
+                                         output_file_path=temp_file_path,
                                          normalized_entry=entry,
                                          mime_type=self.mime_type)
 
@@ -353,8 +356,44 @@ class OpenedFile(object):
                     _logger.exception("There was an export-format error.")
                     raise FuseOSError(ENOENT)
 
-            _logger.info("Download complete.  cache_fault= [%s] "
-                         "__is_loaded= [%s]", cache_fault, self.__is_loaded)
+            _logger.debug("Download complete.  cache_fault= [%s] "
+                          "__is_loaded= [%s]", cache_fault, self.__is_loaded)
+
+            # We've either not loaded it, yet, or it has changed.
+            if cache_fault or not self.__is_loaded:
+                with self.__class__.__update_lock:
+                    _logger.debug("Checking queued items for fault.")
+
+                    if cache_fault:
+                        if self.__is_dirty:
+                            _logger.error("Entry [%s] has been changed. "
+                                          "Forcing buffer updates, and "
+                                          "clearing uncommitted updates.",
+                                          entry)
+                        else:
+                            _logger.debug("Entry [%s] has changed. "
+                                          "Updating buffers.", entry)
+
+                    _logger.debug("Loading buffers.")
+
+                    with open(temp_file_path, 'rb') as f:
+                        # Read the locally cached file in.
+
+# TODO(dustin): This is the source of:
+# 1) An enormous slowdown where we first have to write the data, and then have to read it back.
+# 2) An enormous resource burden.
+                        data = f.read()
+
+                        read_blocksize = \
+                            Conf.get('default_buffer_read_blocksize')
+                        
+                        self.__buffer = BufferSegments(
+                                            data, 
+                                            read_blocksize)
+
+                        self.__is_dirty = False
+
+                    self.__is_loaded = True
 
         _logger.debug("__load_base_from_remote complete.")
         return cache_fault
@@ -363,51 +402,16 @@ class OpenedFile(object):
     def add_update(self, offset, data):
         """Queue an update to this file."""
 
-        _logger.info("Applying update for offset (%d) and length (%d).",
-                     offset, len(data))
+        _logger.debug("Applying update for offset (%d) and length (%d).",
+                      offset, len(data))
 
-        try:
-            self.__load_base_from_remote()
-        except:
-            _logger.exception("Could not load entry to local cache [%s].",
-                              self.__temp_filepath)
-            raise
+        self.__load_base_from_remote()
 
         _logger.debug("Base loaded for add_update.")
 
         with self.__class__.__update_lock:
-            with open(self.__temp_filepath, 'r+') as f:
-                f.seek(offset)
-                f.write(data)
-
+            self.__buffer.apply_update(offset, data)
             self.__is_dirty = True
-
-    @dec_hint(['length'], ['length'], 'OF')
-    def truncate(self, length):
-        try:
-            self.__load_base_from_remote()
-        except:
-            _logger.exception("Could not load entry to local cache [%s].",
-                              self.__temp_filepath)
-            raise
-
-        _logger.debug("Base loaded for truncate.")
-
-        entry = self.__get_entry_or_raise()
-
-        with self.__class__.__update_lock:
-            with open(self.__temp_filepath, 'r+') as f:
-                f.truncate(length)
-
-            gd_mtime_epoch = time.mktime(
-                                entry.modified_date.timetuple())
-
-# TODO(dustin): Shouldn't we be taking the first time component (atime?) from the entry?
-            os.utime(self.__temp_filepath, (time.time(), gd_mtime_epoch))
-
-            self.__is_dirty = True
-
-# TODO(dustin): We still have to make sure the mtime is set to match
 
     @dec_hint(prefix='OF')
     def flush(self):
@@ -417,55 +421,70 @@ class OpenedFile(object):
 
         entry = self.__get_entry_or_raise()
         cache_fault = self.__load_base_from_remote()
-
-# TODO(dustin): We need to be able to do updates for separate files in 
-#               parallel.
+    
         with self.__class__.__update_lock:
             if self.__is_dirty is False:
                 _logger.debug("Flush will be skipped because there are no "
                               "changes.")
+# TODO: Raise an exception?
                 return
+
+            # Write back out to the temporary file.
+
+            _logger.debug("Writing buffer to temporary file.")
+# TODO: Make sure to uncache the temp data if self.temp_file_path is not None.
+
+            mime_type = self.mime_type
+
+            # If we've already opened a work file, use it. Else, use a 
+            # temporary file that we'll close at the end of the method.
+            if self.__is_loaded:
+                is_temp = False
+
+                temp_file_path = get_temp_filepath(entry, mime_type)
+                                                   
+                with file(temp_file_path, 'w') as f:
+                    for block in self.__buffer.read():
+                        f.write(block)
+                                                   
+                write_filepath = temp_file_path
+            else:
+                is_temp = True
+            
+                with NamedTemporaryFile(delete=False) as f:
+                    write_filepath = f.name
+                    for block in self.__buffer.read():
+                        f.write(block)
 
             # Push to GD.
 
-#            os.stat(self.__temp
+            _logger.debug("Pushing (%d) bytes for entry with ID from [%s] to"
+                          "GD for file-path [%s].",
+                          self.__buffer.length, entry.id, write_filepath)
 
-            _logger.debug("Pushing (%d) bytes for entry with ID from [%s] "
-                          "to GD for file-path [%s].",
-                          self.__buffer.length, entry.id, self.__temp_filepath)
+# TODO: Update mtime?
+            entry = drive_proxy('update_entry', 
+                                normalized_entry=entry, 
+                                filename=entry.title, 
+                                data_filepath=write_filepath, 
+                                mime_type=mime_type, 
+                                parents=entry.parents, 
+                                is_hidden=self.__is_hidden)
 
-# TODO: Will this automatically update mtime?
-# TODO(dustin): We need to be able to update individual slices of the file 
-#               (maybe only if we've affected less than X% of the file).
-            try:
-                entry = drive_proxy('update_entry', 
-                                    normalized_entry=entry, 
-                                    filename=entry.title, 
-                                    data_filepath=self.__temp_filepath, 
-                                    mime_type=self.mime_type, 
-                                    parents=entry.parents, 
-                                    is_hidden=self.__is_hidden)
-            except:
-                _logger.exception("Could not localize displaced file with "
-                                  "entry having ID [%s].", entry.id)
-                raise
+            if not is_temp:
+                unlink(write_filepath)
+            else:
+                # Update the write-cache file to the official mtime. We won't 
+                # redownload it on the next flush if it wasn't changed, 
+                # elsewhere.
 
-            # Update the write-cache file to the official mtime. We won't 
-            # redownload it on the next flush if it wasn't changed, 
-            # elsewhere.
+                _logger.debug("Updating local write-cache file to official "
+                              "mtime [%s].", entry.modified_date_epoch)
 
-            _logger.debug("Updating local write-cache file to official "
-                          "mtime [%s].", entry.modified_date_epoch)
-
-            try:
-                utime(self.__temp_filepath, (entry.modified_date_epoch, 
-                                             entry.modified_date_epoch))
-            except:
-                _logger.exception("Could not update mtime of write-"
-                                  "cache [%s] for entry with ID [%s], "
-                                  "post-flush.",
-                                  entry.modified_date_epoch, entry.id)
-                raise
+                utime(
+                    write_filepath, 
+                    (entry.modified_date_epoch, 
+                     entry.modified_date_epoch))
 
         # Immediately update our current cached entry.
 
@@ -522,4 +541,3 @@ class OpenedFile(object):
     @property
     def file_path(self):
         return build_filepath(self.__path, self.__filename)
-

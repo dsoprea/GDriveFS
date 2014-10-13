@@ -17,44 +17,6 @@ class ChunkedDownload(object):
     that needs to be downloaded (not a request object, which doesn't apply here).
     """
 
-    headers = {
-        'range': 'bytes=%d-%d' % (
-            self._progress, self._progress + self._chunksize)
-        }
-
-    for retry_num in xrange(num_retries + 1):
-        if retry_num > 0:
-            self._sleep(self._rand() * 2**retry_num)
-            logging.warning("Retry #%d for media download: GET %s, following "
-                            "status: %d", retry_num, self._uri, resp.status)
-
-        resp, content = self._http.request(self._uri, headers=headers)
-        if resp.status < 500:
-            break
-
-    if resp.status not in (200, 206):
-        raise HttpError(resp, content, uri=self._uri)
-
-    if 'content-location' in resp and resp['content-location'] != self._uri:
-        self._uri = resp['content-location']
-
-    self._progress += len(content)
-    self._fd.write(content)
-
-    if 'content-length' in resp:
-        self._total_size = int(resp['content-length'])
-    elif 'content-range' in resp:
-        content_range = resp['content-range']
-        length = content_range.rsplit('/', 1)[1]
-        self._total_size = int(length)
-
-    if self._progress == self._total_size:
-        self._done = True
-
-    return (MediaDownloadProgress(self._progress, self._total_size), 
-            self._done,
-            self._total_size)
-
     @oauth2client.util.positional(4)
     def __init__(self, fd, http, uri, chunksize=DEFAULT_CHUNK_SIZE, start_at=0):
         """Constructor.
@@ -129,9 +91,10 @@ class ChunkedDownload(object):
             if self._progress == self._total_size:
                 self._done = True
 
-            return apiclient.http.MediaDownloadProgress(
-                    self._progress, 
-                    self._total_size), \
-                   self._done
+            return (apiclient.http.MediaDownloadProgress(
+                        self._progress, 
+                        self._total_size), \
+                    self._done, \
+                    self._total_size)
         else:
             raise apiclient.errors.HttpError(resp, content, uri=self._uri)

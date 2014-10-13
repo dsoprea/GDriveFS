@@ -71,13 +71,13 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
                 result = f(*args, **kwargs)
             except FuseOSError as e:
                 if e.errno not in (fuse.ENOENT,):
-                    log.error("FUSE error [%s] (%s) will be forwarded back to "
-                              "GDFS from [%s]: %s", 
-                              e.__class__.__name__, e.errno, f.__name__, 
-                              str(e))
+                    _logger.error("FUSE error [%s] (%s) will be forwarded "
+                                  "back to GDFS from [%s]: %s", 
+                                  e.__class__.__name__, e.errno, f.__name__, 
+                                  str(e))
                 raise
             except Exception as e:
-                log.exception("There was an exception in [%s]" % (f.__name__))
+                _logger.exception("There was an exception in [%s]", f.__name__)
                 suffix = (' (E(%s): "%s")', e.__class__.__name__, str(e))
                 raise
             finally:

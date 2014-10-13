@@ -49,15 +49,6 @@ class _ChangeManager(object):
 # TODO(dustin): Is there any way that we can block on this call?
         start_at_id = (self.at_change_id + 1)
 
-<<<<<<< HEAD
-        _logger.debug("Requesting changes.")
-        result = drive_proxy('list_changes', start_change_id=start_at_id)
-        (largest_change_id, next_page_token, changes) = result
-
-        _logger.debug("The latest reported change-ID is (%d) and we're "
-                      "currently at change-ID (%d)." % 
-                      (largest_change_id, self.at_change_id))
-=======
         result = drive_proxy('list_changes', start_change_id=start_at_id)
 
         (largest_change_id, next_page_token, changes) = result

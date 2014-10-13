@@ -10,10 +10,9 @@ import argparse
 
 import gdrivefs.config
 import gdrivefs.config.log
+import gdrivefs.gdfs.gdfuse
 
 _logger = logging.getLogger(__name__)
-
-from gdrivefs.gdfs.gdfuse import mount, load_mount_parser_args
 
 def main():
     parser = argparse.ArgumentParser()

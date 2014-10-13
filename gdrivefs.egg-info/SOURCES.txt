@@ -2,13 +2,11 @@ MANIFEST.in
 README.rst
 setup.py
 gdrivefs/__init__.py
-gdrivefs/_version.py
 gdrivefs/change.py
 gdrivefs/conf.py
 gdrivefs/errors.py
 gdrivefs/http_pool.py
 gdrivefs/log_config.py
-gdrivefs/path_config.py
 gdrivefs/report.py
 gdrivefs/time_support.py
 gdrivefs/timer.py

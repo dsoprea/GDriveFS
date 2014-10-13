@@ -19,15 +19,7 @@ _logger = logging.getLogger(__name__)
 class _OauthAuthorize(object):
     """Manages authorization process."""
 
-    __log = None
-
-    flow            = None
-    credentials     = None
-    cache_filepath  = None
-    
     def __init__(self):
-        self.__log = logging.getLogger().getChild('OauthAuth')
-
         cache_filepath  = Conf.get('auth_cache_filepath')
         api_credentials = Conf.get('api_credentials')
 
@@ -63,7 +55,7 @@ class _OauthAuthorize(object):
                 pass
     
     def __refresh_credentials(self):
-        self.__log.info("Doing credentials refresh.")
+        _logger.info("Doing credentials refresh.")
 
         http = Http()
 
@@ -75,7 +67,7 @@ class _OauthAuthorize(object):
 
         self.__update_cache(self.credentials)
             
-        self.__log.info("Credentials have been refreshed.")
+        _logger.info("Credentials have been refreshed.")
             
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
@@ -84,15 +76,15 @@ class _OauthAuthorize(object):
             raise ValueError("Credentials file-path is not set.")
 
         if self.credentials is None:
-            self.__log.info("Checking for cached credentials: %s" % 
-                            (self.cache_filepath))
+            _logger.info("Checking for cached credentials: %s",
+                         self.cache_filepath)
 
             with open(self.cache_filepath) as cache:
                 credentials_serialized = cache.read()
 
             # If we're here, we have serialized credentials information.
 
-            self.__log.info("Raw credentials retrieved from cache.")
+            _logger.info("Raw credentials retrieved from cache.")
             
             try:
                 credentials = pickle.loads(credentials_serialized)
@@ -108,8 +100,8 @@ class _OauthAuthorize(object):
             expiry_phrase = self.credentials.token_expiry.strftime(
                                 '%Y%m%d-%H%M%S')
                 
-            self.__log.info("Cached credentials found with expire-date [%s]." % 
-                            (expiry_phrase))
+            _logger.info("Cached credentials found with expire-date [%s].",
+                         expiry_phrase)
             
             self.check_credential_state()
 
@@ -120,7 +112,7 @@ class _OauthAuthorize(object):
         such as refreshing when we expire.
         """
         if(datetime.today() >= self.credentials.token_expiry):
-            self.__log.info("Credentials have expired. Attempting to refresh "
+            _logger.info("Credentials have expired. Attempting to refresh "
                          "them.")
             
             self.__refresh_credentials()
@@ -135,13 +127,13 @@ class _OauthAuthorize(object):
 
         # Serialize credentials.
 
-        self.__log.info("Serializing credentials for cache.")
+        _logger.info("Serializing credentials for cache.")
 
         credentials_serialized = pickle.dumps(credentials)
 
         # Write cache file.
 
-        self.__log.info("Writing credentials to cache.")
+        _logger.info("Writing credentials to cache.")
 
         with open(self.cache_filepath, 'w') as cache:
             cache.write(credentials_serialized)
@@ -149,7 +141,7 @@ class _OauthAuthorize(object):
     def step2_doexchange(self, auth_code):
         # Do exchange.
 
-        self.__log.info("Doing exchange.")
+        _logger.info("Doing exchange.")
         
         try:
             credentials = self.flow.step2_exchange(auth_code)
@@ -160,7 +152,7 @@ class _OauthAuthorize(object):
 
             raise AuthorizationFailureError(message)
         
-        self.__log.info("Credentials established.")
+        _logger.info("Credentials established.")
 
         self.__update_cache(credentials)
         self.credentials = credentials
