@@ -6,19 +6,12 @@ from fuse import FuseOSError, fuse_get_context
 
 from gdrivefs.errors import GdNotFoundError
 
-log = logging.getLogger('FsUtility')
+_logger = logging.getLogger(__name__)
 
 def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
     """A decorator for the calling of functions to be emphasized in the 
     logging. Displays prefix and suffix information in the logs.
     """
-
-#    try:
-#        log = dec_hint.log
-#    except:
-#        log = log.getLogger().getChild('VfsAction')
-#        dec_hint.log = log
-    dec_hint.log = log
 
     # We use a serial-number so that we can eyeball corresponding pairs of
     # beginning and ending statements in the logs.
@@ -37,10 +30,11 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
                 pid = 0
         
             if not prefix:
-                log.debug('--------------------------------------------------')
+                _logger.debug("-----------------------------------------------"
+                              "---")
 
-            log.debug("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)" % 
-                      (prefix, f.__name__, sn, pid))
+            _logger.debug("%s>>>>>>>>>> %s(%d) >>>>>>>>>> (%d)",
+                          prefix, f.__name__, sn, pid)
         
             if args or kwargs:
                 condensed = {}
@@ -68,23 +62,24 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
                 
                 if values_nice:
                     values_string = '  '.join(values_nice)
-                    log.debug("DATA: %s" % (values_string))
+                    _logger.debug("DATA: %s", values_string)
 
             suffix = ''
 
             try:
                 result = f(*args, **kwargs)
             except FuseOSError as e:
-                log.error("FUSE error [%s] (%s) will be forwarded back to "
-                          "GDFS: %s", e.__class__.__name__, e.errno, str(e))
+                _logger.error("FUSE error [%s] (%s) will be forwarded back to "
+                              "GDFS: %s", 
+                              e.__class__.__name__, e.errno, str(e))
                 raise
             except Exception as e:
-                log.exception("There was an exception.")
-                suffix = (' (E(%s): "%s")', e.__class__.__name__, str(e))
+                _logger.exception("There was an exception.")
+                suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
                 raise
             finally:
-                log.debug("%s<<<<<<<<<< %s(%d) (%d)%s", 
-                          prefix, f.__name__, sn, pid, suffix)
+                _logger.exception("%s<<<<<<<<<< %s(%d) (%d)%s", 
+                                  prefix, f.__name__, sn, pid, suffix)
             
             return result
         return wrapper
@@ -122,12 +117,12 @@ def split_path(filepath_original, pathresolver_cb):
     try:
         (filepath, mime_type) = strip_export_type(filepath_original)
     except:
-        log.exception("Could not process path [%s] for export-type." % 
-                      (filepath_original))
+        _logger.exception("Could not process path [%s] for export-type.",
+                          filepath_original)
         raise
 
-    log.debug("File-path [%s] split into filepath [%s] and mime_type "
-              "[%s]." % (filepath_original, filepath, mime_type))
+    _logger.debug("File-path [%s] split into filepath [%s] and mime_type "
+                  "[%s].", filepath_original, filepath, mime_type)
 
     # Split the file-path into a path and a filename.
 
@@ -138,21 +133,24 @@ def split_path(filepath_original, pathresolver_cb):
     try:
         path_resolution = pathresolver_cb(path)
     except:
-        log.exception("Exception while getting entry from path [%s]." % (path))
+        _logger.exception("Exception while getting entry from path [%s].", 
+                          path)
+
         raise GdNotFoundError()
 
     if not path_resolution:
-        log.debug("Path [%s] does not exist for split." % (path))
+        _logger.debug("Path [%s] does not exist for split.", path)
         raise GdNotFoundError()
 
     (parent_entry, parent_clause) = path_resolution
 
     is_hidden = (filename[0] == '.') if filename else False
 
-    log.debug("File-path [%s] split into parent with ID [%s], path [%s], "
-              "unverified filename [%s], mime-type [%s], and is_hidden [%s]." % 
-              (filepath_original, parent_entry.id, path, filename, 
-               mime_type, is_hidden))
+    _logger.debug("File-path [%s] split into parent with ID [%s], path [%s], "
+                  "unverified filename [%s], mime-type [%s], and is_hidden "
+                  "[%s].",
+                  filepath_original, parent_entry.id, path, filename, 
+                  mime_type, is_hidden)
 
     return (parent_clause, path, filename, mime_type, is_hidden)
 
@@ -166,8 +164,8 @@ def split_path_nolookups(filepath_original):
     try:
         (filepath, mime_type) = strip_export_type(filepath_original)
     except:
-        log.exception("Could not process path [%s] for export-type." % 
-                      (filepath_original))
+        _logger.exception("Could not process path [%s] for export-type.",
+                          filepath_original)
         raise
 
     # Split the file-path into a path and a filename.

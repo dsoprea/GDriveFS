@@ -8,9 +8,11 @@ from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.gdtool.drive import drive_proxy
 from gdrivefs.cache.volume import PathRelations, EntryCache
 
+_logger = logging.getLogger(__name__)
+
 def _sched_check_changes():
     
-    logging.debug("Doing scheduled check for changes.")
+    _logger.debug("Doing scheduled check for changes.")
 
     get_change_manager().process_updates()
 
@@ -20,32 +22,25 @@ def _sched_check_changes():
     Timers.get_instance().register_timer('change', t)
 
 class _ChangeManager(object):
-    __log = None
     at_change_id = None
 
     def __init__(self):
-        self.__log = logging.getLogger().getChild('ChangeMan')
+        self.at_change_id = AccountInfo.get_instance().largest_change_id
 
-        try:
-            self.at_change_id = AccountInfo.get_instance().largest_change_id
-        except:
-            self.__log.exception("Could not get largest change-ID.")
-            raise
-
-        self.__log.info("Latest change-ID at startup is (%d)." % 
+        _logger.info("Latest change-ID at startup is (%d)." % 
                      (self.at_change_id))
 
     def mount_init(self):
         """Called when filesystem is first mounted."""
 
-        self.__log.debug("Change init.")
+        _logger.debug("Change init.")
 
         _sched_check_changes()
 
     def mount_destroy(self):
         """Called when the filesystem is unmounted."""
 
-        self.__log.debug("Change destroy.")
+        _logger.debug("Change destroy.")
 
     def process_updates(self):
         """Process any changes to our files. Return True if everything is up to
@@ -54,37 +49,33 @@ class _ChangeManager(object):
 
         start_at_id = (self.at_change_id + 1)
 
-        try:
-            result = drive_proxy('list_changes', start_change_id=start_at_id)
-        except:
-            self.__log.exception("Could not retrieve updates. Skipped.")
-            return True
+        result = drive_proxy('list_changes', start_change_id=start_at_id)
 
         (largest_change_id, next_page_token, changes) = result
 
-        self.__log.debug("The latest reported change-ID is (%d) and we're "
-                      "currently at change-ID (%d)." % (largest_change_id, 
-                                                        self.at_change_id))
+        _logger.debug("The latest reported change-ID is (%d) and we're "
+                      "currently at change-ID (%d).",
+                      largest_change_id, self.at_change_id)
 
         if largest_change_id == self.at_change_id:
-            self.__log.debug("No entries have changed.")
+            _logger.debug("No entries have changed.")
             return True
 
-        self.__log.info("(%d) changes will now be applied." % (len(changes)))
+        _logger.info("(%d) changes will now be applied.", len(changes))
 
         for change_id, change_tuple in changes.iteritems():
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
-            self.__log.info("========== Change with ID (%d) will now be applied. ==========" %
-                            (change_id))
+            _logger.info("========== Change with ID (%d) will now be applied. "
+                         "==========", change_id)
 
             try:
                 self.__apply_change(change_id, change_tuple)
             except:
-                self.__log.exception("There was a problem while processing change"
-                                  " with ID (%d). No more changes will be "
-                                  "applied." % (change_id))
+                _logger.exception("There was a problem while processing "
+                                  "change with ID (%d). No more changes will "
+                                  "be applied.", change_id)
                 return False
 
             self.at_change_id = change_id
@@ -104,26 +95,25 @@ class _ChangeManager(object):
         
         is_visible = entry.is_visible if entry else None
 
-        self.__log.info("Applying change with change-ID (%d), entry-ID [%s], "
-                        "and is-visible of [%s]" % 
-                        (change_id, entry_id, is_visible))
+        _logger.info("Applying change with change-ID (%d), entry-ID [%s], "
+                     "and is-visible of [%s]",
+                     change_id, entry_id, is_visible)
 
         # First, remove any current knowledge from the system.
 
-        self.__log.debug("Removing all trace of entry with ID [%s] "
-                         "(apply_change)." % (entry_id))
+        _logger.debug("Removing all trace of entry with ID [%s] "
+                      "(apply_change).", entry_id)
 
         try:
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
-            self.__log.exception("There was a problem remove entry with ID "
-                                 "[%s] from the caches." % (entry_id))
+            _logger.exception("There was a problem remove entry with ID "
+                              "[%s] from the caches.", entry_id)
             raise
 
         # If it wasn't deleted, add it back.
 
-        self.__log.debug("Registering changed entry with ID [%s]." % 
-                         (entry_id))
+        _logger.debug("Registering changed entry with ID [%s].", entry_id)
 
         if is_visible:
             path_relations = PathRelations.get_instance()
@@ -131,9 +121,9 @@ class _ChangeManager(object):
             try:
                 path_relations.register_entry(entry)
             except:
-                self.__log.exception("Could not register changed entry with "
-                                     "ID [%s] with path-relations cache." % 
-                                     (entry_id))
+                _logger.exception("Could not register changed entry with "
+                                  "ID [%s] with path-relations cache.",
+                                  entry_id)
                 raise
 
 def get_change_manager():

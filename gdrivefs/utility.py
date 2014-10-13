@@ -1,11 +1,11 @@
-import json
 import logging
+import json
 import re
 import sys
 
-from sys import getfilesystemencoding
+import gdrivefs.conf
 
-from gdrivefs.conf import Conf
+_logger = logging.getLogger(__name__)
 
 # TODO(dustin): Make these individual functions.
 
@@ -42,7 +42,7 @@ class _DriveUtility(object):
             'video/x-flv':                      'flv'
         }
 
-    local_character_set = getfilesystemencoding()
+    local_character_set = sys.getfilesystemencoding()
 
     def __init__(self):
         self.__load_mappings()
@@ -51,24 +51,25 @@ class _DriveUtility(object):
         # Allow someone to override our default mappings of the GD types.
 
         gd_to_normal_mapping_filepath = \
-            Conf.get('gd_to_normal_mapping_filepath')
+            gdrivefs.conf.Conf.get('gd_to_normal_mapping_filepath')
 
         try:
             with open(gd_to_normal_mapping_filepath, 'r') as f:
                 self.gd_to_normal_mime_mappings.extend(json.load(f))
-        except:
-            logging.info("No mime-mapping was found.")
+        except IOError:
+            _logger.info("No mime-mapping was found.")
 
         # Allow someone to set file-extensions for mime-types, and not rely on 
         # Python's educated guesses.
 
-        extension_mapping_filepath = Conf.get('extension_mapping_filepath')
+        extension_mapping_filepath = \
+            gdrivefs.conf.Conf.get('extension_mapping_filepath')
 
         try:
             with open(extension_mapping_filepath, 'r') as f:
                 self.default_extensions.extend(json.load(f))
-        except:
-            logging.info("No extension-mapping was found.")
+        except IOError:
+            _logger.info("No extension-mapping was found.")
 
     def get_first_mime_type_by_extension(self, extension):
 

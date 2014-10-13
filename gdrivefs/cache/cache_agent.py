@@ -1,5 +1,7 @@
 import logging
 
+import gdrivefs.report
+
 from datetime import datetime
 
 from collections import OrderedDict
@@ -8,7 +10,6 @@ from gdrivefs.timer import Timers
 from gdrivefs.conf import Conf
 
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
-from gdrivefs.report import Report
 
 _logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class CacheAgent(object):
         self.fault_handler = fault_handler
         self.cleanup_pretrigger = cleanup_pretrigger
 
-        self.report = Report.get_instance()
+        self.report = gdrivefs.report.get_report_instance()
         self.report_source_name = ("cache-%s" % (self.resource_name))
 
         # Run a clean-up cycle to get it scheduled.

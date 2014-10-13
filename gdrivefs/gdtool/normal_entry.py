@@ -13,6 +13,8 @@ from gdrivefs.utility import utility
 from gdrivefs.errors import ExportFormatError
 from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
 
+_logger = logging.getLogger(__name__)
+
 
 class NormalEntry(object):
     __default_general_mime_type = Conf.get('default_mimetype')
@@ -29,11 +31,6 @@ class NormalEntry(object):
     __directory_mimetype = Conf.get('directory_mimetype')
 
     def __init__(self, gd_resource_type, raw_data):
-        # LESSONLEARNED: We had these set as properties, but CPython was 
-        #                reusing the reference between objects.
-
-        self.__log = logging.getLogger().getChild('NormalEntry')
-
         self.__info = {}
         self.__parents = []
         self.__raw_data = raw_data
@@ -77,7 +74,8 @@ class NormalEntry(object):
                 self.__parents.append(parent[u'id'])
 
         except (KeyError) as e:
-            self.__log.exception("Could not normalize entry on raw key [%s]. Does not exist in source." % (str(e)))
+            _logger.exception("Could not normalize entry on raw key [%s]. "
+                              "Does not exist in source.", str(e))
             raise
 
     def __getattr__(self, key):
@@ -116,9 +114,9 @@ class NormalEntry(object):
         
         if specific_mimetype is not None:
             if specific_mimetype not in self.__cache_mimetypes[0]:
-                self.__log.debug("Normalizing mime-type [%s] for download.  "
-                                 "Options: %s" % (specific_mimetype, 
-                                                  self.download_types))
+                _logger.debug("Normalizing mime-type [%s] for download.  "
+                              "Options: %s", 
+                              specific_mimetype, self.download_types)
 
                 if specific_mimetype not in self.download_links:
                     raise ExportFormatError("Mime-type [%s] is not available for "
@@ -201,7 +199,7 @@ class NormalEntry(object):
             
             attrs = {}
             for a_type, a_dict in data_dict.iteritems():
-                self.__log.debug("Setting [%s]." % (a_type))
+                _logger.debug("Setting [%s].", a_type)
                 for key, value in a_dict.iteritems():
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)
