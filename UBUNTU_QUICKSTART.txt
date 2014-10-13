@@ -1,16 +1,12 @@
 For convenience, the following steps can be followed with little or no modification under Ubuntu (tested on 13.04). It is assumed that any required dependencies are available (see README.txt for more information).
 
-sudo easy_install gdrivefs
-
-cd /usr/local/sbin
-sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfs.py gdfs
-sudo ln -s /usr/local/lib/python2.7/dist-packages/gdrivefs-*-py2.7.egg/gdrivefs/tools/gdfstool.py gdfstool
+sudo pip install gdrivefs
 
 # This needs to be in the primary sbin/ directory.
 cd /sbin
 sudo ln -s /usr/local/sbin/gdfs mount.gdfs
 
-Add to /etc/fstab:
+Add to /etc/fstab (create /var/cache/gdfs and /mnt/gdrivefs, first):
 
     /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
 
@@ -26,4 +22,3 @@ sudo mount /mnt/gdrivefs/
 # To list the root directory:
 
     ls -l /mnt/gdrivefs/
-
