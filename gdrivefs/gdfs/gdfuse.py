@@ -1,5 +1,5 @@
-import stat
 import logging
+import stat
 import dateutil.parser
 import re
 import json
@@ -38,8 +38,7 @@ from gdrivefs.cache.volume import path_resolver
 from gdrivefs.errors import GdNotFoundError
 from gdrivefs.time_support import get_flat_normal_fs_time_from_epoch
 
-_logger = logging.getLogger().getChild(__name__)
-
+_logger = logging.getLogger(__name__)
 
 # TODO: make sure strip_extension and split_path are used when each are relevant
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
@@ -98,13 +97,6 @@ def get_entry_or_raise(raw_path, allow_normal_for_missing=False):
 class GDriveFS(LoggingMixIn,Operations):
     """The main filesystem class."""
 
-    __log = None
-
-    def __init__(self):
-        Operations.__init__(self)
-
-        _logger = logging.getLogger().getChild('GD_VFS')
-
     def __register_open_file(self, fh, path, entry_id):
 
         with self.fh_lock:
@@ -117,7 +109,7 @@ class GDriveFS(LoggingMixIn,Operations):
                 file_info = self.open_files[fh]
             except:
                 _logger.exception("Could not deregister invalid file-handle "
-                                  "(%d)." % (fh))
+                                  "(%d).", fh)
                 raise
 
             del self.open_files[fh]
@@ -130,7 +122,7 @@ class GDriveFS(LoggingMixIn,Operations):
                 return self.open_files[fh]
             except:
                 _logger.exception("Could not retrieve on invalid file-handle "
-                                  "(%d)." % (fh))
+                                  "(%d).", fh)
                 raise
 
     def __build_stat_from_entry(self, entry):
@@ -185,8 +177,8 @@ class GDriveFS(LoggingMixIn,Operations):
         # We expect "offset" to always be (0).
         if offset != 0:
             _logger.warning("readdir() has been invoked for path [%s] and "
-                               "non-zero offset (%d). This is not allowed." % 
-                               (path, offset))
+                            "non-zero offset (%d). This is not allowed.",
+                            path, offset)
 
 # TODO: Once we start working on the cache, make sure we don't make this call, 
 #       constantly.
@@ -211,7 +203,8 @@ class GDriveFS(LoggingMixIn,Operations):
                             (entry_clause[CLAUSE_ID])
         except:
             _logger.exception("Could not render list of filenames under path "
-                                 "[%s]." % (path))
+                              "[%s].", path)
+
             raise FuseOSError(EIO)
 
         yield utility.translate_filename_charset('.')
@@ -234,8 +227,9 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             opened_file = OpenedManager.get_instance().get_by_fh(fh)
         except:
-            _logger.exception("Could not retrieve OpenedFile for handle "
-                                 "with ID (%d) (read)." % (fh))
+            _logger.exception("Could not retrieve OpenedFile for handle with"
+                              "ID (%d) (read).", fh)
+
             raise FuseOSError(EIO)
 
         try:
@@ -254,11 +248,10 @@ class GDriveFS(LoggingMixIn,Operations):
             result = split_path(filepath, path_resolver)
             (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
-            _logger.exception("Could not process [%s] (mkdir).")
+            _logger.exception("Could not process [%s] (mkdir).", filepath)
             raise FuseOSError(ENOENT)
         except:
-            _logger.exception("Could not split path [%s] (mkdir)." % 
-                              (filepath))
+            _logger.exception("Could not split path [%s] (mkdir).", filepath)
             raise FuseOSError(EIO)
 
         parent_id = parent_clause[CLAUSE_ID]
@@ -270,12 +263,12 @@ class GDriveFS(LoggingMixIn,Operations):
                                 is_hidden=is_hidden)
         except:
             _logger.exception("Could not create directory with name [%s] "
-                                 "and parent with ID [%s]." % 
-                                 (filename, parent_clause[0].id))
+                              "and parent with ID [%s].",
+                              filename, parent_clause[0].id)
             raise FuseOSError(EIO)
 
         _logger.info("Directory [%s] created as ID [%s] under parent with "
-                        "ID [%s]." % (filepath, entry.id, parent_id))
+                     "ID [%s].", filepath, entry.id, parent_id)
 
         #parent_clause[4] = False
 
@@ -300,11 +293,11 @@ class GDriveFS(LoggingMixIn,Operations):
             result = split_path(filepath, path_resolver)
             (parent_clause, path, filename, mime_type, is_hidden) = result
         except GdNotFoundError:
-            _logger.exception("Could not process [%s] (i-create).")
+            _logger.exception("Could not process [%s] (i-create).", filepath)
             raise FuseOSError(ENOENT)
         except:
-            _logger.exception("Could not split path [%s] (i-create)." % 
-                              (filepath))
+            _logger.exception("Could not split path [%s] (i-create).",
+                              filepath)
             raise FuseOSError(EIO)
 
         distilled_filepath = build_filepath(path, filename)
@@ -326,8 +319,9 @@ class GDriveFS(LoggingMixIn,Operations):
                                 is_hidden=is_hidden)
         except:
             _logger.exception("Could not create empty file [%s] under "
-                                 "parent with ID [%s]." % (filename, 
-                                                           parent_clause[3]))
+                              "parent with ID [%s].",
+                              filename, parent_clause[3])
+
             raise FuseOSError(EIO)
 
         path_relations = PathRelations.get_instance()
@@ -338,8 +332,7 @@ class GDriveFS(LoggingMixIn,Operations):
             _logger.exception("Could not register created file in cache.")
             raise FuseOSError(EIO)
 
-        _logger.info("Inner-create of [%s] completed." % 
-                        (distilled_filepath))
+        _logger.info("Inner-create of [%s] completed.", distilled_filepath)
 
         return (entry, path, filename, mime_type)
 
@@ -351,7 +344,8 @@ class GDriveFS(LoggingMixIn,Operations):
             fh = OpenedManager.get_instance().get_new_handle()
         except:
             _logger.exception("Could not acquire file-handle for create of "
-                                 "[%s]." % (raw_filepath))
+                              "[%s].", raw_filepath)
+
             raise FuseOSError(EIO)
 
         (entry, path, filename, mime_type) = self.__create(raw_filepath)
@@ -361,15 +355,22 @@ class GDriveFS(LoggingMixIn,Operations):
                                      not entry.is_visible, mime_type)
         except:
             _logger.exception("Could not create OpenedFile object for "
-                                 "created file.")
+                              "created file.")
+
             raise FuseOSError(EIO)
+
+        _logger.debug("Registering OpenedFile object with handle (%d), "
+                      "path [%s], and ID [%s].", fh, raw_filepath, entry.id)
 
         try:
             OpenedManager.get_instance().add(opened_file, fh=fh)
         except:
             _logger.exception("Could not register OpenedFile for created "
-                                 "file.")
+                              "file: [%s]", opened_file)
+
             raise FuseOSError(EIO)
+
+        _logger.debug("File created, opened, and completely registered.")
 
         return fh
 
@@ -381,19 +382,22 @@ class GDriveFS(LoggingMixIn,Operations):
             opened_file = OpenedFile.create_for_requested_filepath(filepath)
         except GdNotFoundError:
             _logger.exception("Could not create handle for requested [%s] "
-                                 "(open)." % (filepath))
+                              "(open)." % (filepath))
             raise FuseOSError(ENOENT)
         except:
             _logger.exception("Could not create OpenedFile object for "
-                                 "opened filepath [%s]." % (filepath))
+                                 "opened filepath [%s].", filepath)
             raise FuseOSError(EIO)
 
         try:
             fh = OpenedManager.get_instance().add(opened_file)
         except:
             _logger.exception("Could not register OpenedFile for opened "
-                                 "file.")
+                              "file.")
+
             raise FuseOSError(EIO)
+
+        _logger.debug("File opened.")
 
         return fh
 
@@ -405,7 +409,8 @@ class GDriveFS(LoggingMixIn,Operations):
             OpenedManager.get_instance().remove_by_fh(fh)
         except:
             _logger.exception("Could not remove OpenedFile for handle with "
-                                 "ID (%d) (release)." % (fh))
+                              "ID (%d) (release).", fh)
+
             raise FuseOSError(EIO)
 
     @dec_hint(['filepath', 'data', 'offset', 'fh'], ['data'])
@@ -448,15 +453,15 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(filepath)
         except GdNotFoundError:
-            _logger.exception("Could not process [%s] (rmdir).")
+            _logger.exception("Could not process [%s] (rmdir).", filepath)
             raise FuseOSError(ENOENT)
         except:
             _logger.exception("Could not get clause from file-path [%s] "
-                              "(rmdir)." % (filepath))
+                              "(rmdir).", filepath)
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            _logger.error("Path [%s] does not exist for rmdir()." % (filepath))
+            _logger.error("Path [%s] does not exist for rmdir().", filepath)
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
@@ -465,7 +470,9 @@ class GDriveFS(LoggingMixIn,Operations):
         # Check if not a directory.
 
         if not normalized_entry.is_directory:
-            _logger.error("Can not rmdir() non-directory [%s] with ID [%s].", filepath, entry_id)
+            _logger.error("Can not rmdir() non-directory [%s] with ID [%s].", 
+                          filepath, entry_id)
+
             raise FuseOSError(ENOTDIR)
 
         # Ensure the folder is empty.
@@ -476,7 +483,8 @@ class GDriveFS(LoggingMixIn,Operations):
                                 max_results=1)
         except:
             _logger.exception("Could not determine if directory to be removed "
-                              "has children." % (entry_id))
+                              "has children.", entry_id)
+
             raise FuseOSError(EIO)
 
         if found:
@@ -487,8 +495,9 @@ class GDriveFS(LoggingMixIn,Operations):
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
-            _logger.exception("Could not remove directory [%s] with ID [%s]." % 
-                              (filepath, entry_id))
+            _logger.exception("Could not remove directory [%s] with ID [%s].",
+                              filepath, entry_id)
+
             raise FuseOSError(EIO)
 # TODO: Remove from cache.
 
@@ -585,8 +594,7 @@ class GDriveFS(LoggingMixIn,Operations):
             entry = drive_proxy('rename', normalized_entry=entry, 
                                 new_filename=filename_new_raw)
         except:
-            _logger.exception("Could not update entry [%s] for rename." %
-                                 (entry))
+            _logger.exception("Could not update entry [%s] for rename.", entry)
             raise FuseOSError(EIO)
 
         # Update our knowledge of the entry.
@@ -596,8 +604,7 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             path_relations.register_entry(entry)
         except:
-            _logger.exception("Could not register renamed entry: %s" % 
-                                 (entry))
+            _logger.exception("Could not register renamed entry: %s", entry)
             raise FuseOSError(EIO)
 
     @dec_hint(['filepath', 'length', 'fh'])
@@ -607,8 +614,13 @@ class GDriveFS(LoggingMixIn,Operations):
                 opened_file = OpenedManager.get_instance().get_by_fh(fh)
             except:
                 _logger.exception("Could not retrieve OpenedFile for handle "
-                                     "with ID (%d) (truncate)." % (fh))
+                                  "with ID (%d) (truncate).", fh)
+
                 raise FuseOSError(EIO)
+
+            _logger.debug("Truncating and clearing FH: %s", opened_file)
+
+            opened_file.reset_state()
 
             entry_id = opened_file.entry_id
             cache = EntryCache.get_instance().cache
@@ -616,9 +628,8 @@ class GDriveFS(LoggingMixIn,Operations):
             try:
                 entry = cache.get(entry_id)
             except:
-                _logger.exception("Could not fetch normalized entry with "
-                                     "ID [%s] for truncate with FH." % 
-                                     (entry_id))
+                _logger.exception("Could not fetch normalized entry with ID "
+                                  "[%s] for truncate with FH.", entry_id)
                 raise
 
             opened_file.truncate(length)
@@ -628,7 +639,7 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             entry = drive_proxy('truncate', normalized_entry=entry)
         except:
-            _logger.exception("Could not truncate entry [%s]." % (entry))
+            _logger.exception("Could not truncate entry [%s].", entry)
             raise FuseOSError(EIO)
 
 # TODO(dustin): It would be a lot quicker if we truncate our temporary file 
@@ -647,16 +658,18 @@ class GDriveFS(LoggingMixIn,Operations):
         try:
             entry_clause = path_relations.get_clause_from_path(file_path)
         except GdNotFoundError:
-            _logger.exception("Could not process [%s] (unlink).")
+            _logger.exception("Could not process [%s] (unlink).", file_path)
             raise FuseOSError(ENOENT)
         except:
             _logger.exception("Could not get clause from file-path [%s] "
-                                 "(unlink)." % (file_path))
+                              "(unlink).", file_path)
+
             raise FuseOSError(EIO)
 
         if not entry_clause:
-            _logger.error("Path [%s] does not exist for unlink()." % 
-                             (file_path))
+            _logger.error("Path [%s] does not exist for unlink().",
+                          file_path)
+
             raise FuseOSError(ENOENT)
 
         entry_id = entry_clause[CLAUSE_ID]
@@ -666,7 +679,8 @@ class GDriveFS(LoggingMixIn,Operations):
 
         if normalized_entry.is_directory:
             _logger.error("Can not unlink() directory [%s] with ID [%s]. "
-                             "Must be file.", file_path, entry_id)
+                          "Must be file.", file_path, entry_id)
+
             raise FuseOSError(errno.EISDIR)
 
         # Remove online. Complements local removal (if not found locally, a 
@@ -677,8 +691,9 @@ class GDriveFS(LoggingMixIn,Operations):
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
-            _logger.exception("Could not remove file [%s] with ID [%s]." % 
-                                 (file_path, entry_id))
+            _logger.exception("Could not remove file [%s] with ID [%s].",
+                              file_path, entry_id)
+
             raise FuseOSError(EIO)
 
         # Remove from cache. Will no longer be able to be found, locally.
@@ -687,7 +702,7 @@ class GDriveFS(LoggingMixIn,Operations):
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
             _logger.exception("There was a problem removing entry [%s] "
-                                 "from the caches." % (normalized_entry))
+                              "from the caches.", normalized_entry)
             raise
 
         # Remove from among opened-files.
@@ -698,7 +713,7 @@ class GDriveFS(LoggingMixIn,Operations):
         except:
             _logger.exception("There was an error while removing all "
                                  "opened-file instances for file [%s] "
-                                 "(remove)." % (file_path))
+                                 "(remove).", file_path)
             raise FuseOSError(EIO)
 
     @dec_hint(['raw_path', 'times'])
@@ -721,8 +736,9 @@ class GDriveFS(LoggingMixIn,Operations):
                                 modified_datetime=mtime_phrase,
                                 accessed_datetime=atime_phrase)
         except:
-            _logger.exception("Could not update entry [%s] for times." %
-                                 (entry))
+            _logger.exception("Could not update entry [%s] for times.",
+                              entry)
+
             raise FuseOSError(EIO)
 
         return 0
@@ -754,15 +770,6 @@ class GDriveFS(LoggingMixIn,Operations):
         except:
             return ''
         
-def load_mount_parser_args(parser):
-    parser.add_argument('auth_storage_file', help='Authorization storage file')
-    parser.add_argument('mountpoint', help='Mount point')
-    parser.add_argument('-d', '--debug', help='Debug mode',
-                        action='store_true', required=False)
-    parser.add_argument('-o', '--opt', help='Mount options',
-                        action='store', required=False,
-                        nargs=1)
-
 def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, 
           option_string=None):
 

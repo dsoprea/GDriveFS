@@ -47,10 +47,10 @@ class Timers(object):
         with self.lock:
             for name, timer in self.timers.items():
                 _logging.debug("Cancelling timer: [%s]", name)
+
                 timer.cancel()
 
                 del self.timers[name]
 
 Timers.instance = None
 Timers.singleton_lock = Lock()
-

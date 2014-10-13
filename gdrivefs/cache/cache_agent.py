@@ -1,5 +1,7 @@
 import logging
 
+import gdrivefs.report
+
 from datetime import datetime
 
 from collections import OrderedDict
@@ -8,7 +10,9 @@ from gdrivefs.timer import Timers
 from gdrivefs.conf import Conf
 
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
-from gdrivefs.report import Report
+
+_logger = logging.getLogger(__name__)
+
 
 _logger = logging.getLogger(__name__)
 

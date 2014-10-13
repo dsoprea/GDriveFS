@@ -11,7 +11,7 @@ from gdrivefs.cache.volume import PathRelations, EntryCache
 _logger = logging.getLogger(__name__)
 
 def _sched_check_changes():
-    logging.debug("Doing scheduled check for changes.")
+    _logger.debug("Doing scheduled check for changes.")
 
     try:
         get_change_manager().process_updates()
@@ -49,6 +49,7 @@ class _ChangeManager(object):
 # TODO(dustin): Is there any way that we can block on this call?
         start_at_id = (self.at_change_id + 1)
 
+<<<<<<< HEAD
         _logger.debug("Requesting changes.")
         result = drive_proxy('list_changes', start_change_id=start_at_id)
         (largest_change_id, next_page_token, changes) = result
@@ -56,10 +57,14 @@ class _ChangeManager(object):
         _logger.debug("The latest reported change-ID is (%d) and we're "
                       "currently at change-ID (%d)." % 
                       (largest_change_id, self.at_change_id))
+=======
+        result = drive_proxy('list_changes', start_change_id=start_at_id)
 
-        if largest_change_id == self.at_change_id:
-            _logger.debug("No entries have changed.")
-            return True
+        (largest_change_id, next_page_token, changes) = result
+
+        _logger.debug("The latest reported change-ID is (%d) and we're "
+                      "currently at change-ID (%d).",
+                      largest_change_id, self.at_change_id)
 
         _logger.info("(%d) changes will now be applied." % (len(changes)))
 
@@ -96,25 +101,24 @@ class _ChangeManager(object):
         is_visible = entry.is_visible if entry else None
 
         _logger.info("Applying change with change-ID (%d), entry-ID [%s], "
-                        "and is-visible of [%s]" % 
-                        (change_id, entry_id, is_visible))
+                     "and is-visible of [%s]",
+                     change_id, entry_id, is_visible)
 
         # First, remove any current knowledge from the system.
 
         _logger.debug("Removing all trace of entry with ID [%s] "
-                         "(apply_change)." % (entry_id))
+                      "(apply_change).", entry_id)
 
         try:
             PathRelations.get_instance().remove_entry_all(entry_id)
         except:
             _logger.exception("There was a problem remove entry with ID "
-                                 "[%s] from the caches." % (entry_id))
+                              "[%s] from the caches.", entry_id)
             raise
 
         # If it wasn't deleted, add it back.
 
-        _logger.debug("Registering changed entry with ID [%s]." % 
-                         (entry_id))
+        _logger.debug("Registering changed entry with ID [%s].", entry_id)
 
         if is_visible:
             path_relations = PathRelations.get_instance()
@@ -123,8 +127,8 @@ class _ChangeManager(object):
                 path_relations.register_entry(entry)
             except:
                 _logger.exception("Could not register changed entry with "
-                                     "ID [%s] with path-relations cache." % 
-                                     (entry_id))
+                                  "ID [%s] with path-relations cache.",
+                                  entry_id)
                 raise
 
 def get_change_manager():

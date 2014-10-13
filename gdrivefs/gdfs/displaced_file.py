@@ -12,18 +12,17 @@ temp_path = ("%s/displaced" % (Conf.get('file_download_temp_path')))
 if isdir(temp_path) is False:
     makedirs(temp_path)
 
+_logger = logging.getLogger(__name__)
+
 
 class DisplacedFile(object):
-    __log = None
     normalized_entry = None
     file_size = 1000
 
     def __init__(self, normalized_entry):
-        self.__log = logging.getLogger().getChild('DisFile')
-    
         if normalized_entry.__class__ != NormalEntry:
-            raise Exception("_DisplacedFile can not wrap a non-NormalEntry "
-                            "object.")
+            raise ValueError("_DisplacedFile can not wrap a non-NormalEntry "
+                             "object.")
 
         self.__normalized_entry = normalized_entry
 
@@ -45,20 +44,18 @@ class DisplacedFile(object):
                                  mime_type=mime_type)
             (length, cache_fault) = result
         except:
-            self.__log.exception("Could not localize displaced file with "
-                                 "entry having ID [%s]." % 
-                                 (self.__normalized_entry.id))
+            _logger.exception("Could not localize displaced file with entry"
+                              "having ID [%s].", self.__normalized_entry.id)
             raise
 
-        self.__log.debug("Displaced entry [%s] deposited to [%s] with length "
-                         "(%d)." % 
-                         (self.__normalized_entry, file_path, length)) 
+        _logger.debug("Displaced entry [%s] deposited to [%s] with length "
+                      "(%d).", self.__normalized_entry, file_path, length)
 
         try:
             return self.get_stub(mime_type, length, file_path)
         except:
-            self.__log.exception("Could not build stub for [%s]." % 
-                                 (self.__normalized_entry))
+            _logger.exception("Could not build stub for [%s].",
+                              self.__normalized_entry)
             raise
 
     def get_stub(self, mime_type, file_size=0, file_path=None):
@@ -83,12 +80,8 @@ class DisplacedFile(object):
         if file_path:
             stub_data['FilePath'] = file_path
 
-        try:
             result = json.dumps(stub_data)
             padding = (' ' * (self.file_size - len(result) - 1))
 
             return ("%s%s\n" % (result, padding))
-        except:
-            self.__log.exception("Could not serialize stub-data.")
-            raise
 

@@ -1,6 +1,9 @@
 import logging
 from apiclient.discovery import DISCOVERY_URI
 
+_logger = logging.getLogger(__name__)
+
+
 class Conf(object):
     """Manages options."""
 
@@ -45,8 +48,8 @@ class Conf(object):
         try:
             return Conf.__dict__[key]
         except:
-            logging.exception("Could not retrieve config value with key "
-                              "[%s]." % (key))
+            _logger.exception("Could not retrieve config value with key [%s].", 
+                              key)
             raise
 
     @staticmethod

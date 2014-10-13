@@ -8,4 +8,5 @@
 /include
 /.Python
 /gdrivefs.egg-info
-
+/vagrant/.packages
+/vagrant/.vagrant
