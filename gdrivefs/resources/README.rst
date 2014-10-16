@@ -71,6 +71,52 @@ Run::
     $ sudo pip install gdrivefs
 
 
+Vagrant
+=======
+
+A Vagrantfile has been made available in the event that you'd like to mount your account from a system that isn't FUSE compatible (like Mac), or you're having issues installing GDriveFS somewhere else and would like to debug.
+
+To install Vagrant:
+
+    $ sudo apt-get install vagrant
+
+To start and provision the instance:
+
+    $ cd gdrivefs/vagrant
+    $ vagrant up
+    Bringing machine 'default' up with 'virtualbox' provider...
+    ==> default: Importing base box 'ubuntu/trusty64'...
+    ==> default: Matching MAC address for NAT networking...
+    ==> default: Checking if box 'ubuntu/trusty64' is up to date...
+    ==> default: Setting the name of the VM: vagrant_default_1413437502948_22866
+    ==> default: Clearing any previously set forwarded ports...
+    ==> default: Clearing any previously set network interfaces...
+    ==> default: Preparing network interfaces based on configuration...
+        default: Adapter 1: nat
+    ==> default: Forwarding ports...
+
+    ...
+
+    ==> default: Using /usr/lib/python2.7/dist-packages
+    ==> default: Finished processing dependencies for gdrivefs==0.13.14
+    ==> default: To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
+    ==> default: 
+    ==> default: https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=1056816309698.apps.googleusercontent.com&access_type=offline
+    ==> default:  
+    ==> default: Once you have retrieved your authorization string, run:
+    ==> default:  
+    ==> default: sudo gdfstool auth -a /var/cache/gdfs.creds <auth string>
+    ==> default:  
+
+This may take a few more minutes the first time, as it might need to acquire the Ubuntu 14.04 image if not already available.
+
+To log into the guest instance:
+
+    $ vagrant ssh
+
+The GDFS source directory will be mounted at `/gdrivefs`, and the scripts will be in the path.
+
+
 Troubleshooting
 ===============
 
