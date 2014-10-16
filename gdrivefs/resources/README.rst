@@ -76,11 +76,11 @@ Vagrant
 
 A Vagrantfile has been made available in the event that you'd like to mount your account from a system that isn't FUSE compatible (like Mac), or you're having issues installing GDriveFS somewhere else and would like to debug.
 
-To install Vagrant:
+To install Vagrant::
 
     $ sudo apt-get install vagrant
 
-To start and provision the instance:
+To start and provision the instance::
 
     $ cd gdrivefs/vagrant
     $ vagrant up
@@ -110,7 +110,7 @@ To start and provision the instance:
 
 This may take a few more minutes the first time, as it might need to acquire the Ubuntu 14.04 image if not already available.
 
-To log into the guest instance:
+To log into the guest instance::
 
     $ vagrant ssh
 
@@ -166,16 +166,16 @@ Since this is *FUSE*, you must be running as root to mount.
 
 3. There are three ways to mount the account:
 
-    - Via script (either using the main script "gdfstool mount" or the helper 
-      scripts "gdfs"/"mount.gdfs")::
+   - Via script (either using the main script "gdfstool mount" or the helper 
+     scripts "gdfs"/"mount.gdfs")::
 
        $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
 
-    - Via */etc/fstab*::
+   - Via */etc/fstab*::
 
         /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
 
-    - Directly via *gdfstool*::
+   - Directly via *gdfstool*::
 
         $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
