@@ -116,6 +116,8 @@ To log into the guest instance::
 
 The GDFS source directory will be mounted at `/gdrivefs`, and the scripts will be in the path.
 
+**If you're familiar with Vagrant, you can copy the Vagrantfile and modify it to mount an additional path from the host system in the guest instance, and then use this to access your files from an incompatible system.**
+
 
 Troubleshooting
 ===============
