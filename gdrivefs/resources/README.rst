@@ -121,7 +121,7 @@ Troubleshooting
 ===============
 
 - If your *setuptools* package is too old, you might see the following 
-  [annoying] error:
+  [annoying] error::
 
     error: option --single-version-externally-managed not recognized
 
