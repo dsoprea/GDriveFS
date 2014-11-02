@@ -375,6 +375,10 @@ class OpenedFile(object):
                                           "Updating buffers.", entry)
 
                     _logger.debug("Loading buffers.")
+# TODO(dustin): There is absolutely no reason to read this data into memory, 
+#               other than to completely kill efficiency.
+#
+#               We should've fixed this, but none of our branches reflect that.
 
                     with open(temp_file_path, 'rb') as f:
                         # Read the locally cached file in.
