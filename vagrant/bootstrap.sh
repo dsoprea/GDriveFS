@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
 
+echo "PYTHONDONTWRITEBYTECODE=1" >> /etc/environment
+
 # Setup the package-cache.
 
-sudo mount --bind /vagrant/.packages /var/cache/apt/archives
-sudo apt-get install -y python-pip build-essential python-dev
+mount --bind /vagrant/.packages /var/cache/apt/archives
+apt-get install -y python-pip build-essential python-dev
 
 # Install dependencies.
 
-sudo pip install ez_setup
-sudo pip install -r /gdrivefs/requirements.txt
+pip install ez_setup
+pip install -r /gdrivefs/requirements.txt
 
 # Add "gdrivefs" to PYTHONPATH and install executables into path.
 
 cd /gdrivefs
-sudo python setup.py develop
+python setup.py develop
 
 # Create a mountpoint.
 
-sudo mkdir /mnt/gdrivefs
+mkdir /mnt/gdrivefs
 
 # Get the user going with an authorization URL.
 
 echo
-sudo gdfstool auth -u
+gdfstool auth -u
 
 # Mention follow-up steps.
 # *For some reason, we can't print empty strings, so we print single-spaces.
