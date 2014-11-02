@@ -1,3 +1,5 @@
+|donate|
+
 An innovative *FUSE* wrapper for *Google Drive*.
 
 I could use some help in testing *GDriveFS*. Please let me know if you find 
@@ -369,3 +371,6 @@ However, Linux/Unix doesn't care about the "hidden" attribute. If you create a
 file on *Google Drive*, somewhere else, and want it to truly be hidden via this 
 software, make sure you add the prefixing dot.
 
+.. |donate| image:: https://pledgie.com/campaigns/27265.png?skin_name=chrome
+   :alt: Click here to lend your support to: Fund GDriveFS, the Open Source Google Drive FUSE Adapter and make a donation at pledgie.com !
+   :target: https://pledgie.com/campaigns/27265
