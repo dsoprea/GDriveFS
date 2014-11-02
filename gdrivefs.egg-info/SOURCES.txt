@@ -6,7 +6,6 @@ gdrivefs/change.py
 gdrivefs/conf.py
 gdrivefs/errors.py
 gdrivefs/http_pool.py
-gdrivefs/log_config.py
 gdrivefs/report.py
 gdrivefs/time_support.py
 gdrivefs/timer.py
