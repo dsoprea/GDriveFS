@@ -1,3 +1,3 @@
 import os
 
-IS_DEBUG = bool(int(os.environ.get('DEBUG', '0')))
+IS_DEBUG = bool(int(os.environ.get('GD_DEBUG', '0')))

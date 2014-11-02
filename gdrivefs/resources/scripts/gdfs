@@ -23,12 +23,6 @@ def main():
     parser.add_argument('mountpoint', 
                         help='Mount point')
 
-    parser.add_argument('-d', '--debug', 
-                        help='Debug mode',
-                        action='store_true', 
-                        default=gdrivefs.config.IS_DEBUG,
-                        required=False)
-
     parser.add_argument('-o', '--opt', 
                         help='Mount options',
                         action='store', 
@@ -45,8 +39,8 @@ def main():
     gdrivefs.gdfs.gdfuse.mount(
         auth_storage_filepath=args.auth_storage_file, 
         mountpoint=args.mountpoint, 
-        debug=args.debug, 
-        nothreads=args.debug, 
+        debug=gdrivefs.config.IS_DEBUG, 
+        nothreads=gdrivefs.config.IS_DEBUG, 
         option_string=option_string)
 
 if __name__ == '__main__':

@@ -67,8 +67,8 @@ def _handle_mountpoint(args):
     gdrivefs.gdfs.gdfuse.mount(
         auth_storage_filepath=args.auth_storage_file, 
         mountpoint=args.mountpoint, 
-        debug=args.debug, 
-        nothreads=args.debug, 
+        debug=gdrivefs.config.IS_DEBUG, 
+        nothreads=gdrivefs.config.IS_DEBUG, 
         option_string=option_string)
 
 def main():
@@ -105,12 +105,6 @@ def main():
 
     mount_auth.add_argument('mountpoint', 
                             help='Mount point')
-
-    mount_auth.add_argument('-d', '--debug', 
-                            help='Debug mode',
-                            action='store_true', 
-                            default=gdrivefs.config.IS_DEBUG,
-                            required=False)
 
     mount_auth.add_argument('-o', '--opt', 
                             help='Mount options',
