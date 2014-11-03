@@ -3,6 +3,9 @@ from apiclient.discovery import DISCOVERY_URI
 
 _logger = logging.getLogger(__name__)
 
+# TODO(dustin): Move this module to the *config* directory, eliminate this 
+#               class, and use the module directly.
+
 
 class Conf(object):
     """Manages options."""
@@ -24,7 +27,7 @@ class Conf(object):
     file_download_temp_path             = '/tmp/gdrivefs'
     file_download_temp_max_age_s        = 86400
     file_default_mime_type              = 'application/octet-stream'
-    change_check_frequency_s            = 10
+    change_check_frequency_s            = 3
     hidden_flags_list_local             = [u'trashed', u'restricted']
     hidden_flags_list_remote            = [u'trashed']
     cache_cleanup_check_frequency_s     = 60
