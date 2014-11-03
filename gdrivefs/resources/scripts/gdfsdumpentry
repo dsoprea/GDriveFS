@@ -45,7 +45,6 @@ def main():
     args = parser.parse_args()
 
     gdrivefs.gdfs.gdfuse.set_auth_cache_filepath(args.cred_filepath)
-    gdrivefs.timer.Timers.get_instance().set_autostart_default(False)
 
     if 'id' in args:
         entry = _get_by_id(args.id)
