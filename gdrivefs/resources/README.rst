@@ -103,7 +103,7 @@ information ("auth storage file"). Then, you can mount it whenever you'd like.
 
 Since this is *FUSE*, you must be running as root to mount.
 
-1. To get the authorization URL::
+1. To get an authorization URL::
 
     $ gdfstool auth -u
     To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
