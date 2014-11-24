@@ -18,8 +18,11 @@ cd /gdrivefs
 python setup.py develop
 
 # Create a mountpoint.
+#
+# We can't use /mnt/gdrivefs, because, for some reason, when we unmount that in 
+# the Vagrant machine, it unmounts the shared-folder the the same name, too.
 
-mkdir /mnt/gdrivefs
+mkdir /mnt/g
 
 # Get the user going with an authorization URL.
 
@@ -32,5 +35,15 @@ gdfstool auth -u
 echo " "
 echo "Once you have retrieved your authorization string, run:"
 echo " "
-echo "sudo gdfstool auth -a /var/cache/gdfs.creds <auth string>"
+echo "  sudo gdfstool auth -a /var/cache/gdfs.creds <auth string>"
+echo " "
+echo " "
+echo "Once authorized, you can mount by calling (as root):"
+echo " "
+echo "  gdfs /var/cache/gdfs.creds /mnt/g"
+echo " "
+echo "Or, to debug (and disable change-monitoring, to simplify things):"
+echo " "
+echo "  GD_DEBUG=1 GD_MONITOR_CHANGES=0 gdfs /var/cache/gdfs.creds /mnt/g"
+echo " "
 echo " "
