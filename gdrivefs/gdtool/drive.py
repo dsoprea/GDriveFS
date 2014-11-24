@@ -21,6 +21,7 @@ from os.path import isdir, isfile
 from os import makedirs, stat, utime
 from dateutil.tz import tzlocal, tzutc
 
+import gdrivefs.config
 import gdrivefs.gdtool.chunked_download
 
 from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
@@ -495,9 +496,44 @@ class _GdriveManager(object):
         return (total_size, True)
 
     @_marshall
-    def __insert_entry(self, filename, mime_type, parents, data_filepath=None, 
-                       modified_datetime=None, accessed_datetime=None, 
-                       is_hidden=False, description=None):
+    def create_directory(self, filename, parents, **kwargs):
+
+        mimetype_directory = Conf.get('directory_mimetype')
+        return self.__insert_entry(
+                False,
+                filename, 
+                parents,
+                mimetype_directory, 
+                **kwargs)
+
+    @_marshall
+    def create_file(self, filename, parents, mime_type, data_filepath=None, 
+                    **kwargs):
+# TODO: It doesn't seem as if the created file is being registered.
+        # Even though we're supposed to provide an extension, we can get away 
+        # without having one. We don't want to impose this when acting like a 
+        # normal FS.
+
+        # If no data and no mime-type was given, default it.
+        if mime_type == None:
+            mime_type = Conf.get('file_default_mime_type')
+            _logger.debug("No mime-type was presented for file "
+                          "create/update. Defaulting to [%s].",
+                          mime_type)
+
+        return self.__insert_entry(
+                True,
+                filename,
+                parents,
+                mime_type,
+                data_filepath=data_filepath,
+                **kwargs)
+
+    @_marshall
+    def __insert_entry(self, is_file, filename, parents, mime_type, 
+                       data_filepath=None, modified_datetime=None, 
+                       accessed_datetime=None, is_hidden=False, 
+                       description=None):
 
         if parents is None:
             parents = []
@@ -510,8 +546,8 @@ class _GdriveManager(object):
         if accessed_datetime is None:
             accessed_datetime = now_phrase 
 
-        _logger.info("Creating file with filename [%s] under parent(s) "
-                     "[%s] with mime-type [%s], mtime= [%s], atime= [%s].",
+        _logger.info("Creating entry with filename [%s] under parent(s) "
+                     "[%s] with mime-type [%s]. MTIME=[%s] ATIME=[%s]",
                      filename, ', '.join(parents), mime_type, 
                      modified_datetime, accessed_datetime)
 
@@ -522,10 +558,12 @@ class _GdriveManager(object):
         body = { 
                 'title': filename, 
                 'parents': [dict(id=parent) for parent in parents], 
-                'mimeType': mime_type, 
                 'labels': { "hidden": is_hidden }, 
-                'description': description 
+                'mimeType': mime_type,
             }
+
+        if description is not None:
+            body['description'] = description
 
         if modified_datetime is not None:
             body['modifiedDate'] = modified_datetime
@@ -540,10 +578,6 @@ class _GdriveManager(object):
         }
 
         if data_filepath:
-# TODO(dustin): "uploadType" is supposed to be required, but we've only 
-#               recently implemented it (here, and in the update call).
-#               However, some updates have been failing (for truncates, and 
-#               that drew attention to this).
             args.update({
                 'media_body': MediaFileUpload(
                                 data_filepath, 
@@ -553,7 +587,9 @@ class _GdriveManager(object):
 #                'uploadType': 'resumable',
             })
 
-        _logger.debug("Doing file-insert with:\n%s", args)
+        if gdrivefs.config.IS_DEBUG is True:
+            _logger.debug("Doing file-insert with:\n%s", 
+                          pprint.pformat(args))
 
         request = client.files().insert(**args)
 
@@ -649,10 +685,6 @@ class _GdriveManager(object):
                           normalized_entry.id, data_filepath)
 
             # We can only upload large files using resumable-uploads.
-# TODO(dustin): "uploadType" is supposed to be required, but we've only 
-#               recently implemented it (here, and in the insert call).
-#               However, some updates have been failing (for truncates, and 
-#               that drew attention to this).
             args.update({
                 'media_body': MediaFileUpload(
                                 data_filepath, 
@@ -662,8 +694,10 @@ class _GdriveManager(object):
 #                'uploadType': 'resumable',
             })
 
-        _logger.debug("Sending entry update: [%s]\nUpdate parameters:\n%s", 
-                      normalized_entry.id, pprint.pformat(args))
+        _logger.debug("Sending entry update: [%s]", normalized_entry.id)
+
+        if gdrivefs.config.IS_DEBUG is True:
+            _logger.debug("Update parameters:\n%s", pprint.pformat(args))
 
         request = client.files().update(**args)
 
@@ -687,49 +721,20 @@ class _GdriveManager(object):
             return request.execute()
 
         _logger.debug("We needed to update the entry's data. Doing "
-                      "chunked-uploaded.")
+                      "chunked-upload.")
 
         result = None
         while result is None:
-            _logger.debug("Pushing next chunk: [%s]", filename)
             status, result = request.next_chunk()
 
             if status:
                 if status.total_size == 0:
-                    _logger.debug("Uploaded (zero-length).")
+                    _logger.debug("Uploaded (zero-length): [%s]", filename)
                 else:
                     _logger.debug("Uploaded [%s]: %.2f%%", 
                                   filename, status.progress() * 100)
 
         return result
-
-    @_marshall
-    def create_directory(self, filename, parents, **kwargs):
-
-        mimetype_directory = Conf.get('directory_mimetype')
-        return self.__insert_entry(filename, mimetype_directory, parents, 
-                                   **kwargs)
-
-    @_marshall
-    def create_file(self, filename, data_filepath, parents, mime_type=None, 
-                    **kwargs):
-# TODO: It doesn't seem as if the created file is being registered.
-        # Even though we're supposed to provide an extension, we can get away 
-        # without having one. We don't want to impose this when acting like a 
-        # normal FS.
-
-        # If no data and no mime-type was given, default it.
-        if mime_type == None:
-            mime_type = Conf.get('file_default_mime_type')
-            _logger.debug("No mime-type was presented for file "
-                          "create/update. Defaulting to [%s].",
-                          mime_type)
-
-        return self.__insert_entry(filename,
-                                   mime_type,
-                                   parents,
-                                   data_filepath,
-                                   **kwargs)
 
     @_marshall
     def rename(self, normalized_entry, new_filename):

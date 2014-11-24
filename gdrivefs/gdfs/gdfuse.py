@@ -291,6 +291,7 @@ class _GdfsMixin(object):
         We don't implement "mode" (permissions) because the model doesn't agree 
         with GD.
         """
+
 # TODO: Fail if it already exists.
 
         try:
@@ -320,9 +321,8 @@ class _GdfsMixin(object):
         try:
             entry = gd.create_file(
                         filename, 
-                        '/dev/null', 
                         [parent_clause[3]], 
-                        mime_type=mime_type,
+                        mime_type,
                         is_hidden=is_hidden)
         except:
             _logger.exception("Could not create empty file [%s] under "
