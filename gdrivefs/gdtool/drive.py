@@ -66,6 +66,9 @@ def _marshall(f):
 
                 time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
             except HttpError as e:
+                if e.content == '':
+                    raise
+
                 try:
                     error = json.loads(e.content)
                 except ValueError:
@@ -75,7 +78,7 @@ def _marshall(f):
 
                 if error.get('code') == 403 and \
                    error.get('errors')[0].get('reason') \
-                   in ['rateLimitExceeded', 'userRateLimitExceeded']:
+                        in ['rateLimitExceeded', 'userRateLimitExceeded']:
                     # Apply exponential backoff.
                     _logger.exception("There was a transient HTTP "
                                       "error (%s). Trying again (%d): "
@@ -95,8 +98,7 @@ def _marshall(f):
                 # We had a resolvable authorization problem.
 
                 _logger.info("There was an authorization fault under "
-                             "action [%s]. Attempting refresh.",
-                             action)
+                             "action [%s]. Attempting refresh.", action)
                 
                 authorize = get_auth()
                 authorize.check_credential_state()
@@ -706,6 +708,10 @@ class _GdriveManager(object):
                     request,
                     data_filepath is not None)
 
+        if gdrivefs.config.IS_DEBUG is True:
+            _logger.debug("Update result: [%s]\n%s", 
+                          normalized_entry.id, pprint.pformat(result))
+
         normalized_entry = NormalEntry('update_entry', result)
 
         _logger.debug("Entry with ID [%s] updated.", normalized_entry.id)
@@ -720,8 +726,8 @@ class _GdriveManager(object):
         if has_file is False:
             return request.execute()
 
-        _logger.debug("We needed to update the entry's data. Doing "
-                      "chunked-upload.")
+        _logger.debug("We need to finish updating the entry's data: [%s]", 
+                      filename)
 
         result = None
         while result is None:
