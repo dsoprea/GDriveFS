@@ -11,7 +11,7 @@ def get_normal_dt_from_rfc3339_phrase(phrase):
     stripped = phrase[:phrase.rindex('.')]
     dt = datetime.strptime(stripped, DTF_DATETIMET).replace(tzinfo=tzutc())
 
-    print("get_normal_dt_from_rfc3339_phrase(%s) => %s" % (phrase, dt))
+#    print("get_normal_dt_from_rfc3339_phrase(%s) => %s" % (phrase, dt))
 
     return dt
 
@@ -32,14 +32,14 @@ def build_rfc3339_phrase(datetime_obj):
                             abs(seconds % 3600)
                             ))
 
-    print("build_rfc3339_phrase(%s) => %s" % (datetime_obj, datetime_phrase))
+#    print("build_rfc3339_phrase(%s) => %s" % (datetime_obj, datetime_phrase))
     return datetime_phrase
 
 def get_normal_dt_from_epoch(epoch):
     dt = datetime.fromtimestamp(epoch, tzlocal())
     normal_dt = normalize_dt(dt)
 
-    print("get_normal_dt_from_epoch(%s) => %s" % (epoch, normal_dt))
+#    print("get_normal_dt_from_epoch(%s) => %s" % (epoch, normal_dt))
     return normal_dt
 
 def normalize_dt(dt=None):
@@ -51,7 +51,7 @@ def normalize_dt(dt=None):
 
     normal_dt = dt.astimezone(tzutc())
 
-    print("normalize_dt(%s) => %s" % (dt, normal_dt))
+#    print("normalize_dt(%s) => %s" % (dt, normal_dt))
     return normal_dt
 
 def get_flat_normal_fs_time_from_dt(dt=None):
@@ -61,13 +61,12 @@ def get_flat_normal_fs_time_from_dt(dt=None):
     dt_normal = normalize_dt(dt)
     flat_normal = build_rfc3339_phrase(dt_normal)
 
-    print("get_flat_normal_fs_time_from_dt(%s) => %s" % (dt, flat_normal))
+#    print("get_flat_normal_fs_time_from_dt(%s) => %s" % (dt, flat_normal))
     return flat_normal
 
 def get_flat_normal_fs_time_from_epoch(epoch):
     dt_normal = get_normal_dt_from_epoch(epoch)
     flat_normal = build_rfc3339_phrase(dt_normal)
 
-    print("get_flat_normal_fs_time_from_epoch(%s) => %s" % (epoch, flat_normal))
+#    print("get_flat_normal_fs_time_from_epoch(%s) => %s" % (epoch, flat_normal))
     return flat_normal
-

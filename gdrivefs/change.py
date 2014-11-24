@@ -2,13 +2,15 @@ import logging
 import threading
 import time
 
+import gdrivefs.state
+
 from gdrivefs.conf import Conf
-from gdrivefs.timer import Timers
 from gdrivefs.gdtool.account_info import AccountInfo
-from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.drive import get_gdrive
 from gdrivefs.cache.volume import PathRelations, EntryCache
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.WARNING)
 
 
 class _ChangeManager(object):
@@ -31,10 +33,13 @@ class _ChangeManager(object):
         self.__stop_check()
 
     def __check_changes(self):
+        _logger.info("Change-processing thread running.")
+
         interval_s = Conf.get('change_check_frequency_s')
         cm = get_change_manager()
 
-        while self.__t_quit_ev.is_set() is False:
+        while self.__t_quit_ev.is_set() is False and \
+                gdrivefs.state.GLOBAL_EXIT_EVENT.is_set() is False:
             _logger.debug("Checking for changes.")
 
             try:
@@ -42,6 +47,9 @@ class _ChangeManager(object):
             except:
                 _logger.exception("Squelching an exception that occurred "
                                   "while reading/processing changes.")
+
+                # Force another check, soon.
+                is_done = False
 
             # If there are still more changes, take them as quickly as 
             # possible.
@@ -51,6 +59,8 @@ class _ChangeManager(object):
             else:
                 _logger.debug("There are more changes to be applied. Cycling "
                               "immediately.")
+
+        _logger.info("Change-processing thread terminating.")
 
     def __start_check(self):
         _logger.info("Starting change-processing thread.")
@@ -75,7 +85,8 @@ class _ChangeManager(object):
 #
         start_at_id = (self.at_change_id + 1)
 
-        result = drive_proxy('list_changes', start_change_id=start_at_id)
+        gd = get_gdrive()
+        result = gd.list_changes(start_change_id=start_at_id)
 
         (largest_change_id, next_page_token, changes) = result
 

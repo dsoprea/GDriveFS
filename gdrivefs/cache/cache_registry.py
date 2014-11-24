@@ -4,6 +4,7 @@ from threading import RLock
 from datetime import datetime
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 class CacheFault(Exception):

@@ -18,19 +18,20 @@ from datetime import datetime
 from os.path import split
 
 import gdrivefs.gdfs.fsutility
+import gdrivefs.gdfs.opened_file
+import gdrivefs.config
+import gdrivefs.config.changes
 
 from gdrivefs.utility import utility
 from gdrivefs.change import get_change_manager
-from gdrivefs.timer import Timers
 from gdrivefs.cache.volume import PathRelations, EntryCache, \
                                   CLAUSE_ENTRY, CLAUSE_PARENT, \
                                   CLAUSE_CHILDREN, CLAUSE_ID, \
                                   CLAUSE_CHILDREN_LOADED
 from gdrivefs.conf import Conf
-from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.drive import get_gdrive
 from gdrivefs.gdtool.account_info import AccountInfo
-from gdrivefs.general.buffer_segments import BufferSegments
-from gdrivefs.gdfs.opened_file import OpenedManager, OpenedFile
+
 from gdrivefs.gdfs.fsutility import strip_export_type, split_path,\
                                     build_filepath, dec_hint
 from gdrivefs.gdfs.displaced_file import DisplacedFile
@@ -94,7 +95,7 @@ def get_entry_or_raise(raw_path, allow_normal_for_missing=False):
     return (entry_clause[CLAUSE_ENTRY], path, filename)
 
 
-class GDriveFS(LoggingMixIn,Operations):
+class _GdfsMixin(object):
     """The main filesystem class."""
 
     def __register_open_file(self, fh, path, entry_id):
@@ -224,8 +225,10 @@ class GDriveFS(LoggingMixIn,Operations):
     @dec_hint(['raw_path', 'length', 'offset', 'fh'])
     def read(self, raw_path, length, offset, fh):
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            opened_file = OpenedManager.get_instance().get_by_fh(fh)
+            opened_file = om.get_by_fh(fh)
         except:
             _logger.exception("Could not retrieve OpenedFile for handle with"
                               "ID (%d) (read).", fh)
@@ -255,12 +258,13 @@ class GDriveFS(LoggingMixIn,Operations):
             raise FuseOSError(EIO)
 
         parent_id = parent_clause[CLAUSE_ID]
+        gd = get_gdrive()
 
         try:
-            entry = drive_proxy('create_directory', 
-                                filename=filename, 
-                                parents=[parent_id], 
-                                is_hidden=is_hidden)
+            entry = gd.create_directory(
+                        filename, 
+                        [parent_id], 
+                        is_hidden=is_hidden)
         except:
             _logger.exception("Could not create directory with name [%s] "
                               "and parent with ID [%s].",
@@ -311,12 +315,15 @@ class GDriveFS(LoggingMixIn,Operations):
             else:
                 mime_type = Conf.get('default_mimetype')
 
+        gd = get_gdrive()
+
         try:
-            entry = drive_proxy('create_file', filename=filename, 
-                                data_filepath='/dev/null', 
-                                parents=[parent_clause[3]], 
-                                mime_type=mime_type,
-                                is_hidden=is_hidden)
+            entry = gd.create_file(
+                        filename, 
+                        '/dev/null', 
+                        [parent_clause[3]], 
+                        mime_type=mime_type,
+                        is_hidden=is_hidden)
         except:
             _logger.exception("Could not create empty file [%s] under "
                               "parent with ID [%s].",
@@ -340,8 +347,10 @@ class GDriveFS(LoggingMixIn,Operations):
     def create(self, raw_filepath, mode):
         """Create a new file. This always precedes a write."""
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            fh = OpenedManager.get_instance().get_new_handle()
+            fh = om.get_new_handle()
         except:
             _logger.exception("Could not acquire file-handle for create of "
                               "[%s].", raw_filepath)
@@ -351,8 +360,12 @@ class GDriveFS(LoggingMixIn,Operations):
         (entry, path, filename, mime_type) = self.__create(raw_filepath)
 
         try:
-            opened_file = OpenedFile(entry.id, path, filename, 
-                                     not entry.is_visible, mime_type)
+            opened_file = gdrivefs.gdfs.opened_file.OpenedFile(
+                            entry.id, 
+                            path, 
+                            filename, 
+                            not entry.is_visible, 
+                            mime_type)
         except:
             _logger.exception("Could not create OpenedFile object for "
                               "created file.")
@@ -362,8 +375,10 @@ class GDriveFS(LoggingMixIn,Operations):
         _logger.debug("Registering OpenedFile object with handle (%d), "
                       "path [%s], and ID [%s].", fh, raw_filepath, entry.id)
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            OpenedManager.get_instance().add(opened_file, fh=fh)
+            om.add(opened_file, fh=fh)
         except:
             _logger.exception("Could not register OpenedFile for created "
                               "file: [%s]", opened_file)
@@ -379,7 +394,8 @@ class GDriveFS(LoggingMixIn,Operations):
 # TODO: Fail if does not exist and the mode/flags is read only.
 
         try:
-            opened_file = OpenedFile.create_for_requested_filepath(filepath)
+            opened_file = gdrivefs.gdfs.opened_file.\
+                            create_for_existing_filepath(filepath)
         except GdNotFoundError:
             _logger.exception("Could not create handle for requested [%s] "
                               "(open)." % (filepath))
@@ -389,8 +405,10 @@ class GDriveFS(LoggingMixIn,Operations):
                                  "opened filepath [%s].", filepath)
             raise FuseOSError(EIO)
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            fh = OpenedManager.get_instance().add(opened_file)
+            fh = om.add(opened_file)
         except:
             _logger.exception("Could not register OpenedFile for opened "
                               "file.")
@@ -405,8 +423,10 @@ class GDriveFS(LoggingMixIn,Operations):
     def release(self, filepath, fh):
         """Close a file."""
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            OpenedManager.get_instance().remove_by_fh(fh)
+            om.remove_by_fh(fh)
         except:
             _logger.exception("Could not remove OpenedFile for handle with "
                               "ID (%d) (release).", fh)
@@ -415,8 +435,10 @@ class GDriveFS(LoggingMixIn,Operations):
 
     @dec_hint(['filepath', 'data', 'offset', 'fh'], ['data'])
     def write(self, filepath, data, offset, fh):
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            opened_file = OpenedManager.get_instance().get_by_fh(fh=fh)
+            opened_file = om.get_by_fh(fh=fh)
         except:
             _logger.exception("Could not get OpenedFile (write).")
             raise FuseOSError(EIO)
@@ -432,8 +454,10 @@ class GDriveFS(LoggingMixIn,Operations):
     @dec_hint(['filepath', 'fh'])
     def flush(self, filepath, fh):
         
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            opened_file = OpenedManager.get_instance().get_by_fh(fh=fh)
+            opened_file = om.get_by_fh(fh=fh)
         except:
             _logger.exception("Could not get OpenedFile (flush).")
             raise FuseOSError(EIO)
@@ -477,10 +501,12 @@ class GDriveFS(LoggingMixIn,Operations):
 
         # Ensure the folder is empty.
 
+        gd = get_gdrive()
+
         try:
-            found = drive_proxy('get_children_under_parent_id', 
-                                parent_id=entry_id,
-                                max_results=1)
+            found = gd.get_children_under_parent_id(
+                        entry_id,
+                        max_results=1)
         except:
             _logger.exception("Could not determine if directory to be removed "
                               "has children.", entry_id)
@@ -491,7 +517,7 @@ class GDriveFS(LoggingMixIn,Operations):
             raise FuseOSError(ENOTEMPTY)
 
         try:
-            drive_proxy('remove_entry', normalized_entry=normalized_entry)
+            gd.remove_entry(normalized_entry)
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
@@ -590,9 +616,10 @@ class GDriveFS(LoggingMixIn,Operations):
         except GdNotFoundError:
             pass
 
+        gd = get_gdrive()
+
         try:
-            entry = drive_proxy('rename', normalized_entry=entry, 
-                                new_filename=filename_new_raw)
+            entry = gd.rename(entry, filename_new_raw)
         except:
             _logger.exception("Could not update entry [%s] for rename.", entry)
             raise FuseOSError(EIO)
@@ -610,8 +637,10 @@ class GDriveFS(LoggingMixIn,Operations):
     @dec_hint(['filepath', 'length', 'fh'])
     def truncate(self, filepath, length, fh=None):
         if fh is not None:
+            om = gdrivefs.gdfs.opened_file.get_om()
+
             try:
-                opened_file = OpenedManager.get_instance().get_by_fh(fh)
+                opened_file = om.get_by_fh(fh)
             except:
                 _logger.exception("Could not retrieve OpenedFile for handle "
                                   "with ID (%d) (truncate).", fh)
@@ -636,8 +665,10 @@ class GDriveFS(LoggingMixIn,Operations):
         else:
             (entry, path, filename) = get_entry_or_raise(filepath)
 
+        gd = get_gdrive()
+
         try:
-            entry = drive_proxy('truncate', normalized_entry=entry)
+            entry = gd.truncate(entry)
         except:
             _logger.exception("Could not truncate entry [%s].", entry)
             raise FuseOSError(EIO)
@@ -686,8 +717,10 @@ class GDriveFS(LoggingMixIn,Operations):
         # Remove online. Complements local removal (if not found locally, a 
         # follow-up request checks online).
 
+        gd = get_gdrive()
+
         try:
-            drive_proxy('remove_entry', normalized_entry=normalized_entry)
+            gd.remove_entry(normalized_entry)
         except (NameError):
             raise FuseOSError(ENOENT)
         except:
@@ -707,9 +740,10 @@ class GDriveFS(LoggingMixIn,Operations):
 
         # Remove from among opened-files.
 
+        om = gdrivefs.gdfs.opened_file.get_om()
+
         try:
-            opened_file = OpenedManager.get_instance().\
-                            remove_by_filepath(file_path)
+            opened_file = om.remove_by_filepath(file_path)
         except:
             _logger.exception("There was an error while removing all "
                                  "opened-file instances for file [%s] "
@@ -731,10 +765,13 @@ class GDriveFS(LoggingMixIn,Operations):
         mtime_phrase = get_flat_normal_fs_time_from_epoch(mtime)
         atime_phrase = get_flat_normal_fs_time_from_epoch(atime)
 
+        gd = get_gdrive()
+
         try:
-            entry = drive_proxy('update_entry', normalized_entry=entry, 
-                                modified_datetime=mtime_phrase,
-                                accessed_datetime=atime_phrase)
+            entry = gd.update_entry(
+                        entry, 
+                        modified_datetime=mtime_phrase,
+                        accessed_datetime=atime_phrase)
         except:
             _logger.exception("Could not update entry [%s] for times.",
                               entry)
@@ -747,13 +784,19 @@ class GDriveFS(LoggingMixIn,Operations):
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
 
-        get_change_manager().mount_init()
+        if gdrivefs.config.changes.MONITOR_CHANGES is True:
+            _logger.info("Activating change-monitor.")
+            get_change_manager().mount_init()
+        else:
+            _logger.warning("We were told not to monitor changes.")
 
     @dec_hint(['path'])
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /."""
 
-        get_change_manager().mount_destroy()
+        if gdrivefs.config.changes.MONITOR_CHANGES is True:
+            _logger.info("Stopping change-monitor.")
+            get_change_manager().mount_destroy()
 
     @dec_hint(['path'])
     def listxattr(self, raw_path):
@@ -769,7 +812,14 @@ class GDriveFS(LoggingMixIn,Operations):
             return entry.xattr_data[name] + "\n"
         except:
             return ''
-        
+
+if gdrivefs.config.DO_LOG_FUSE_MESSAGES is True:
+    class GDriveFS(_GdfsMixin, LoggingMixIn, Operations):
+        pass
+else:
+    class GDriveFS(_GdfsMixin, Operations):
+        pass
+
 def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None, 
           option_string=None):
 
@@ -831,14 +881,6 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
 
     # How we'll appear in diskfree, mtab, etc..
     name = ("gdfs(%s)" % (auth_storage_filepath))
-
-    # Don't start any of the scheduled tasks, such as change checking, cache
-    # cleaning, etc. It will minimize outside influence of the logs and state
-    # to make it easier to debug.
-
-#    atexit.register(Timers.get_instance().cancel_all)
-    if debug:
-        Timers.get_instance().set_autostart_default(False)
 
     # Make sure we can connect.
     gdrivefs.gdtool.account_info.AccountInfo().get_data()

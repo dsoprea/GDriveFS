@@ -6,6 +6,9 @@ import json
 import time
 import httplib
 import ssl
+import tempfile
+import pprint
+import functools
 
 from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
@@ -32,7 +35,77 @@ from gdrivefs.gdfs.fsutility import split_path_nolookups, \
 _CONF_SERVICE_NAME = 'drive'
 _CONF_SERVICE_VERSION = 'v2'
 
+_MAX_EMPTY_CHUNKS = 3
+
+logging.getLogger('apiclient.discovery').setLevel(logging.WARNING)
+
 _logger = logging.getLogger(__name__)
+
+def _marshall(f):
+    """A method wrapper that will reauth and/or reattempt where reasonable.
+    """
+
+    auto_refresh = True
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        # Now, try to invoke the mechanism. If we succeed, return 
+        # immediately. If we get an authorization-fault (a resolvable 
+        # authorization problem), fall through and attempt to fix it. Allow 
+        # any other error to bubble up.
+        
+        for n in range(0, 5):
+            try:
+                return f(*args, **kwargs)
+            except (ssl.SSLError, httplib.BadStatusLine) as e:
+                # These happen sporadically. Use backoff.
+                _logger.exception("There was a transient connection "
+                                  "error (%s). Trying again [%s]: %s",
+                                  e.__class__.__name__, str(e), n)
+
+                time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
+            except HttpError as e:
+                try:
+                    error = json.loads(e.content)
+                except ValueError:
+                    _logger.error("Non-JSON error while doing chunked "
+                                  "download: [%s]", e.content) 
+                    raise e
+
+                if error.get('code') == 403 and \
+                   error.get('errors')[0].get('reason') \
+                   in ['rateLimitExceeded', 'userRateLimitExceeded']:
+                    # Apply exponential backoff.
+                    _logger.exception("There was a transient HTTP "
+                                      "error (%s). Trying again (%d): "
+                                      "%s",
+                                      e.__class__.__name__, str(e), n)
+
+                    time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
+                else:
+                    # Other error, re-raise.
+                    raise
+            except AuthorizationFaultError:
+                # If we're not allowed to refresh the token, or we've
+                # already done it in the last attempt.
+                if not auto_refresh or n == 1:
+                    raise
+
+                # We had a resolvable authorization problem.
+
+                _logger.info("There was an authorization fault under "
+                             "action [%s]. Attempting refresh.",
+                             action)
+                
+                authorize = get_auth()
+                authorize.check_credential_state()
+
+                # Re-attempt the action.
+
+                _logger.info("Refresh seemed successful. Reattempting "
+                             "action [%s].", action)
+
+    return wrapper
 
 
 class GdriveAuth(object):
@@ -40,30 +113,33 @@ class GdriveAuth(object):
         self.__client = None
         self.__authorize = get_auth()
         self.__check_authorization()
+        self.__http = None
 
     def __check_authorization(self):
         self.__credentials = self.__authorize.get_credentials()
 
     def get_authed_http(self):
-        self.__check_authorization()
-        _logger.info("Getting authorized HTTP tunnel.")
-            
-        http = Http()
-        self.__credentials.authorize(http)
+        if self.__http is None:
+            self.__check_authorization()
+            _logger.debug("Getting authorized HTTP tunnel.")
+                
+            http = Http()
+            self.__credentials.authorize(http)
 
-        return http
+            _logger.debug("Got authorized tunnel.")
+
+            self.__http = http
+
+        return self.__http
 
     def get_client(self):
         if self.__client is None:
             authed_http = self.get_authed_http()
-
-            _logger.info("Building authorized client from Http.  TYPE= [%s]",
-                         type(authed_http))
         
             # Build a client from the passed discovery document path
             
             discoveryUrl = Conf.get('google_discovery_service_url')
-# TODO: We should cache this, since we have, so often, having a problem 
+# TODO: We should cache this, since we have, so often, had a problem 
 #       retrieving it. If there's no other way, grab it directly, and then pass
 #       via a file:// URI.
         
@@ -99,6 +175,7 @@ class _GdriveManager(object):
     def __init__(self):
         self.__auth = GdriveAuth()
 
+    @_marshall
     def get_about_info(self):
         """Return the 'about' information for the drive."""
 
@@ -107,15 +184,16 @@ class _GdriveManager(object):
         
         return response
 
+    @_marshall
     def list_changes(self, start_change_id=None, page_token=None):
         """Get a list of the most recent changes from GD, with the earliest 
         changes first. This only returns one page at a time. start_change_id 
         doesn't have to be valid.. It's just the lower limit to what you want 
         back. Change-IDs are integers, but are not necessarily sequential.
         """
-
-        _logger.info("Listing changes starting at ID [%s] with page_token "
-                     "[%s].", start_change_id, page_token)
+# TODO(dustin): Debugging.
+        _logger.debug("Listing changes starting at ID [%s] with page_token "
+                      "[%s].", start_change_id, page_token)
 
         client = self.__auth.get_client()
 
@@ -124,19 +202,25 @@ class _GdriveManager(object):
         response = client.changes().list(
                     pageToken=page_token, 
                     startChangeId=start_change_id).execute()
+# TODO(dustin): Debugging. Sometimes largestChangeId is missing.
+        import pprint
+        pprint.pprint(response)
 
-        items             = response[u'items']
+        items = response[u'items']
         largest_change_id = int(response[u'largestChangeId'])
-        next_page_token   = response[u'nextPageToken'] if u'nextPageToken' \
-                                                       in response else None
+
+        try:
+            next_page_token = response[u'nextPageToken']
+        except KeyError:
+            next_page_token = None
 
         changes = OrderedDict()
         last_change_id = None
         for item in items:
-            change_id   = int(item[u'id'])
-            entry_id    = item[u'fileId']
+            change_id = int(item[u'id'])
+            entry_id = item[u'fileId']
             was_deleted = item[u'deleted']
-            entry       = None if item[u'deleted'] else item[u'file']
+            entry = None if item[u'deleted'] else item[u'file']
 
             if last_change_id and change_id <= last_change_id:
                 message = "Change-ID (%d) being processed is less-than the " \
@@ -154,6 +238,7 @@ class _GdriveManager(object):
 
         return (largest_change_id, next_page_token, changes)
 
+    @_marshall
     def get_parents_containing_id(self, child_id, max_results=None):
         
         _logger.info("Getting client for parent-listing.")
@@ -166,10 +251,11 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
-    def get_children_under_parent_id(self, \
-                                     parent_id, \
-                                     query_contains_string=None, \
-                                     query_is_string=None, \
+    @_marshall
+    def get_children_under_parent_id(self,
+                                     parent_id,
+                                     query_contains_string=None,
+                                     query_is_string=None,
                                      max_results=None):
 
         _logger.info("Getting client for child-listing.")
@@ -200,12 +286,12 @@ class _GdriveManager(object):
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
+    @_marshall
     def get_entries(self, entry_ids):
-
         retrieved = { }
         for entry_id in entry_ids:
             try:
-                entry = drive_proxy('get_entry', entry_id=entry_id)
+                entry = self.get_entry(entry_id)
             except:
                 _logger.exception("Could not retrieve entry with ID [%s].",
                                   entry_id)
@@ -217,6 +303,7 @@ class _GdriveManager(object):
 
         return retrieved
 
+    @_marshall
     def get_entry(self, entry_id):
         client = self.__auth.get_client()
 
@@ -236,6 +323,7 @@ class _GdriveManager(object):
 
         return entry
 
+    @_marshall
     def list_files(self, query_contains_string=None, query_is_string=None, 
                    parent_id=None):
         
@@ -310,6 +398,7 @@ class _GdriveManager(object):
 
         return entries
 
+    @_marshall
     def download_to_local(self, output_file_path, normalized_entry, mime_type, 
                           allow_cache=True):
         """Download the given file. If we've cached a previous download and the 
@@ -329,16 +418,6 @@ class _GdriveManager(object):
 
             _logger.warning(message)
             raise ExportFormatError(message)
-
-        temp_path = Conf.get('file_download_temp_path')
-
-        if not isdir(temp_path):
-            try:
-                makedirs(temp_path)
-            except:
-                _logger.exception("Could not create temporary download path "
-                                  "[%s].", temp_path)
-                raise
 
         gd_mtime_epoch = time.mktime(
                             normalized_entry.modified_date.timetuple())
@@ -369,7 +448,6 @@ class _GdriveManager(object):
 
         # Go and get the file.
 
-# TODO(dustin): This might establish a new connection. Not cool.
         authed_http = self.__auth.get_authed_http()
 
         url = normalized_entry.download_links[mime_type]
@@ -380,8 +458,35 @@ class _GdriveManager(object):
                             authed_http, 
                             url)
 
+            progresses = []
+
             while 1:
                 status, done, total_size = downloader.next_chunk()
+                
+                assert status.total_size is not None, \
+                       "total_size is None"
+
+                _logger.debug("Read chunk: STATUS=[%s] DONE=[%s] "
+                              "TOTAL_SIZE=[%s]", status, done, total_size)
+
+                _logger.debug("Chunk: PROGRESS=[%s] TOTAL-SIZE=[%s] "
+                              "RESUMABLE-PROGRESS=[%s]",
+                              status.progress, status.total_size, 
+                              status.resumable_progress)
+
+                percent = status.progress() if status.total_size > 0 else 100.0
+# TODO(dustin): This just places an arbitrary limit on the number of empty 
+#               chunks we can receive. Can we drop this to 1?
+                if len(progresses) >= _MAX_EMPTY_CHUNKS:
+                    assert percent > progresses[0], \
+                           "Too many empty chunks have been received."
+
+                progresses.append(percent)
+
+                # Constrain how many percentages we keep.
+                if len(progresses) > _MAX_EMPTY_CHUNKS:
+                    del progresses[0]
+
                 if done is True:
                     break
 
@@ -389,6 +494,7 @@ class _GdriveManager(object):
 
         return (total_size, True)
 
+    @_marshall
     def __insert_entry(self, filename, mime_type, parents, data_filepath=None, 
                        modified_datetime=None, accessed_datetime=None, 
                        is_hidden=False, description=None):
@@ -411,6 +517,8 @@ class _GdriveManager(object):
 
         client = self.__auth.get_client()
 
+        ## Create request-body.
+
         body = { 
                 'title': filename, 
                 'parents': [dict(id=parent) for parent in parents], 
@@ -425,19 +533,34 @@ class _GdriveManager(object):
         if accessed_datetime is not None:
             body['lastViewedByMeDate'] = accessed_datetime
 
-        args = { 'body': body }
+        ## Create request-arguments.
+
+        args = {
+            'body': body,
+        }
 
         if data_filepath:
-            args['media_body'] = MediaFileUpload(filename=data_filepath, \
-                                                 mimetype=mime_type)
+# TODO(dustin): "uploadType" is supposed to be required, but we've only 
+#               recently implemented it (here, and in the update call).
+#               However, some updates have been failing (for truncates, and 
+#               that drew attention to this).
+            args.update({
+                'media_body': MediaFileUpload(
+                                data_filepath, 
+                                mimetype=mime_type, 
+                                resumable=True),
+# TODO(dustin): Documented, but does not exist.
+#                'uploadType': 'resumable',
+            })
 
         _logger.debug("Doing file-insert with:\n%s", args)
 
-        try:
-            result = client.files().insert(**args).execute()
-        except:
-            _logger.exception("Could not insert file [%s].", filename)
-            raise
+        request = client.files().insert(**args)
+
+        result = self.__finish_upload(
+                    filename,
+                    request,
+                    data_filepath is not None)
 
         normalized_entry = NormalEntry('insert_entry', result)
             
@@ -445,30 +568,48 @@ class _GdriveManager(object):
 
         return normalized_entry
 
+    @_marshall
     def truncate(self, normalized_entry):
 
         _logger.info("Truncating entry [%s].", normalized_entry.id)
 
-        try:
-            entry = self.update_entry(normalized_entry, data_filepath='/dev/null')
-        except:
-            _logger.exception("Could not truncate entry with ID [%s].",
-                              normalized_entry.id)
-            raise
+        client = self.__auth.get_client()
 
+        file_ = MediaFileUpload(
+                    '/dev/null',
+                    mimetype=normalized_entry.mime_type)
+
+        args = { 
+            'fileId': normalized_entry.id, 
+# TODO(dustin): Can we omit 'body'?
+            'body': {}, 
+            'media_body': file_,
+        }
+
+        result = client.files().update(**args).execute()
+
+        _logger.debug("Truncate complete: [%s]", normalized_entry.id)
+
+        return result
+
+    @_marshall
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
                      mime_type=None, parents=None, modified_datetime=None, 
                      accessed_datetime=None, is_hidden=False, 
                      description=None):
 
-        if not mime_type:
-            mime_type = normalized_entry.mime_type
-
         _logger.info("Updating entry [%s].", normalized_entry)
 
         client = self.__auth.get_client()
+
+        # Build request-body.
         
-        body = { 'mimeType': mime_type }
+        body = {}
+
+        if mime_type is not None:
+            body['mimeType'] = mime_type 
+        else:
+            body['mimeType'] = normalized_entry.mime_type
 
         if filename is not None:
             body['title'] = filename
@@ -489,34 +630,87 @@ class _GdriveManager(object):
             body['modifiedDate'] = get_flat_normal_fs_time_from_dt()
 
         if accessed_datetime is not None:
-            set_atime = 1
+            set_atime = True
             body['lastViewedByMeDate'] = accessed_datetime
         else:
-            set_atime = 0
+            set_atime = False
 
-        args = { 'fileId': normalized_entry.id, 
-                 'body': body, 
-                 'setModifiedDate': set_mtime, 
-                 'updateViewedDate': set_atime 
-                 }
+        # Build request-arguments.
 
-        if data_filepath:
-            args['media_body'] = MediaFileUpload(data_filepath, 
-                                                 mimetype=mime_type)
+        args = { 
+            'fileId': normalized_entry.id, 
+            'body': body, 
+            'setModifiedDate': set_mtime, 
+            'updateViewedDate': set_atime,
+        }
 
-        result = client.files().update(**args).execute()
+        if data_filepath is not None:
+            _logger.debug("We'll be sending a file in the update: [%s] [%s]", 
+                          normalized_entry.id, data_filepath)
+
+            # We can only upload large files using resumable-uploads.
+# TODO(dustin): "uploadType" is supposed to be required, but we've only 
+#               recently implemented it (here, and in the insert call).
+#               However, some updates have been failing (for truncates, and 
+#               that drew attention to this).
+            args.update({
+                'media_body': MediaFileUpload(
+                                data_filepath, 
+                                mimetype=mime_type, 
+                                resumable=True),
+# TODO(dustin): Documented, but does not exist.
+#                'uploadType': 'resumable',
+            })
+
+        _logger.debug("Sending entry update: [%s]\nUpdate parameters:\n%s", 
+                      normalized_entry.id, pprint.pformat(args))
+
+        request = client.files().update(**args)
+
+        result = self.__finish_upload(
+                    normalized_entry.title,
+                    request,
+                    data_filepath is not None)
+
         normalized_entry = NormalEntry('update_entry', result)
 
         _logger.debug("Entry with ID [%s] updated.", normalized_entry.id)
 
         return normalized_entry
 
+    def __finish_upload(self, filename, request, has_file):
+        """Finish a resumable-upload is a file was given, or just execute the 
+        request if not.
+        """
+
+        if has_file is False:
+            return request.execute()
+
+        _logger.debug("We needed to update the entry's data. Doing "
+                      "chunked-uploaded.")
+
+        result = None
+        while result is None:
+            _logger.debug("Pushing next chunk: [%s]", filename)
+            status, result = request.next_chunk()
+
+            if status:
+                if status.total_size == 0:
+                    _logger.debug("Uploaded (zero-length).")
+                else:
+                    _logger.debug("Uploaded [%s]: %.2f%%", 
+                                  filename, status.progress() * 100)
+
+        return result
+
+    @_marshall
     def create_directory(self, filename, parents, **kwargs):
 
         mimetype_directory = Conf.get('directory_mimetype')
         return self.__insert_entry(filename, mimetype_directory, parents, 
                                    **kwargs)
 
+    @_marshall
     def create_file(self, filename, data_filepath, parents, mime_type=None, 
                     **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.
@@ -537,6 +731,7 @@ class _GdriveManager(object):
                                    data_filepath,
                                    **kwargs)
 
+    @_marshall
     def rename(self, normalized_entry, new_filename):
 
         result = split_path_nolookups(new_filename)
@@ -548,6 +743,7 @@ class _GdriveManager(object):
         return self.update_entry(normalized_entry, filename=filename_stripped, 
                                  is_hidden=is_hidden)
 
+    @_marshall
     def remove_entry(self, normalized_entry):
 
         _logger.info("Removing entry with ID [%s].", normalized_entry.id)
@@ -569,95 +765,11 @@ class _GdriveManager(object):
 
         _logger.info("Entry deleted successfully.")
 
-class _GoogleProxy(object):
-    """A proxy class that invokes the specified Google Drive call. It will 
-    automatically refresh our authorization credentials when the need arises. 
-    Nothing inside the Google Drive wrapper class should call this. In general, 
-    only external logic should invoke us.
-    """
-    
-    def __init__(self):
-        self.authorize = get_auth()
-        self.gdrive_wrapper = _GdriveManager()
+_GDRIVE_MANAGER = None
+def get_gdrive():
+    global _GDRIVE_MANAGER
 
-    def __getattr__(self, action):
-        _logger.info("Proxied action [%s] requested.", action)
-    
-        try:
-            method = getattr(self.gdrive_wrapper, action)
-        except (AttributeError):
-            _logger.exception("Action [%s] can not be proxied to Drive. "
-                              "Action is not valid.", action)
-            raise
+    if _GDRIVE_MANAGER is None:
+        _GDRIVE_MANAGER = _GdriveManager()
 
-        def proxied_method(auto_refresh=True, **kwargs):
-            # Now, try to invoke the mechanism. If we succeed, return 
-            # immediately. If we get an authorization-fault (a resolvable 
-            # authorization problem), fall through and attempt to fix it. Allow 
-            # any other error to bubble up.
-            
-            _logger.debug("Attempting to invoke method for action [%s].",
-                          action)
-
-            for n in range(0, 5):
-                try:
-                    return method(**kwargs)
-                except (ssl.SSLError, httplib.BadStatusLine) as e:
-                    # These happen sporadically. Use backoff.
-                    _logger.exception("There was a transient connection "
-                                      "error (%s). Trying again (%d): %s",
-                                      e.__class__.__name__, str(e), n)
-
-                    time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
-                except HttpError as e:
-                    try:
-                        error = json.loads(e.content)
-                    except ValueError:
-                        _logger.error("Non-JSON error while doing chunked "
-                                      "download: %s", e.content) 
-                    
-                    if error.get('code') == 403 and \
-                       error.get('errors')[0].get('reason') \
-                       in ['rateLimitExceeded', 'userRateLimitExceeded']:
-                        # Apply exponential backoff.
-                        _logger.exception("There was a transient HTTP "
-                                          "error (%s). Trying again (%d): "
-                                          "%s",
-                                          e.__class__.__name__, str(e), n)
-
-                        time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
-                    else:
-                        # Other error, re-raise.
-                        raise
-                except AuthorizationFaultError:
-                    # If we're not allowed to refresh the token, or we've
-                    # already done it in the last attempt.
-                    if not auto_refresh or n == 1:
-                        raise
-
-                    # We had a resolvable authorization problem.
-
-                    _logger.info("There was an authorization fault under "
-                                 "action [%s]. Attempting refresh.",
-                                 action)
-                    
-                    authorize = get_auth()
-                    authorize.check_credential_state()
-
-                    # Re-attempt the action.
-
-                    _logger.info("Refresh seemed successful. Reattempting "
-                                 "action [%s].", action)
-                        
-        return proxied_method
-
-_instance = None
-                
-def drive_proxy(action, auto_refresh=True, **kwargs):
-    global _instance
-
-    if _instance is None:
-        _instance = _GoogleProxy()
-
-    method = getattr(_instance, action)
-    return method(auto_refresh, **kwargs)
+    return _GDRIVE_MANAGER

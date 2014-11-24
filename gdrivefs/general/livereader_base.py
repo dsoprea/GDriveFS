@@ -12,8 +12,8 @@ class LiveReaderBase(object):
     def __getitem__(self, key):
         child_name = self.__class__.__name__
 
-        _logger.debug("Key [%s] requested on LiveReaderBase type [%s].",
-                      key, child_name)
+#        _logger.debug("Key [%s] requested on LiveReaderBase type [%s].",
+#                      key, child_name)
 
         try:
             return self.__data[key]

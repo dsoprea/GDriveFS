@@ -6,7 +6,7 @@ from datetime       import datetime
 
 from gdrivefs.utility import utility
 from gdrivefs.conf import Conf
-from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.drive import get_gdrive
 from gdrivefs.gdtool.account_info import AccountInfo
 from gdrivefs.gdtool.normal_entry import NormalEntry
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
@@ -58,8 +58,7 @@ class PathRelations(object):
     def remove_entry_recursive(self, entry_id, is_update=False):
         """Remove an entry, all children, and any newly orphaned parents."""
 
-        _logger.debug("Doing recursive removal of entry with ID [%s].", 
-                      entry_id)
+        _logger.debug("Recursively pruning entry with ID [%s].", entry_id)
 
         to_remove = deque([ entry_id ])
         stat_placeholders = 0
@@ -358,28 +357,19 @@ class PathRelations(object):
         return entry_clause
 
     def __load_all_children(self, parent_id):
-#        self.__log.debug("Loading children under parent with ID [%s].",
-#                         parent_id)
+        gd = get_gdrive()
 
         with PathRelations.rlock:
-            children = drive_proxy('list_files', parent_id=parent_id)
+            children = gd.list_files(parent_id=parent_id)
 
             child_ids = [ ]
             if children:
-#                self.__log.debug("(%d) children returned and will be "
-#                                 "registered.", len(children))
-
                 for child in children:
                         self.register_entry(child)
-
-#                self.__log.debug("Looking up parent with ID [%s] for all-"
-#                                 "children update.", parent_id)
 
                 parent_clause = self.__get_entry_clause_by_id(parent_id)
 
                 parent_clause[4] = True
-
-#                self.__log.debug("All children have been loaded.")
 
         return children
 
@@ -387,8 +377,6 @@ class PathRelations(object):
         """Return the filenames contained in the folder with the given 
         entry-ID.
         """
-
-#        self.__log.debug("Getting children under entry with ID [%s].",entry_id)
 
         with PathRelations.rlock:
             entry_clause = self.__get_entry_clause_by_id(entry_id)
@@ -449,6 +437,8 @@ class PathRelations(object):
         among the children of the previous path component, and then try again.
         """
 
+        gd = get_gdrive()
+
         with PathRelations.rlock:
             previous_results = []
             i = 0
@@ -489,8 +479,9 @@ class PathRelations(object):
                 # The child will be the first part that was not found.
                 child_name = result[1][num_results]
 
-                children = drive_proxy('list_files', parent_id=parent_id, 
-                                       query_is_string=child_name)
+                children = gd.list_files(
+                                parent_id=parent_id, 
+                                query_is_string=child_name)
                 
                 for child in children:
                     self.register_entry(child)
@@ -599,28 +590,24 @@ class PathRelations(object):
 class EntryCache(CacheClientBase):
     """Manages our knowledge of file entries."""
 
-    about = AccountInfo.get_instance()
+    def __init__(self, *args, **kwargs):
+        super(EntryCache, self).__init__(*args, **kwargs)
+
+# TODO(dustin): This isn't used, and we don't think that it necessarily needs 
+#               to be instantiated, now.
+#        about = AccountInfo.get_instance()
+        self.__gd = get_gdrive()
 
     def __get_entries_to_update(self, requested_entry_id):
         # Get more entries than just what was requested, while we're at it.
 
-        parent_ids = drive_proxy('get_parents_containing_id', 
-                                 child_id=requested_entry_id)
+        parent_ids = self.__gd.get_parents_containing_id(requested_entry_id)
 
-#        self.__log.debug("Found (%d) parents.", len(parent_ids))
-
-        affected_entries = [ requested_entry_id ]
-        considered_entries = { }
+        affected_entries = [requested_entry_id]
+        considered_entries = {}
         max_readahead_entries = Conf.get('max_readahead_entries')
         for parent_id in parent_ids:
-#            self.__log.debug("Retrieving children for parent with ID [%s].",
-#                             parent_id)
-
-            child_ids = drive_proxy('get_children_under_parent_id', 
-                                    parent_id=parent_id)
-
-#            self.__log.debug("(%d) children found under parent with ID [%s].",
-#                             len(child_ids), parent_id)
+            child_ids = self.__gd.get_children_under_parent_id(parent_id)
 
             for child_id in child_ids:
                 if child_id == requested_entry_id:
@@ -656,11 +643,11 @@ class EntryCache(CacheClientBase):
 
         # Read the entries, now.
 
-        # TODO: We have to determine when this is called, and either remove it 
-        # (if it's not), or find another way to not have to load them 
-        # individually.
+# TODO: We have to determine when this is called, and either remove it 
+# (if it's not), or find another way to not have to load them 
+# individually.
 
-        retrieved = drive_proxy('get_entries', entry_ids=affected_entries)
+        retrieved = self.__gd.get_entries(affected_entries)
 
         # Update the cache.
 
@@ -669,15 +656,10 @@ class EntryCache(CacheClientBase):
         for entry_id, entry in retrieved.iteritems():
             path_relations.register_entry(entry)
 
-#        self.__log.debug("(%d) entries were loaded.", len(retrieved))
-
         return retrieved
 
     def fault_handler(self, resource_name, requested_entry_id):
         """A requested entry wasn't stored."""
-
-#        self.__log.debug("EntryCache has faulted on entry with ID [%s].",
-#                         requested_entry_id)
 
         retrieved = self.__do_update_for_missing_entry(requested_entry_id)
 

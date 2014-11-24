@@ -10,18 +10,28 @@ class CacheClientBase(object):
     namespace within the cache.
     """
 
+
+
+# TODO(dustin): This is a terrible object, and needs to be refactored. It 
+#               doesn't provide any way to cleanup itself or CacheAgent, or any 
+#               way to invoke a singleton of CacheAgent whose thread we can 
+#               easier start or stop. Since this larger *wraps* CacheAgent, we 
+#               might just dispose of it.
+
+
+
     @property
     def cache(self):
         try:
-            return self._cache
+            return self.__cache
         except:
             pass
 
-        self._cache = CacheAgent(self.child_type, self.max_age, 
+        self.__cache = CacheAgent(self.child_type, self.max_age, 
                                  fault_handler=self.fault_handler, 
                                  cleanup_pretrigger=self.cleanup_pretrigger)
 
-        return self._cache
+        return self.__cache
 
     def __init__(self):
         child_type = self.__class__.__bases__[0].__name__
@@ -33,6 +43,9 @@ class CacheClientBase(object):
         self.max_age = max_age
 
         self.init()
+
+    def __del__(self):
+        del self.__cache
 
     def fault_handler(self, resource_name, key):
         pass

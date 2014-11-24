@@ -78,11 +78,11 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
                 raise
             except Exception as e:
                 _logger.exception("There was an exception in [%s]", f.__name__)
-                suffix = (' (E(%s): "%s")', e.__class__.__name__, str(e))
+                suffix = (' (E(%s): "%s")' % (e.__class__.__name__, str(e)))
                 raise
             finally:
-                _logger.exception("%s<<<<<<<<<< %s(%d) (%d)%s", 
-                                  prefix, f.__name__, sn, pid, suffix)
+                _logger.debug("%s<<<<<<<<<< %s(%d) (%d)%s", 
+                              prefix, f.__name__, sn, pid, suffix)
             
             return result
         return wrapper

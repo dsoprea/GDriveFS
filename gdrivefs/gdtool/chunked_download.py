@@ -10,6 +10,8 @@ DEFAULT_CHUNK_SIZE = 1024 * 512
 
 _logger = logging.getLogger(__name__)
 
+# TODO(Dustin): Refactor this to be nice. It's largely just copy+pasted.
+
 
 class ChunkedDownload(object):
     """"Download an entry, chunk by chunk. This code is mostly identical to
@@ -67,12 +69,17 @@ class ChunkedDownload(object):
             }
 
         for retry_num in xrange(num_retries + 1):
+            _logger.debug("Attempting to read chunk. ATTEMPT=(%d)/(%d)", 
+                          retry_num, num_retries)
+
             if retry_num > 0:
                 self._sleep(self._rand() * 2**retry_num)
-                _logger.warning("Retry #%d for media download: GET %s, following "
-                                "status: %d", retry_num, self._uri, resp.status)
+                _logger.warning("Retry #%d for media download: GET %s, "
+                                "following status: %d", 
+                                retry_num, self._uri, resp.status)
 
             resp, content = self._http.request(self._uri, headers=headers)
+            _logger.debug("Chunk status: (%d)", resp.status)
             if resp.status < 500:
                 break
 
@@ -83,10 +90,31 @@ class ChunkedDownload(object):
             self._progress += len(content)
             self._fd.write(content)
 
-            if 'content-range' in resp:
+            # This method doesn't seem documented, but we've seen cases where 
+            # this is available, but "content-range" isn't.
+            if 'content-length' in resp:
+                self._total_size = int(resp['content-length'])
+
+                _logger.debug("Received download size (content-length): "
+                              "(%d)", self._total_size)
+
+            # This might be legacy (or at least not provided for zero-length 
+            # files).
+            elif 'content-range' in resp and self._total_size is None:
                 content_range = resp['content-range']
                 length = content_range.rsplit('/', 1)[1]
-                self._total_size = int(length)
+                length = int(length)
+
+                self._total_size = length
+
+                _logger.debug("Received download size (content-range): "
+                              "(%d)", self._total_size)
+
+            assert self._total_size is not None, \
+                   "File-size was not provided."
+
+            _logger.debug("Checking if done. PROGRESS=(%d) TOTAL-SIZE=(%d)", 
+                          self._progress, self._total_size)
 
             if self._progress == self._total_size:
                 self._done = True

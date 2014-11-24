@@ -24,7 +24,6 @@ class Conf(object):
     query_decay_intermed_prefix_length  = 7
     file_jobthread_max_idle_time        = 60
     file_chunk_size_kb                  = 1024
-    file_download_temp_path             = '/tmp/gdrivefs'
     file_download_temp_max_age_s        = 86400
     file_default_mime_type              = 'application/octet-stream'
     change_check_frequency_s            = 3
@@ -33,7 +32,10 @@ class Conf(object):
     cache_cleanup_check_frequency_s     = 60
     cache_entries_max_age               = 8 * 60 * 60
     cache_status_post_frequency_s       = 10
-    report_emit_frequency_s             = 60
+
+# Deimplementing report functionality.
+#    report_emit_frequency_s             = 60
+
     google_discovery_service_url        = DISCOVERY_URI
     default_buffer_read_blocksize       = 65536
     default_mimetype                    = 'application/octet-stream'

@@ -1,7 +1,7 @@
 import logging
 
 from gdrivefs.general.livereader_base import LiveReaderBase
-from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.drive import get_gdrive
 
 _logger = logging.getLogger(__name__)
 
@@ -15,7 +15,8 @@ class AccountInfo(LiveReaderBase):
              'quota_bytes_used': (u'quotaBytesUsed', int)}
 
     def get_data(self):
-        return drive_proxy('get_about_info')
+        gd = get_gdrive()
+        return gd.get_about_info()
 
     def __getattr__(self, key):
         target = AccountInfo.__map[key]

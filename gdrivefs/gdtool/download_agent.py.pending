@@ -387,6 +387,7 @@ class _DownloadAgent(object):
     def loop(self):
         global_receiver = gevent.queue.Queue()
         while True:
+#gdrivefs.state.GLOBAL_EXIT_EVENT.is_set() is False
             if self.__stop_ev.is_set() is True:
                 _logger.debug("Download-agent stop-flag has been set.")
                 break
