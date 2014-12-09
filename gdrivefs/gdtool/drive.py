@@ -178,13 +178,20 @@ class _GdriveManager(object):
     def __init__(self):
         self.__auth = GdriveAuth()
 
+    def __assert_response_kind(self, response, expected_kind):
+        actual_kind = response[u'kind']
+        if actual_kind != unicode(expected_kind):
+            raise ValueError("Received response of type [%s] instead of "
+                             "[%s]." % (actual_kind, expected_kind))
+
     @_marshall
     def get_about_info(self):
         """Return the 'about' information for the drive."""
 
         client = self.__auth.get_client()
         response = client.about().get().execute()
-        
+        self.__assert_response_kind(response, 'drive#about')
+
         return response
 
     @_marshall
@@ -205,6 +212,9 @@ class _GdriveManager(object):
         response = client.changes().list(
                     pageToken=page_token, 
                     startChangeId=start_change_id).execute()
+
+        self.__assert_response_kind(response, 'drive#changeList')
+
 # TODO(dustin): Debugging. Sometimes largestChangeId is missing.
         import pprint
         pprint.pprint(response)
@@ -251,6 +261,7 @@ class _GdriveManager(object):
         _logger.info("Listing entries over child with ID [%s].", child_id)
 
         response = client.parents().list(fileId=child_id).execute()
+        self.__assert_response_kind(response, 'drive#parentList')
 
         return [ entry[u'id'] for entry in response[u'items'] ]
 
@@ -287,6 +298,8 @@ class _GdriveManager(object):
                     folderId=parent_id,
                     maxResults=max_results).execute()
 
+        self.__assert_response_kind(response, 'drive#childList')
+
         return [ entry[u'id'] for entry in response[u'items'] ]
 
     @_marshall
@@ -310,21 +323,10 @@ class _GdriveManager(object):
     def get_entry(self, entry_id):
         client = self.__auth.get_client()
 
-        try:
-            entry_raw = client.files().get(fileId=entry_id).execute()
-        except:
-            _logger.exception("Could not get the file with ID [%s].",
-                              entry_id)
-            raise
+        response = client.files().get(fileId=entry_id).execute()
+        self.__assert_response_kind(response, 'drive#file')
 
-        try:
-            entry = NormalEntry('direct_read', entry_raw)
-        except:
-            _logger.exception("Could not normalize raw-data for entry with "
-                              "ID [%s].", entry_id)
-            raise
-
-        return entry
+        return NormalEntry('direct_read', response)
 
     @_marshall
     def list_files(self, query_contains_string=None, query_is_string=None, 
@@ -375,7 +377,9 @@ class _GdriveManager(object):
 
             result = client.files().list(q=query, pageToken=page_token).\
                         execute()
-            
+
+            self.__assert_response_kind(result, 'drive#fileList')
+
             _logger.debug("(%d) entries were presented for page-number "
                           "(%d).", len(result[u'items']), page_num)
 
@@ -595,13 +599,14 @@ class _GdriveManager(object):
 
         request = client.files().insert(**args)
 
-        result = self.__finish_upload(
+        response = self.__finish_upload(
                     filename,
                     request,
                     data_filepath is not None)
 
-        normalized_entry = NormalEntry('insert_entry', result)
-            
+        self.__assert_response_kind(response, 'drive#file')
+
+        normalized_entry = NormalEntry('insert_entry', response)
         _logger.info("New entry created with ID [%s].", normalized_entry.id)
 
         return normalized_entry
@@ -624,11 +629,12 @@ class _GdriveManager(object):
             'media_body': file_,
         }
 
-        result = client.files().update(**args).execute()
+        response = client.files().update(**args).execute()
+        self.__assert_response_kind(response, 'drive#file')
 
         _logger.debug("Truncate complete: [%s]", normalized_entry.id)
 
-        return result
+        return response
 
     @_marshall
     def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
