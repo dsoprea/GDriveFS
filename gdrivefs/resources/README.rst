@@ -73,6 +73,49 @@ Run::
     $ sudo pip install gdrivefs
 
 
+-----
+Usage
+-----
+
+Before you can mount the account, you must authorize *GDriveFS* to access it. 
+*GDriveFS* works by producing a URL that you must visit in a browser. Google 
+will ask for your log-in information and authorization, and then give you an 
+authorization code. You then pass this code back to the *GDriveFS* utility 
+along with a file-path of where you want it to store the authorization 
+information ("auth storage file"). Then, you can mount it whenever you'd like.
+
+Since this is *FUSE*, you must be running as root to mount.
+
+1. To get an authorization URL::
+
+    $ gdfstool auth -u
+    To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
+
+    https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
+
+2. To set the authorization-code, you must also provide the auth-storage file 
+   that you would like to save it as. The name and location of this file is 
+   arbitrary::
+
+    $ gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
+    Authorization code recorded.
+
+3. There are three ways to mount the account:
+
+   - Via script (either using the main script "gdfstool mount" or the helper 
+     scripts "gdfs"/"mount.gdfs")::
+
+       $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
+
+   - Via */etc/fstab*::
+
+        /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
+
+   - Directly via *gdfstool*::
+
+        $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
+
+
 Vagrant
 =======
 
@@ -121,8 +164,40 @@ The GDFS source directory will be mounted at `/gdrivefs`, and the scripts will b
 **If you're familiar with Vagrant, you can copy the Vagrantfile and modify it to mount an additional path from the host system in the guest instance, and then use this to access your files from an incompatible system.**
 
 
-Troubleshooting
-===============
+Developing/Debugging
+====================
+
+Mounting GDFS in debugging-mode will run GDFS in the foreground, and enable debug-logging.
+
+Just set the `GD_DEBUG` environment variable to "1"::
+
+    root@vagrant-ubuntu-trusty-64:/home/vagrant# GD_DEBUG=1 gdfs /var/cache/gdfs.creds /mnt/g
+    2014-12-09 04:09:17,204 [gdrivefs.utility INFO] No mime-mapping was found.
+    2014-12-09 04:09:17,204 [gdrivefs.utility INFO] No extension-mapping was found.
+    2014-12-09 04:09:17,258 [__main__ DEBUG] Mounting GD with creds at [/var/cache/gdfs.creds]: /mnt/g
+    2014-12-09 04:09:17,259 [root DEBUG] Debug: True
+    2014-12-09 04:09:17,260 [root DEBUG] PERMS: F=777 E=666 NE=444
+    2014-12-09 04:09:17,262 [gdrivefs.gdtool.drive DEBUG] Getting authorized HTTP tunnel.
+    2014-12-09 04:09:17,262 [gdrivefs.gdtool.drive DEBUG] Got authorized tunnel.
+    FUSE library version: 2.9.2
+    nullpath_ok: 0
+    nopath: 0
+    utime_omit_ok: 0
+    unique: 1, opcode: INIT (26), nodeid: 0, insize: 56, pid: 0
+    INIT: 7.22
+    flags=0x0000f7fb
+    max_readahead=0x00020000
+    2014-12-09 04:09:22,839 [gdrivefs.gdfs.fsutility DEBUG] --------------------------------------------------
+    2014-12-09 04:09:22,841 [gdrivefs.gdfs.fsutility DEBUG] >>>>>>>>>> init(23) >>>>>>>>>> (0)
+    2014-12-09 04:09:22,841 [gdrivefs.gdfs.fsutility DEBUG] DATA: path= [/]
+    2014-12-09 04:09:22,842 [gdrivefs.gdfs.gdfuse INFO] Activating change-monitor.
+    2014-12-09 04:09:23,002 [gdrivefs.gdfs.fsutility DEBUG] <<<<<<<<<< init(23) (0)
+       INIT: 7.19
+       flags=0x00000011
+
+
+Troubleshooting Steps
+=====================
 
 - If your *setuptools* package is too old, you might see the following 
   [annoying] error::
@@ -139,49 +214,6 @@ Troubleshooting
   gdrivefs::
 
     $ sudo pip install --allow-unverified antlr-python-runtime --allow-external antlr-python-runtime gdrivefs
-
-
------
-Usage
------
-
-Before you can mount the account, you must authorize *GDriveFS* to access it. 
-*GDriveFS* works by producing a URL that you must visit in a browser. Google 
-will ask for your log-in information and authorization, and then give you an 
-authorization code. You then pass this code back to the *GDriveFS* utility 
-along with a file-path of where you want it to store the authorization 
-information ("auth storage file"). Then, you can mount it whenever you'd like.
-
-Since this is *FUSE*, you must be running as root to mount.
-
-1. To get an authorization URL::
-
-    $ gdfstool auth -u
-    To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
-
-    https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
-
-2. To set the authorization-code, you must also provide the auth-storage file 
-   that you would like to save it as. The name and location of this file is 
-   arbitrary::
-
-    $ gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
-    Authorization code recorded.
-
-3. There are three ways to mount the account:
-
-   - Via script (either using the main script "gdfstool mount" or the helper 
-     scripts "gdfs"/"mount.gdfs")::
-
-       $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
-
-   - Via */etc/fstab*::
-
-        /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
-
-   - Directly via *gdfstool*::
-
-        $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
 
 -------
