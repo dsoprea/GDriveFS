@@ -221,30 +221,24 @@ class _GdriveManager(object):
 
         items = response[u'items']
         largest_change_id = int(response[u'largestChangeId'])
-
-        try:
-            next_page_token = response[u'nextPageToken']
-        except KeyError:
-            next_page_token = None
+        next_page_token = response.get(u'nextPageToken')
 
         changes = OrderedDict()
         last_change_id = None
         for item in items:
             change_id = int(item[u'id'])
             entry_id = item[u'fileId']
-            was_deleted = item[u'deleted']
-            entry = None if item[u'deleted'] else item[u'file']
+            
+            if item[u'deleted']:
+                was_deleted = True
+                entry = None
+            else:
+                was_deleted = False
+                entry = item[u'file']
 
-            if last_change_id and change_id <= last_change_id:
-                message = "Change-ID (%d) being processed is less-than the " \
-                          "last change-ID (%d) to be processed." % \
-                          (change_id, last_change_id)
-
-                _logger.error(message)
-                raise Exception(message)
-
-            normalized_entry = None if was_deleted \
-                                    else NormalEntry('list_changes', entry)
+            normalized_entry = None \
+                                if was_deleted \
+                                else NormalEntry('list_changes', entry)
 
             changes[change_id] = (entry_id, was_deleted, normalized_entry)
             last_change_id = change_id
