@@ -38,6 +38,7 @@ _CONF_SERVICE_NAME = 'drive'
 _CONF_SERVICE_VERSION = 'v2'
 
 _MAX_EMPTY_CHUNKS = 3
+_DEFAULT_UPLOAD_CHUNK_SIZE_B = 1024 * 1024
 
 logging.getLogger('apiclient.discovery').setLevel(logging.WARNING)
 
@@ -202,23 +203,17 @@ class _GdriveManager(object):
         doesn't have to be valid.. It's just the lower limit to what you want 
         back. Change-IDs are integers, but are not necessarily sequential.
         """
-# TODO(dustin): Debugging.
+
         _logger.debug("Listing changes starting at ID [%s] with page_token "
                       "[%s].", start_change_id, page_token)
 
         client = self.__auth.get_client()
 
-# TODO: We expected that this reports all changes to all files. If this is the 
-#       case, than what's the point of the watch() call in Files?
         response = client.changes().list(
                     pageToken=page_token, 
                     startChangeId=start_change_id).execute()
 
         self.__assert_response_kind(response, 'drive#changeList')
-
-# TODO(dustin): Debugging. Sometimes largestChangeId is missing.
-        import pprint
-        pprint.pprint(response)
 
         items = response[u'items']
         largest_change_id = int(response[u'largestChangeId'])
@@ -229,13 +224,18 @@ class _GdriveManager(object):
         for item in items:
             change_id = int(item[u'id'])
             entry_id = item[u'fileId']
-            
+
             if item[u'deleted']:
                 was_deleted = True
                 entry = None
+
+                _logger.debug("CHANGE: [%s] (DELETED)", entry_id)
             else:
                 was_deleted = False
                 entry = item[u'file']
+
+                _logger.debug("CHANGE: [%s] [%s] (UPDATED)", 
+                              entry_id, entry[u'title'])
 
             normalized_entry = None \
                                 if was_deleted \
@@ -583,7 +583,8 @@ class _GdriveManager(object):
                 'media_body': MediaFileUpload(
                                 data_filepath, 
                                 mimetype=mime_type, 
-                                resumable=True),
+                                resumable=True,
+                                chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
 #                'uploadType': 'resumable',
             })
@@ -692,15 +693,13 @@ class _GdriveManager(object):
                 'media_body': MediaFileUpload(
                                 data_filepath, 
                                 mimetype=mime_type, 
-                                resumable=True),
+                                resumable=True,
+                                chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
 #                'uploadType': 'resumable',
             })
 
         _logger.debug("Sending entry update: [%s]", normalized_entry.id)
-
-        if gdrivefs.config.IS_DEBUG is True:
-            _logger.debug("Update parameters:\n%s", pprint.pformat(args))
 
         request = client.files().update(**args)
 
@@ -709,13 +708,8 @@ class _GdriveManager(object):
                     request,
                     data_filepath is not None)
 
-        if gdrivefs.config.IS_DEBUG is True:
-            _logger.debug("Update result: [%s]\n%s", 
-                          normalized_entry.id, pprint.pformat(result))
-
         normalized_entry = NormalEntry('update_entry', result)
-
-        _logger.debug("Entry with ID [%s] updated.", normalized_entry.id)
+        _logger.debug("Entry updated: [%s]", str(normalized_entry))
 
         return normalized_entry
 
