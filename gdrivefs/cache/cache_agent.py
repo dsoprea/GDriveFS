@@ -1,16 +1,17 @@
 import logging
+import threading
+import time
+import datetime
 
-from datetime import datetime
+#import gdrivefs.report
 
-from collections import OrderedDict
-from threading import Timer
-from gdrivefs.timer import Timers
+import gdrivefs.state
+
 from gdrivefs.conf import Conf
-
 from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
-from gdrivefs.report import Report
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 class CacheAgent(object):
@@ -42,8 +43,13 @@ class CacheAgent(object):
 #        self.report = Report.get_instance()
 #        self.report_source_name = ("cache-%s" % (self.resource_name))
 
-        # Run a clean-up cycle to get it scheduled.
-#        self.__cleanup_check()
+        self.__t = None
+        self.__t_quit_ev = threading.Event()
+
+        self.__start_cleanup()
+
+    def __del__(self):
+        self.__stop_cleanup()
 
 # TODO(dustin): Currently disabled. The system doesn't rely on it, and it's 
 #               just another thread that unnecessarily runs, and trips up our 
@@ -54,64 +60,80 @@ class CacheAgent(object):
 #               just send to statsd (which would be kindof cool).
 #        self.__post_status()
 
-    def __del__(self):
-
+#    def __del__(self):
+#
 #        if self.report.is_source(self.report_source_name):
 #            self.report.remove_all_values(self.report_source_name)
-        pass
+#        pass
 
-    def __post_status(self):
-        """Send the current status to our reporting tool."""
+#    def __post_status(self):
+#        """Send the current status to our reporting tool."""
+#
+#        num_values = self.registry.count(self.resource_name)
+#
+#        self.report.set_values(self.report_source_name, 'count', 
+#                               num_values)
+#
+#        status_post_interval_s = Conf.get('cache_status_post_frequency_s')
+#        status_timer = Timer(status_post_interval_s, self.__post_status)
+#
+#        Timers.get_instance().register_timer('status', status_timer)
 
-        num_values = self.registry.count(self.resource_name)
-
-        self.report.set_values(self.report_source_name, 'count', 
-                               num_values)
-
-        status_post_interval_s = Conf.get('cache_status_post_frequency_s')
-        status_timer = Timer(status_post_interval_s, self.__post_status)
-
-        Timers.get_instance().register_timer('status', status_timer)
-
-    def __cleanup_check(self):
+    def __cleanup(self):
         """Scan the current cache and determine items old-enough to be 
         removed.
         """
 
-        _logger.debug("Doing clean-up for cache resource with name [%s]." % 
-                      (self.resource_name))
-
-        cache_dict = self.registry.list_raw(self.resource_name)
-
-        total_keys = [ (key, value_tuple[1]) for key, value_tuple \
-                            in cache_dict.iteritems() ]
-
-        cleanup_keys = [ key for key, value_tuple \
-                            in cache_dict.iteritems() \
-                            if (datetime.now() - value_tuple[1]).seconds > \
-                                    self.max_age ]
-
-        _logger.info("Found (%d) entries to clean-up from entry-cache." % 
-                     (len(cleanup_keys)))
-
-        if cleanup_keys:
-            for key in cleanup_keys:
-                _logger.debug("Cache entry [%s] under resource-name [%s] "
-                              "will be cleaned-up." % 
-                              (key, self.resource_name))
-
-                if self.exists(key, no_fault_check=True) == False:
-                    _logger.debug("Entry with ID [%s] has already been "
-                                  "cleaned-up." % (key))
-                else:
-                    self.remove(key)
-
-            _logger.debug("Scheduled clean-up complete.")
-
         cleanup_interval_s = Conf.get('cache_cleanup_check_frequency_s')
-        cleanup_timer = Timer(cleanup_interval_s, self.__cleanup_check)
 
-        Timers.get_instance().register_timer('cleanup', cleanup_timer)
+        _logger.info("Cache-cleanup thread running: %s", self)
+
+        while self.__t_quit_ev.is_set() is False and \
+                  gdrivefs.state.GLOBAL_EXIT_EVENT.is_set() is False:
+            _logger.debug("Doing clean-up for cache resource with name [%s]." % 
+                          (self.resource_name))
+
+            cache_dict = self.registry.list_raw(self.resource_name)
+
+            total_keys = [ (key, value_tuple[1]) for key, value_tuple \
+                                in cache_dict.iteritems() ]
+
+            cleanup_keys = [ key for key, value_tuple \
+                                in cache_dict.iteritems() \
+                                if (datetime.datetime.now() - value_tuple[1]).seconds > \
+                                        self.max_age ]
+
+            _logger.debug("Found (%d) entries to clean-up from entry-cache." % 
+                          (len(cleanup_keys)))
+
+            if cleanup_keys:
+                for key in cleanup_keys:
+                    _logger.debug("Cache entry [%s] under resource-name [%s] "
+                                  "will be cleaned-up." % 
+                                  (key, self.resource_name))
+
+                    if self.exists(key, no_fault_check=True) == False:
+                        _logger.debug("Entry with ID [%s] has already been "
+                                      "cleaned-up." % (key))
+                    else:
+                        self.remove(key)
+            else:
+                _logger.debug("No cache-cleanup required.")
+                time.sleep(cleanup_interval_s)
+
+        _logger.info("Cache-cleanup thread terminating: %s", self)
+
+    def __start_cleanup(self):
+        _logger.info("Starting cache-cleanup thread: %s", self)
+
+        self.__t = threading.Thread(target=self.__cleanup)
+        self.__t.start()
+
+    def __stop_cleanup(self):
+        _logger.info("Stopping cache-cleanup thread: %s", self)
+
+        self.__t_quit_ev.set()
+        self.__t.join()
 
     def set(self, key, value):
         _logger.debug("CacheAgent.set(%s,%s)" % (key, value))
@@ -166,4 +188,3 @@ class CacheAgent(object):
 
     def __delitem__(self, key):
         return self.remove(key)
-

@@ -2,67 +2,124 @@
 
 import sys
 import os.path
-dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+dev_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, dev_path)
 
 import logging
+import os.path
+import webbrowser
+import argparse
 
-from argparse import ArgumentParser
+import gdrivefs.config
+import gdrivefs.config.log
+import gdrivefs.gdfs.gdfuse
+import gdrivefs.gdtool.oauth_authorize
 
-import gdrivefs.log_config
+_logger = logging.getLogger(__name__)
 
-from gdrivefs.gdfs.gdfuse import set_auth_cache_filepath, mount, \
-                                 load_mount_parser_args
-from gdrivefs.gdtool.oauth_authorize import get_auth
+def _get_url():
+    authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+    return authorize.step1_get_auth_url()
+
+def _handle_auth_url():
+    url = _get_url()
+
+    print("To authorize FUSE to use your Google Drive account, visit the "
+          "following URL to produce an authorization code:\n\n%s\n" % 
+          (url,))
+
+def _handle_auth_open():
+    url = _get_url()
+    webbrowser.open(url)
+
+def _handle_auth_store(auth_storage_filepath, authcode):
+    if os.path.exists(auth_storage_filepath) is False:
+        auth_storage_path = os.path.dirname(auth_storage_filepath)
+
+        if os.path.exists(auth_storage_path) is False:
+            raise EnvironmentError("The path for the credentials file "
+                                   "does not exist: [%s]" % 
+                                   (auth_storage_path))
+
+        with open(auth_storage_filepath, 'w'):
+            pass
+
+    gdrivefs.gdfs.gdfuse.set_auth_cache_filepath(auth_storage_filepath)
+
+    authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+    authorize.step2_doexchange(authcode)
+
+    print("Authorization code recorded.")
+
+def _handle_auth(args):
+    if args.auth is not None:
+        _handle_auth_store(*args.auth)
+    elif args.url is True:
+        _handle_auth_url()
+    elif args.open is True:
+        _handle_auth_open()
+    else:
+        raise Exception("Invalid auth option.")
+
+def _handle_mountpoint(args):
+    option_string = args.opt[0] if args.opt else None
+
+    gdrivefs.gdfs.gdfuse.mount(
+        auth_storage_filepath=args.auth_storage_file, 
+        mountpoint=args.mountpoint, 
+        debug=gdrivefs.config.IS_DEBUG, 
+        nothreads=gdrivefs.config.IS_DEBUG, 
+        option_string=option_string)
 
 def main():
-    parser = ArgumentParser()
+    parser = argparse.ArgumentParser()
 
-    subparsers = parser.add_subparsers(help='subcommand help')
-    parser_auth = subparsers.add_parser('auth', help='Authorization subcommand.')
+    subparsers = parser.add_subparsers(
+                    help='Subcommand help', 
+                    dest='command')
+
+    parser_auth = subparsers.add_parser(
+                    'auth', 
+                    help="Authorization commands")
 
     auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
-    auth_xor.add_argument('-u', '--url', help='Get an authorization URL.', 
+
+    auth_xor.add_argument('-u', '--url', 
+                          help="Get an authorization URL.",
                           action='store_true')
+
+    auth_xor.add_argument('-o', '--open', 
+                          help="Open authorization page in default browser.",
+                          action='store_true')
+
     auth_xor.add_argument('-a', '--auth', nargs=2,
                           metavar=('auth_storage_file', 'authcode'), 
-                          help='Register an authorization-code from Google '
-                          'Drive.')
+                          help="Register an authorization-code from Google Drive.")
 
-    mount_auth = subparsers.add_parser('mount', help='Mounting subcommand.')
-    load_mount_parser_args(mount_auth)
+    mount_auth = subparsers.add_parser(
+                    'mount', 
+                    help='Mounting commands')
+
+    mount_auth.add_argument('auth_storage_file', 
+                            help='Authorization storage file')
+
+    mount_auth.add_argument('mountpoint', 
+                            help='Mount point')
+
+    mount_auth.add_argument('-o', '--opt', 
+                            help='Mount options',
+                            action='store', 
+                            required=False,
+                            nargs=1)
 
     args = parser.parse_args()
 
-    # An authorization URL was requested.
-    if 'url' in args and args.url:
-        authorize = get_auth()
-        url = authorize.step1_get_auth_url()
-
-        print("To authorize FUSE to use your Google Drive account, visit the "
-              "following URL to produce an authorization code:\n\n%s\n" % 
-              (url))
-
-    # An authorization from the URL needs to be submitted.
-    elif 'auth' in args and args.auth:
-        (auth_storage_file, authcode) = args.auth
-
-        set_auth_cache_filepath(auth_storage_file)
-
-        authorize = get_auth()
-        authorize.step2_doexchange(authcode)
-
-        print("Authorization code recorded.")
-
-    # Mount the service.
-    elif 'mountpoint' in args and args.mountpoint:
-
-        option_string = args.opt[0] if args.opt else None
-
-        mount(auth_storage_filepath=args.auth_storage_file, 
-              mountpoint=args.mountpoint, debug=args.debug, 
-              nothreads=args.debug, option_string=option_string)
+    if args.command == 'auth':
+        _handle_auth(args)
+    elif args.command == 'mount':
+        _handle_mountpoint(args)
+    else:
+        raise Exception("Invalid option.")
 
 if __name__ == '__main__':
     main()
-

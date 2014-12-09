@@ -1,27 +1,31 @@
 |donate|
 
-An innovative *FUSE* wrapper for *Google Drive*.
+GDriveFS is an innovative *FUSE* wrapper for *Google Drive* developed under 
+*Python 2.7*.
 
-I could use some help in testing *GDriveFS*. Please let me know if you find 
-issues.
+*I could use some help in testing **GDriveFS**. Please let me know if you find 
+issues.*
 
 
-Design goals:
+------------
+Design goals
+------------
 
-+--------------------------------------------------------------------+------+
-| Goal                                                               | Done |
-+====================================================================+======+
-| Thread for monitoring changes via "changes" functionality of API   | X    |
-+--------------------------------------------------------------------+------+
-| Complete stat() implementation.                                    | X    |
-+--------------------------------------------------------------------+------+
-| Seamlessly work around duplicate-file allowances in *Google Drive* | X    |
-+--------------------------------------------------------------------+------+
-| Seamlessly manage file-type versatility in *Google Drive* (*Google | X    |
-| Doc* files do not have a particular format).                       |      |
-+--------------------------------------------------------------------+------+
-| Allow for the same file at multiple paths.                         | X    |
-+--------------------------------------------------------------------+------+
++-------------------------------------------------------------------+-------+
+| Goal                                                              | Done  |
++===================================================================+=======+
+| Thread for monitoring changes via "changes" functionality of API. |   X   |
++-------------------------------------------------------------------+-------+
+| Complete stat() implementation.                                   |   X   |
++-------------------------------------------------------------------+-------+
+| Seamlessly work around duplicate-file allowances in *Google       |   X   |
+| Drive*.                                                           |       |
++-------------------------------------------------------------------+-------+
+| Seamlessly manage file-type versatility in *Google Drive*         |   X   |
+| (*Google Doc* files do not have a particular format).             |       |
++-------------------------------------------------------------------+-------+
+| Allow for the same file at multiple paths.                        |   X   |
++-------------------------------------------------------------------+-------+
 
 Also, a design choice of other implementations is to make the user get API keys 
 for *Google Drive*, and this doesn't make sense. Our implementation is built 
@@ -29,16 +33,16 @@ against *OAuth 2.0* as a native application. You should just have to visit the
 authorization URL once, plug-in the auth-code, and be done with it.
 
 
-=========
-IMPORTANT
-=========
+---------
+Important
+---------
 
-Both *PyPI* and the Google Code downloads for *google_api_python_client* have 
-an old version of their libraries, prior to when they fixed some Unicode 
-problems that might cause failure when dealing with downloads/uploads of 
-certain types of files.
+Both *PyPI* and the Google Code downloads for *google_api_python_client* have an
+old version of their libraries, prior to when they fixed some Unicode problems
+that might cause failure when dealing with downloads/uploads of certain types
+of files.
 
-To install from *Mercurial*, do the following::
+To install using *Mercurial*, do the following::
 
     $ hg clone https://code.google.com/p/google-api-python-client
 
@@ -46,29 +50,76 @@ To install from *Mercurial*, do the following::
     $ sudo python setup.py install
     $ sudo python setup.py install_egg_info
 
-NOTE: I've also experienced a *google-api-python-client* installation problem
-when you don't already have it installed, and it's listed as a dependency in 
-setup.py::
 
-    error: Installed distribution httplib2 0.7.7 conflicts with requirement 
-    httplib2>=0.8
+NOTE
+====
+
+I've experienced a *google-api-python-client* installation problem when you 
+don't already have it installed, and it's listed as a dependency in setup.py::
+
+    error: Installed distribution httplib2 0.7.7 conflicts with requirement httplib2>=0.8
 
 Therefore, *google-api-python-client* has been removed as an explicit 
 dependency. It should always be installed by hand, as we now won't install 
 it automatically.
 
 
-============
+------------
 Installation
-============
-
----
-pip
----
+------------
 
 Run::
 
     $ sudo pip install gdrivefs
+
+
+Vagrant
+=======
+
+A Vagrantfile has been made available in the event that you'd like to mount your account from a system that isn't FUSE compatible (like Mac), or you're having issues installing GDriveFS somewhere else and would like to debug.
+
+To install Vagrant::
+
+    $ sudo apt-get install vagrant
+
+To start and provision the instance::
+
+    $ cd gdrivefs/vagrant
+    $ vagrant up
+    Bringing machine 'default' up with 'virtualbox' provider...
+    ==> default: Importing base box 'ubuntu/trusty64'...
+    ==> default: Matching MAC address for NAT networking...
+    ==> default: Checking if box 'ubuntu/trusty64' is up to date...
+    ==> default: Setting the name of the VM: vagrant_default_1413437502948_22866
+    ==> default: Clearing any previously set forwarded ports...
+    ==> default: Clearing any previously set network interfaces...
+    ==> default: Preparing network interfaces based on configuration...
+        default: Adapter 1: nat
+    ==> default: Forwarding ports...
+
+    ...
+
+    ==> default: Using /usr/lib/python2.7/dist-packages
+    ==> default: Finished processing dependencies for gdrivefs==0.13.14
+    ==> default: To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
+    ==> default: 
+    ==> default: https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=1056816309698.apps.googleusercontent.com&access_type=offline
+    ==> default:  
+    ==> default: Once you have retrieved your authorization string, run:
+    ==> default:  
+    ==> default: sudo gdfstool auth -a /var/cache/gdfs.creds <auth string>
+    ==> default:  
+
+This may take a few more minutes the first time, as it might need to acquire the Ubuntu 14.04 image if not already available.
+
+To log into the guest instance::
+
+    $ vagrant ssh
+
+The GDFS source directory will be mounted at `/gdrivefs`, and the scripts will be in the path.
+
+**If you're familiar with Vagrant, you can copy the Vagrantfile and modify it to mount an additional path from the host system in the guest instance, and then use this to access your files from an incompatible system.**
+
 
 Troubleshooting
 ===============
@@ -76,23 +127,23 @@ Troubleshooting
 - If your *setuptools* package is too old, you might see the following 
   [annoying] error::
 
-      error: option --single-version-externally-managed not recognized
+    error: option --single-version-externally-managed not recognized
 
-  See [What does “error: option --single-version-externally-managed not recognized” indicate?](http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind).
+  See `What does “error: option --single-version-externally-managed not recognized” indicate? <http://stackoverflow.com/questions/14296531/what-does-error-option-single-version-externally-managed-not-recognized-ind>`_.
 
   Apparently, the solution is to make sure that you have a healthy copy of
   *Distribute* and to, then, uninstall *setuptools*. However, this doesn't seem 
-  to [always] work. You might try to install using "easy_install".
+  to [always] work. You might prefer to use the "easy_install" method, below.
 
 - If you see an error about antlr-python-runtime, try the following to install
   gdrivefs::
 
-      $ sudo pip install --allow-unverified antlr-python-runtime --allow-external antlr-python-runtime gdrivefs
+    $ sudo pip install --allow-unverified antlr-python-runtime --allow-external antlr-python-runtime gdrivefs
 
 
-=====
+-----
 Usage
-=====
+-----
 
 Before you can mount the account, you must authorize *GDriveFS* to access it. 
 *GDriveFS* works by producing a URL that you must visit in a browser. Google 
@@ -122,28 +173,28 @@ Since this is *FUSE*, you must be running as root to mount.
    - Via script (either using the main script "gdfstool mount" or the helper 
      scripts "gdfs"/"mount.gdfs")::
 
-         $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
+       $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
 
    - Via */etc/fstab*::
 
-         /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
+        /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
 
    - Directly via *gdfstool*::
 
-         $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
+        $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
 
 
-=======
+-------
 Options
-=======
+-------
 
-Any of the configuration values in the *conf.Conf* module can be overwritten as 
+Any of the configuration values in the `conf.Conf` module can be overwritten as 
 "-o" options. You may pass the full array of *FUSE* options this way, as well.
 
 
-=================
+-----------------
 Format Management
-=================
+-----------------
 
 *Google Drive* will store *Google Document* files without a standard format. If 
 you wish to download them, you have to select which format you'd like to 
@@ -157,17 +208,7 @@ in the filename (if one exists) can be mapped to a mime-type that is available
 among the export-types provided by *GD* for that specific file.
 
 
-The following is an example directory-listing. Notice the following features:
-
-- Manages duplicates by appending index numbers (e.g. "<filename> (2)").
-- Mtimes, permissions, and ownership are correct.
-- Sizes are zero for file-types that Google hosts free of charge. These are 
-  always the files that don't have a strict, default format (the length is 
-  unknown).
-- Hidden files are prefixed with ".", thus hiding them from normal listings.
-- "Trashed" files are excluded from listings.
-- Any file that will require a mime-type in order to be downloaded has a "#" as
-  the last character of its filename::
+The following is an example directory-listing::
 
     -rw-rw-rw- 1 root root       0 Feb 17 07:52 20130217-145200
     -rw-rw-rw- 1 root root       0 Feb 17 08:04 20130217-150358
@@ -184,10 +225,22 @@ The following is an example directory-listing. Notice the following features:
     -rw-rw-rw- 1 root root       0 Dec  2 23:13 testfile_hidden_1812
     -rw-rw-rw- 1 root root    1000 Oct  4 02:13 Untitled document#
 
+Notice the following features:
 
-=============
+- Manages duplicates by appending index numbers (e.g. "<filename> (2)").
+- Mtimes, permissions, and ownership are correct.
+- Sizes are zero for file-types that Google hosts free of charge. These are 
+  always the files that don't have a strict, default format (the length is 
+  unknown).
+- Hidden files are prefixed with ".", thus hiding them from normal listings.
+- "Trashed" files are excluded from listings.
+- Any file that will require a mime-type in order to be downloaded has a "#" as
+  the last character of its filename.
+
+
+-------------
 Displaceables
-=============
+-------------
 
 *Google Documents* stores all of its data on *Google Drive*. Google will store 
 these files in an agnostic file entry whose format will not be determined until 
@@ -197,15 +250,15 @@ OS will not issue reads for more than (0) bytes.
 
 To get around this, a read of these types of files will only return exactly 
 1000 bytes of JSON-encoded "stub data".. Information about the entry, including 
-the file-path that we've stored it to. This example also shows how we've 
-specified a mime-type in order to get a PDF version of a *Google Document* 
-file::
+the file-path that we've stored it to.
+
+This example also shows how we've specified a mime-type in order to get a PDF 
+version of a *Google Document* file::
 
     $ cp Copy\ of\ Dear\ Biola.docx#application+pdf /target
-
     $ cat /tmp/Copy\ of\ Dear\ Biola.docx#application+pdf 
 
-where something like the following will be displayed::
+Something like the following will be displayed::
 
     {"ImageMediaMetadata": null, 
      "Length": 58484, 
@@ -226,54 +279,54 @@ where something like the following will be displayed::
                      "application/rtf", "text/plain"], 
      "FinalMimeType": "application/pdf"}
 
-From this, you can tell that the file was originally a *Google Documents'*
+From this, you can tell that the file was originally a *Google Documents*
 mimetype, and now its a PDF mime-type. You can also see various flags, as well 
 as the location that the actual, requested file was stored to.
 
 
-=======================
+-----------------------
 Cache/Change Management
-=======================
+-----------------------
 
 A cache of both the file/folder entries is maintained, as well as a knowledge 
 of file/folder relationships. However, updates are performed every few seconds 
 using *GD's* "change" functionality.
 
 
-===========
+-----------
 Permissions
-===========
+-----------
 
 The default UID/GID of files is that of the current user. The default 
 permissions (modes) are the following:
 
-===================  ====
-Entry Type           Perm
-===================  ====
-Folder               777
-Editable file        666
-Non-editable file    444
-===================  ====
+=================  ====
+Entry Type         Perm
+=================  ====
+Folder             777
+Editable file      666
+Non-editable file  444
+=================  ====
 
 Whether or not a file is "editable" is [obviously] an attribute reported by 
 *Google Drive*.
 
-These settings can be overridden via the "-o" comma-separated set of command-
-line options. See below.
+These settings can be overridden via the "-o" comma-separated set of 
+command-line options. See below.
 
---------------------------
+
 Permission-Related Options
---------------------------
+==========================
 
 Related Standard FUSE
-=====================
+---------------------
 
 These options change the behavior at the *FUSE* level (above *GDFS*). See "*man 
 mount.fuse*" for all options.
 
 ===================  ==============================================
 Option               Description
-===================  ==============================================
+-------------------  ----------------------------------------------
 umask=M              Prescribe the umask value for -all- entries.
 uid=N                Change the default UID.
 gid=N                Change the default GID.
@@ -281,28 +334,31 @@ allow_other          Allow other users access.
 default_permissions  Enforce the permission modes (off, by default)
 ===================  ==============================================
 
+    
 GDFS-Specific
-=============
+-------------
 
 =================================  ============================================
 Option                             Description
-=================================  ============================================
+---------------------------------  --------------------------------------------
 default_perm_folder=nnn            Default mode for folders.
 default_perm_file_noneditable=nnn  Default mode for non-editable files.
 default_perm_file_editable=nnn     Default mode for editable files (see above).
 =================================  ============================================
 
+
 Example::
 
     allow_other,default_permissions,default_perm_folder=770,default_perm_file_noneditable=440,default_perm_file_editable=660
 
-===================
+
+-------------------
 Extended Attributes
-===================
+-------------------
 
 Extended attributes allow access to arbitrary, filesystem-specific data. You 
-may access any of the properties that *Google Drive* provides for a given 
-entry, plus a handful of extra ones.
+may access any of the properties that *Google Drive* provides for a given entry, 
+plus a handful of extra ones.
 
 Listing attributes::
 
@@ -362,9 +418,9 @@ This used to be rendered as JSON, but since the *xattr* utilities add their
 own quotes/etc.., it was more difficult to make sense of the values.
 
 
-==========
+----------
 Misc Notes
-==========
+----------
 
 A file will be marked as hidden on *Google Drive* if it has a prefixing dot. 
 However, Linux/Unix doesn't care about the "hidden" attribute. If you create a 

@@ -1,29 +1,22 @@
 import logging
 
 from gdrivefs.general.livereader_base import LiveReaderBase
-from gdrivefs.gdtool.drive import drive_proxy
+from gdrivefs.gdtool.drive import get_gdrive
+
+_logger = logging.getLogger(__name__)
 
 
 class AccountInfo(LiveReaderBase):
     """Encapsulates our account info."""
 
-    __log = None
     __map = {'root_id': u'rootFolderId',
              'largest_change_id': (u'largestChangeId', int),
              'quota_bytes_total': (u'quotaBytesTotal', int),
              'quota_bytes_used': (u'quotaBytesUsed', int)}
 
-    def __init__(self):
-        super(LiveReaderBase, self).__init__()
-
-        self.__log = logging.getLogger().getChild('AccountInfo')
-
     def get_data(self):
-        try:
-            return drive_proxy('get_about_info')
-        except:
-            self.__log.exception("get_about_info() call failed.")
-            raise
+        gd = get_gdrive()
+        return gd.get_about_info()
 
     def __getattr__(self, key):
         target = AccountInfo.__map[key]

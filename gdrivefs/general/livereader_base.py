@@ -1,18 +1,19 @@
 import logging
 
+_logger = logging.getLogger(__name__)
+
 
 class LiveReaderBase(object):
     """A base object for data that can be retrieved on demand."""
 
-    __log = None
-    __data = None
+    def __init__(self):
+        self.__data = None
 
     def __getitem__(self, key):
-        self.__log = logging.getLogger().getChild('LiveReaderBase')
         child_name = self.__class__.__name__
 
-        self.__log.debug("Key [%s] requested on LiveReaderBase type [%s]." % 
-                         (key, child_name))
+#        _logger.debug("Key [%s] requested on LiveReaderBase type [%s].",
+#                      key, child_name)
 
         try:
             return self.__data[key]
@@ -22,16 +23,16 @@ class LiveReaderBase(object):
         try:
             self.__data = self.get_data()
         except:
-            self.__log.exception("Could not retrieve data for live-updater "
-                                 "wrapping [%s]." % (child_name))
+            _logger.exception("Could not retrieve data for live-updater "
+                              "wrapping [%s].", child_name)
             raise
 
         try:
             return self.__data[key]
         except:
-            self.__log.exception("We just updated live-updater wrapping [%s], "
-                                 "but we must've not been able to find entry "
-                                 "[%s]." % (child_name, key))
+            _logger.exception("We just updated live-updater wrapping [%s], "
+                              "but we must've not been able to find entry "
+                              "[%s].", child_name, key)
             raise
 
     def get_data(self):
@@ -56,5 +57,3 @@ class LiveReaderBase(object):
         except:
             LiveReaderBase.__instances[class_name] = cls()
             return LiveReaderBase.__instances[class_name]
-
-
