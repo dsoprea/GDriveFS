@@ -9,6 +9,7 @@ import ssl
 import tempfile
 import pprint
 import functools
+import threading
 
 from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
@@ -776,11 +777,19 @@ class _GdriveManager(object):
 
         _logger.info("Entry deleted successfully.")
 
-_GDRIVE_MANAGER = None
+_THREAD_STORAGE = None
 def get_gdrive():
-    global _GDRIVE_MANAGER
+    """Return an instance of _GdriveManager unique to each thread (we can't 
+    reuse sockets between threads).
+    """
 
-    if _GDRIVE_MANAGER is None:
-        _GDRIVE_MANAGER = _GdriveManager()
+    global _THREAD_STORAGE
 
-    return _GDRIVE_MANAGER
+    if _THREAD_STORAGE is None:
+        _THREAD_STORAGE = threading.local()
+
+    try:
+        return _THREAD_STORAGE.gm
+    except AttributeError:
+        _THREAD_STORAGE.gm = _GdriveManager()
+        return _THREAD_STORAGE.gm
