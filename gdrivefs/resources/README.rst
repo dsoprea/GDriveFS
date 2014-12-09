@@ -97,23 +97,32 @@ Since this is *FUSE*, you must be running as root to mount.
    that you would like to save it as. The name and location of this file is 
    arbitrary::
 
-    $ gdfstool auth -a /var/cache/gdfs/credcache "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
+    $ gdfstool auth -a /var/cache/gdfs.creds "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
     Authorization code recorded.
 
 3. There are three ways to mount the account:
 
-   - Via script (either using the main script "gdfstool mount" or the helper 
-     scripts "gdfs"/"mount.gdfs")::
+   - Via script::
 
-       $ gdfs -o allow_other /var/cache/gdfs/credcache /mnt/gdrivefs
+        $ gdfs -o allow_other /var/cache/gdfs.creds /mnt/gdrivefs
 
-   - Via */etc/fstab*::
+   - Via */etc/fstab*:
 
-        /var/cache/gdfs/credcache /mnt/gdrivefs gdfs allow_other 0 0
+        Make the symlink::
+
+            $ sudo ln -s `which gdfs` /sbin/mount.gdfs
+        
+        Add the entry to /etc/fstab::
+
+            /var/cache/gdfs.creds /mnt/gdrivefs gdfs allow_other 0 0
+
+        Mount::
+
+            $ mount /mnt/gdrivefs
 
    - Directly via *gdfstool*::
 
-        $ gdfstool mount /var/cache/gdfs/credcache /mnt/gdrivefs
+        $ gdfstool mount /var/cache/gdfs.creds /mnt/gdrivefs
 
 
 Vagrant
