@@ -17,7 +17,6 @@ from apiclient.errors import HttpError
 
 from datetime import datetime
 from httplib2 import Http
-from collections import OrderedDict
 from os.path import isdir, isfile
 from os import makedirs, stat, utime
 from dateutil.tz import tzlocal, tzutc
@@ -219,7 +218,7 @@ class _GdriveManager(object):
         largest_change_id = int(response[u'largestChangeId'])
         next_page_token = response.get(u'nextPageToken')
 
-        changes = OrderedDict()
+        changes = []
         last_change_id = None
         for item in items:
             change_id = int(item[u'id'])
@@ -241,7 +240,7 @@ class _GdriveManager(object):
                                 if was_deleted \
                                 else NormalEntry('list_changes', entry)
 
-            changes[change_id] = (entry_id, was_deleted, normalized_entry)
+            changes.append((change_id, (entry_id, was_deleted, normalized_entry)))
             last_change_id = change_id
 
         return (largest_change_id, next_page_token, changes)

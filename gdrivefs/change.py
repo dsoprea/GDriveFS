@@ -96,7 +96,7 @@ class _ChangeManager(object):
 
         _logger.info("(%d) changes will now be applied." % (len(changes)))
 
-        for change_id, change_tuple in changes.iteritems():
+        for change_id, change_tuple in changes:
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
