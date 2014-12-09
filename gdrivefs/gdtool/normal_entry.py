@@ -3,6 +3,7 @@ import re
 import dateutil.parser
 import json
 import time
+import pprint
 
 from time import mktime
 from mimetypes import guess_type
@@ -19,17 +20,20 @@ _logger = logging.getLogger(__name__)
 
 class NormalEntry(object):
     __default_general_mime_type = Conf.get('default_mimetype')
-    __properties_extra = ('is_directory', 
-                          'is_visible', 
-                          'parents', 
-                          'download_types',
-                          'modified_date',
-                          'modified_date_epoch',
-                          'mtime_byme_date',
-                          'mtime_byme_date_epoch',
-                          'atime_byme_date',
-                          'atime_byme_date_epoch')
     __directory_mimetype = Conf.get('directory_mimetype')
+
+    __properties_extra = [
+        'is_directory', 
+        'is_visible', 
+        'parents', 
+        'download_types',
+        'modified_date',
+        'modified_date_epoch',
+        'mtime_byme_date',
+        'mtime_byme_date_epoch',
+        'atime_byme_date',
+        'atime_byme_date_epoch',
+    ]
 
     def __init__(self, gd_resource_type, raw_data):
         self.__info = {}
@@ -39,45 +43,77 @@ class NormalEntry(object):
         self.__cache_mimetypes = None
         self.__cache_dict = {}
 
-        """Return True if reading from this file should return info and deposit 
-        the data elsewhere. This is predominantly determined by whether we can
-        get a file-size up-front, or we have to decide on a specific mime-type 
-        in order to do so.
-        """
-        requires_mimetype = (u'fileSize' not in self.__raw_data and \
-                             raw_data[u'mimeType'] != self.__directory_mimetype)
+        # Return True if reading from this file should return info and deposit 
+        # the data elsewhere. This is predominantly determined by whether we 
+        # can get a file-size up-front, or we have to decide on a specific 
+        # mime-type in order to do so.
 
         try:
-            self.__info['requires_mimetype']          = requires_mimetype
-            self.__info['title']                      = raw_data[u'title']
-            self.__info['mime_type']                  = raw_data[u'mimeType']
-            self.__info['labels']                     = raw_data[u'labels']
-            self.__info['id']                         = raw_data[u'id']
-            self.__info['last_modifying_user_name']   = raw_data[u'lastModifyingUserName']
-            self.__info['writers_can_share']          = raw_data[u'writersCanShare']
-            self.__info['owner_names']                = raw_data[u'ownerNames']
-            self.__info['editable']                   = raw_data[u'editable']
-            self.__info['user_permission']            = raw_data[u'userPermission']
+            requires_mimetype = u'fileSize' not in self.__raw_data and \
+                                raw_data[u'mimeType'] != self.__directory_mimetype
 
-            self.__info['download_links']         = raw_data[u'exportLinks']          if u'exportLinks'           in raw_data else { }
-            self.__info['link']                   = raw_data[u'embedLink']            if u'embedLink'             in raw_data else None
-            self.__info['file_size']              = int(raw_data[u'fileSize'])        if u'fileSize'              in raw_data else 0
-            self.__info['file_extension']         = raw_data[u'fileExtension']        if u'fileExtension'         in raw_data else None
-            self.__info['md5_checksum']           = raw_data[u'md5Checksum']          if u'md5Checksum'           in raw_data else None
-            self.__info['image_media_metadata']   = raw_data[u'imageMediaMetadata']   if u'imageMediaMetadata'    in raw_data else None
+            self.__info['requires_mimetype'] = \
+                requires_mimetype
+            
+            self.__info['title'] = \
+                raw_data[u'title']
+            
+            self.__info['mime_type'] = \
+                raw_data[u'mimeType']
+            
+            self.__info['labels'] = \
+                raw_data[u'labels']
+            
+            self.__info['id'] = \
+                raw_data[u'id']
+            
+            self.__info['last_modifying_user_name'] = \
+                raw_data[u'lastModifyingUserName']
+            
+            self.__info['writers_can_share'] = \
+                raw_data[u'writersCanShare']
 
-            if u'downloadUrl' in raw_data:
-                self.__info['download_links'][self.__info['mime_type']] = raw_data[u'downloadUrl']
-
-            self.__update_display_name()
-
-            for parent in raw_data[u'parents']:
-                self.__parents.append(parent[u'id'])
-
-        except (KeyError) as e:
-            _logger.exception("Could not normalize entry on raw key [%s]. "
-                              "Does not exist in source.", str(e))
+            self.__info['owner_names'] = \
+                raw_data[u'ownerNames']
+            
+            self.__info['editable'] = \
+                raw_data[u'editable']
+            
+            self.__info['user_permission'] = \
+                raw_data[u'userPermission']
+        except KeyError:
+            _logger.exception("Could not normalize with missing key.\nRAW:\n"
+                              "%s", pprint.pformat(raw_data))
             raise
+
+        self.__info['link'] = \
+            raw_data.get(u'embedLink')
+        
+        self.__info['file_size'] = \
+            int(raw_data.get(u'fileSize', 0))
+        
+        self.__info['file_extension'] = \
+            raw_data.get(u'fileExtension')
+        
+        self.__info['md5_checksum'] = \
+            raw_data.get(u'md5Checksum')
+        
+        self.__info['image_media_metadata'] = \
+            raw_data.get(u'imageMediaMetadata')
+
+        self.__info['download_links'] = \
+            raw_data.get(u'exportLinks', {})
+
+        try:
+            self.__info['download_links'][self.__info['mime_type']] = \
+                raw_data[u'downloadUrl']
+        except KeyError:
+            pass
+
+        self.__update_display_name()
+
+        for parent in raw_data[u'parents']:
+            self.__parents.append(parent[u'id'])
 
     def __getattr__(self, key):
         return self.__info[key]
