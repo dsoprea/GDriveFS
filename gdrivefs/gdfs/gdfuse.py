@@ -892,10 +892,6 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
             foreground=debug, 
             nothreads=nothreads, 
             fsname=name, 
-            
-            # Attempt to make our chunks larger (as opposed to just 4096 
-            # bytes).
-            big_writes=True, 
             **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
