@@ -204,9 +204,6 @@ class _GdriveManager(object):
         back. Change-IDs are integers, but are not necessarily sequential.
         """
 
-        _logger.debug("Listing changes starting at ID [%s] with page_token "
-                      "[%s].", start_change_id, page_token)
-
         client = self.__auth.get_client()
 
         response = client.changes().list(
@@ -216,6 +213,10 @@ class _GdriveManager(object):
         self.__assert_response_kind(response, 'drive#changeList')
 
         items = response[u'items']
+
+        if items:
+            _logger.debug("We received (%d) changes to apply.", len(items))
+
         largest_change_id = int(response[u'largestChangeId'])
         next_page_token = response.get(u'nextPageToken')
 
@@ -408,8 +409,8 @@ class _GdriveManager(object):
         the data has changed since any prior attempts.
         """
 
-        _logger.info("Downloading entry with ID [%s] and mime-type [%s].",
-                     normalized_entry.id, mime_type)
+        _logger.info("Downloading entry with ID [%s] and mime-type [%s] to "
+                     "[%s].", normalized_entry.id, mime_type, output_file_path)
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -464,7 +465,6 @@ class _GdriveManager(object):
 
             while 1:
                 status, done, total_size = downloader.next_chunk()
-                
                 assert status.total_size is not None, \
                        "total_size is None"
 
@@ -491,6 +491,8 @@ class _GdriveManager(object):
 
                 if done is True:
                     break
+
+            _logger.debug("Download complete. Offset is: (%d)", f.tell())
 
         utime(output_file_path, (time.time(), gd_mtime_epoch))
 
@@ -548,9 +550,10 @@ class _GdriveManager(object):
             accessed_datetime = now_phrase 
 
         _logger.info("Creating entry with filename [%s] under parent(s) "
-                     "[%s] with mime-type [%s]. MTIME=[%s] ATIME=[%s]",
+                     "[%s] with mime-type [%s]. MTIME=[%s] ATIME=[%s] "
+                     "DATA_FILEPATH=[%s]",
                      filename, ', '.join(parents), mime_type, 
-                     modified_datetime, accessed_datetime)
+                     modified_datetime, accessed_datetime, data_filepath)
 
         client = self.__auth.get_client()
 
