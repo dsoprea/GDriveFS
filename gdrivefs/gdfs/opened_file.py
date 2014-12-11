@@ -301,7 +301,7 @@ class OpenedFile(object):
                 _logger.exception("There was an export-format error.")
                 raise fuse.FuseOSError(ENOENT)
 
-            self.__fh = open(self.__temp_filepath, 'w+')
+            self.__fh = open(self.__temp_filepath, 'r+')
 
             self.__is_dirty = False
             self.__is_loaded = True
@@ -370,7 +370,7 @@ class OpenedFile(object):
     @dec_hint(['offset', 'length'], prefix='OF')
     def read(self, offset, length):
         
-        _logger.debug("Checking write-cache file (flush).")
+        _logger.debug("Reading (%d) bytes at offset (%d).", length, offset)
 
         # We don't care if the cache file is dirty (not on this system, at 
         # least).
@@ -380,8 +380,14 @@ class OpenedFile(object):
         self.__fh.seek(offset)
         data = self.__fh.read(length)
 
+        len_ = len(data)
+
         _logger.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d).",
-                      len(data), offset, length, st.st_size)
+                      len_, offset, length, st.st_size)
+
+        if len_ != length:
+            _logger.warning("Read request is only returning (%d) bytes when "
+                            "(%d) bytes were requested.", len_, length)
 
         return data
 
