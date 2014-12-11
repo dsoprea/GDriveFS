@@ -125,6 +125,16 @@ Since this is *FUSE*, you must be running as root to mount.
         $ gdfstool mount /var/cache/gdfs.creds /mnt/gdrivefs
 
 
+Optimization
+============
+
+By default, FUSE uses a very conservative block-size. On systems that support it, you may elect to use the "big_writes" option. This may dramatically increase the block-size (which improves the speed of transfers). There doesn't appear to be any authoritative documentation as to what systems support it or what the improvements might be, but, so far, it seems like Linux supports it, OSX doesn't, and FUSE will go from using 4K blocks to using 64K blocks.
+
+To use this, pass "big_writes" in the "-o" option-string::
+
+    $ sudo gdfs -o big_writes /var/cache/gdfs.creds /mnt/gd
+
+
 Vagrant
 =======
 

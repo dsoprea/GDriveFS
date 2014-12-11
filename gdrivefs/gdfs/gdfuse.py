@@ -6,7 +6,7 @@ import json
 import os
 import atexit
 import resource
-import os.path
+import pprint
 
 from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
@@ -825,11 +825,10 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
 
     if os.path.exists(auth_storage_filepath) is False:
         raise ValueError("Credential path is not valid: [%s]" %
-                         (auth_storage_filepath))
+                         (auth_storage_filepath,))
 
-    logging.debug("Debug: %s" % (debug))
-
-    fuse_opts = { }
+    fuse_opts = {}
+    
     if option_string:
         for opt_parts in [opt.split('=', 1) \
                           for opt \
@@ -853,24 +852,27 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
             # We have a list of provided options. See which match against our 
             # application options.
 
-            logging.info("Setting option [%s] to [%s]." % (k, v))
+            _logger.debug("Setting option [%s] to [%s].", k, v)
 
             try:
                 Conf.set(k, v)
             except (KeyError) as e:
-                logging.debug("Forwarding option [%s] with value [%s] to "
-                              "FUSE." % (k, v))
+                _logger.debug("Forwarding option [%s] with value [%s] to "
+                              "FUSE.", k, v)
 
                 fuse_opts[k] = v
             except:
-                logging.exception("Could not set option [%s]. It is probably "
-                                  "invalid." % (k))
+                _logger.exception("Could not set option [%s]. It is probably "
+                                  "invalid.", k)
                 raise
 
-    logging.debug("PERMS: F=%s E=%s NE=%s" % 
-                  (Conf.get('default_perm_folder'), 
-                   Conf.get('default_perm_file_editable'), 
-                   Conf.get('default_perm_file_noneditable')))
+    if gdrivefs.config.IS_DEBUG is True:
+        _logger.debug("FUSE options:\n%s", pprint.pformat(fuse_opts))
+
+    _logger.debug("PERMS: F=%s E=%s NE=%s",
+                  Conf.get('default_perm_folder'), 
+                  Conf.get('default_perm_file_editable'), 
+                  Conf.get('default_perm_file_noneditable'))
 
     # Assume that any option that wasn't an application option is a FUSE 
     # option. The Python-FUSE interface that we're using is beautiful/elegant,
@@ -880,7 +882,7 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
     set_auth_cache_filepath(auth_storage_filepath)
 
     # How we'll appear in diskfree, mtab, etc..
-    name = ("gdfs(%s)" % (auth_storage_filepath))
+    name = ("gdfs(%s)" % (auth_storage_filepath,))
 
     # Make sure we can connect.
     gdrivefs.gdtool.account_info.AccountInfo().get_data()
@@ -892,14 +894,9 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
             foreground=debug, 
             nothreads=nothreads, 
             fsname=name, 
-            
-            # Attempt to make our chunks larger (as opposed to just 4096 
-            # bytes).
-            big_writes=True, 
             **fuse_opts)
 
 def set_auth_cache_filepath(auth_storage_filepath):
     auth_storage_filepath = os.path.abspath(auth_storage_filepath)
 
     Conf.set('auth_cache_filepath', auth_storage_filepath)
-
