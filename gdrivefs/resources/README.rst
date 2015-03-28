@@ -104,9 +104,15 @@ Since this is *FUSE*, you must be running as root to mount.
 
    - Via script::
 
-        $ gdfs -o allow_other /var/cache/gdfs.creds /mnt/gdrivefs
+        Mount::
 
-   - Via */etc/fstab*:
+            $ gdfs -o allow_other /var/cache/gdfs.creds /mnt/gdrivefs
+
+        Unmount::
+
+            $ umount /mnt/gdrivefs
+
+   - Via */etc/fstab*::
 
         Make the symlink::
 
@@ -119,6 +125,10 @@ Since this is *FUSE*, you must be running as root to mount.
         Mount::
 
             $ mount /mnt/gdrivefs
+
+        Unmount::
+
+            $ umount /mnt/gdrivefs
 
    - Directly via *gdfstool*::
 
