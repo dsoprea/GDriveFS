@@ -309,4 +309,3 @@ class NormalEntry(object):
         return mktime(self.atime_byme_date.timetuple()) - time.timezone \
                 if self.atime_byme_date \
                 else None
-
