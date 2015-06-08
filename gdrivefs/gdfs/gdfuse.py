@@ -7,6 +7,7 @@ import os
 import atexit
 import resource
 import pprint
+import math
 
 from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
@@ -161,6 +162,8 @@ class _GdfsMixin(object):
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
 
+        stat_result["st_blocks"]   = int(math.ceil(float(stat_result["st_size"]) / 512.0))
+  
         return stat_result
 
     @dec_hint(['raw_path', 'fh'])
