@@ -35,14 +35,9 @@ class _OauthAuthorize(object):
                                                 scope=self.__get_scopes(), 
                                                 redirect_uri=OOB_CALLBACK_URN)
         
-        #self.flow.scope = self.__get_scopes()
-        #self.flow.redirect_uri = OOB_CALLBACK_URN
-
     def __get_scopes(self):
         scopes = "https://www.googleapis.com/auth/drive "\
                  "https://www.googleapis.com/auth/drive.file"
-               #'https://www.googleapis.com/auth/userinfo.email '
-               #'https://www.googleapis.com/auth/userinfo.profile')
         return scopes
 
     def step1_get_auth_url(self):
