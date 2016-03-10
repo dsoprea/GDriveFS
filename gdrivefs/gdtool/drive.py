@@ -10,28 +10,22 @@ import tempfile
 import pprint
 import functools
 import threading
+import os
 
-from apiclient.discovery import build
-from apiclient.http import MediaFileUpload
-from apiclient.errors import HttpError
+import httplib2
 
-from datetime import datetime
-from httplib2 import Http
-from os.path import isdir, isfile
-from os import makedirs, stat, utime
-from dateutil.tz import tzlocal, tzutc
+import apiclient.discovery
+import apiclient.http
+import apiclient.errors
 
 import gdrivefs.config
+import gdrivefs.conf
 import gdrivefs.gdtool.chunked_download
-
-from gdrivefs.errors import AuthorizationFaultError, MustIgnoreFileError, \
-                            FilenameQuantityError, ExportFormatError
-from gdrivefs.conf import Conf
-from gdrivefs.gdtool.oauth_authorize import get_auth
-from gdrivefs.gdtool.normal_entry import NormalEntry
-from gdrivefs.time_support import get_flat_normal_fs_time_from_dt
-from gdrivefs.gdfs.fsutility import split_path_nolookups, \
-                                    escape_filename_for_query
+import gdrivefs.errors
+import gdrivefs.gdtool.oauth_authorize
+import gdrivefs.gdtool.normal_entry
+import gdrivefs.time_support
+import gdrivefs.gdfs.fsutility
 
 _CONF_SERVICE_NAME = 'drive'
 _CONF_SERVICE_VERSION = 'v2'
@@ -66,7 +60,7 @@ def _marshall(f):
                                   e.__class__.__name__, str(e), n)
 
                 time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
-            except HttpError as e:
+            except apiclient.errors.HttpError as e:
                 if e.content == '':
                     raise
 
@@ -90,7 +84,7 @@ def _marshall(f):
                 else:
                     # Other error, re-raise.
                     raise
-            except AuthorizationFaultError:
+            except gdrivefs.errors.AuthorizationFaultError:
                 # If we're not allowed to refresh the token, or we've
                 # already done it in the last attempt.
                 if not auto_refresh or n == 1:
@@ -101,7 +95,7 @@ def _marshall(f):
                 _logger.info("There was an authorization fault under "
                              "action [%s]. Attempting refresh.", action)
                 
-                authorize = get_auth()
+                authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
                 authorize.check_credential_state()
 
                 # Re-attempt the action.
@@ -115,7 +109,7 @@ def _marshall(f):
 class GdriveAuth(object):
     def __init__(self):
         self.__client = None
-        self.__authorize = get_auth()
+        self.__authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
         self.__check_authorization()
         self.__http = None
 
@@ -127,7 +121,7 @@ class GdriveAuth(object):
             self.__check_authorization()
             _logger.debug("Getting authorized HTTP tunnel.")
                 
-            http = Http()
+            http = httplib2.Http()
             self.__credentials.authorize(http)
 
             _logger.debug("Got authorized tunnel.")
@@ -142,17 +136,20 @@ class GdriveAuth(object):
         
             # Build a client from the passed discovery document path
             
-            discoveryUrl = Conf.get('google_discovery_service_url')
+            discoveryUrl = \
+                gdrivefs.conf.Conf.get('google_discovery_service_url')
 # TODO: We should cache this, since we have, so often, had a problem 
 #       retrieving it. If there's no other way, grab it directly, and then pass
 #       via a file:// URI.
         
             try:
-                client = build(_CONF_SERVICE_NAME, 
-                               _CONF_SERVICE_VERSION, 
-                               http=authed_http, 
-                               discoveryServiceUrl=discoveryUrl)
-            except HttpError as e:
+                client = \
+                    apiclient.discovery.build(
+                        _CONF_SERVICE_NAME, 
+                        _CONF_SERVICE_VERSION, 
+                        http=authed_http, 
+                        discoveryServiceUrl=discoveryUrl)
+            except apiclient.errors.HttpError as e:
                 # We've seen situations where the discovery URL's server is down,
                 # with an alternate one to be used.
                 #
@@ -237,9 +234,13 @@ class _GdriveManager(object):
                 _logger.debug("CHANGE: [%s] [%s] (UPDATED)", 
                               entry_id, entry[u'title'])
 
-            normalized_entry = None \
-                                if was_deleted \
-                                else NormalEntry('list_changes', entry)
+            if was_deleted:
+                normalized_entry = None
+            else:
+                normalized_entry = \
+                    gdrivefs.gdtool.normal_entry.NormalEntry(
+                        'list_changes', 
+                        entry)
 
             changes.append((change_id, (entry_id, was_deleted, normalized_entry)))
             last_change_id = change_id
@@ -278,10 +279,10 @@ class _GdriveManager(object):
 
         if query_is_string:
             query = ("title='%s'" % 
-                     (escape_filename_for_query(query_is_string)))
+                     (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query = ("title contains '%s'" % 
-                     (escape_filename_for_query(query_contains_string)))
+                     (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_contains_string)))
         else:
             query = None
 
@@ -321,7 +322,8 @@ class _GdriveManager(object):
         response = client.files().get(fileId=entry_id).execute()
         self.__assert_response_kind(response, 'drive#file')
 
-        return NormalEntry('direct_read', response)
+        return \
+            gdrivefs.gdtool.normal_entry.NormalEntry('direct_read', response)
 
     @_marshall
     def list_files(self, query_contains_string=None, query_is_string=None, 
@@ -348,14 +350,14 @@ class _GdriveManager(object):
 
         if query_is_string:
             query_components.append("title='%s'" % 
-                                    (escape_filename_for_query(query_is_string)))
+                                    (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query_components.append("title contains '%s'" % 
-                                    (escape_filename_for_query(query_contains_string)))
+                                    (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_contains_string)))
 
         # Make sure that we don't get any entries that we would have to ignore.
 
-        hidden_flags = Conf.get('hidden_flags_list_remote')
+        hidden_flags = gdrivefs.conf.Conf.get('hidden_flags_list_remote')
         if hidden_flags:
             for hidden_flag in hidden_flags:
                 query_components.append("%s = false" % (hidden_flag))
@@ -380,7 +382,10 @@ class _GdriveManager(object):
 
             for entry_raw in result[u'items']:
                 try:
-                    entry = NormalEntry('list_files', entry_raw)
+                    entry = \
+                        gdrivefs.gdtool.normal_entry.NormalEntry(
+                            'list_files', 
+                            entry_raw)
                 except:
                     _logger.exception("Could not normalize raw-data for entry "
                                       "with ID [%s].", entry_raw[u'id'])
@@ -419,7 +424,7 @@ class _GdriveManager(object):
                         ', '.join(normalized_entry.download_links.keys())))
 
             _logger.warning(message)
-            raise ExportFormatError(message)
+            raise gdrivefs.errors.ExportFormatError(message)
 
         gd_mtime_epoch = time.mktime(
                             normalized_entry.modified_date.timetuple())
@@ -427,10 +432,10 @@ class _GdriveManager(object):
         _logger.info("File will be downloaded to [%s].", output_file_path)
 
         use_cache = False
-        if allow_cache and isfile(output_file_path):
+        if allow_cache and os.path.isfile(output_file_path):
             # Determine if a local copy already exists that we can use.
             try:
-                stat_info = stat(output_file_path)
+                stat_info = os.stat(output_file_path)
             except:
                 _logger.exception("Could not retrieve stat() information "
                                   "for temp download file [%s].",
@@ -493,14 +498,14 @@ class _GdriveManager(object):
 
             _logger.debug("Download complete. Offset is: (%d)", f.tell())
 
-        utime(output_file_path, (time.time(), gd_mtime_epoch))
+        os.utime(output_file_path, (time.time(), gd_mtime_epoch))
 
         return (total_size, True)
 
     @_marshall
     def create_directory(self, filename, parents, **kwargs):
 
-        mimetype_directory = Conf.get('directory_mimetype')
+        mimetype_directory = gdrivefs.conf.Conf.get('directory_mimetype')
         return self.__insert_entry(
                 False,
                 filename, 
@@ -518,7 +523,7 @@ class _GdriveManager(object):
 
         # If no data and no mime-type was given, default it.
         if mime_type == None:
-            mime_type = Conf.get('file_default_mime_type')
+            mime_type = gdrivefs.conf.Conf.get('file_default_mime_type')
             _logger.debug("No mime-type was presented for file "
                           "create/update. Defaulting to [%s].",
                           mime_type)
@@ -540,7 +545,7 @@ class _GdriveManager(object):
         if parents is None:
             parents = []
 
-        now_phrase = get_flat_normal_fs_time_from_dt()
+        now_phrase = gdrivefs.time_support.get_flat_normal_fs_time_from_dt()
 
         if modified_datetime is None:
             modified_datetime = now_phrase 
@@ -582,11 +587,12 @@ class _GdriveManager(object):
 
         if data_filepath:
             args.update({
-                'media_body': MediaFileUpload(
-                                data_filepath, 
-                                mimetype=mime_type, 
-                                resumable=True,
-                                chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
+                'media_body': 
+                    apiclient.http.MediaFileUpload(
+                        data_filepath, 
+                        mimetype=mime_type, 
+                        resumable=True,
+                        chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
 #                'uploadType': 'resumable',
             })
@@ -604,7 +610,11 @@ class _GdriveManager(object):
 
         self.__assert_response_kind(response, 'drive#file')
 
-        normalized_entry = NormalEntry('insert_entry', response)
+        normalized_entry = \
+            gdrivefs.gdtool.normal_entry.NormalEntry(
+                'insert_entry', 
+                response)
+
         _logger.info("New entry created with ID [%s].", normalized_entry.id)
 
         return normalized_entry
@@ -616,9 +626,10 @@ class _GdriveManager(object):
 
         client = self.__auth.get_client()
 
-        file_ = MediaFileUpload(
-                    '/dev/null',
-                    mimetype=normalized_entry.mime_type)
+        file_ = \
+            apiclient.http.MediaFileUpload(
+                '/dev/null',
+                mimetype=normalized_entry.mime_type)
 
         args = { 
             'fileId': normalized_entry.id, 
@@ -669,7 +680,8 @@ class _GdriveManager(object):
         if modified_datetime is not None:
             body['modifiedDate'] = modified_datetime
         else:
-            body['modifiedDate'] = get_flat_normal_fs_time_from_dt()
+            body['modifiedDate'] = \
+                gdrivefs.time_support.get_flat_normal_fs_time_from_dt()
 
         if accessed_datetime is not None:
             set_atime = True
@@ -692,11 +704,12 @@ class _GdriveManager(object):
 
             # We can only upload large files using resumable-uploads.
             args.update({
-                'media_body': MediaFileUpload(
-                                data_filepath, 
-                                mimetype=mime_type, 
-                                resumable=True,
-                                chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
+                'media_body': 
+                    apiclient.http.MediaFileUpload(
+                        data_filepath, 
+                        mimetype=mime_type, 
+                        resumable=True,
+                        chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
 #                'uploadType': 'resumable',
             })
@@ -710,7 +723,9 @@ class _GdriveManager(object):
                     request,
                     data_filepath is not None)
 
-        normalized_entry = NormalEntry('update_entry', result)
+        normalized_entry = \
+            gdrivefs.gdtool.normal_entry.NormalEntry('update_entry', result)
+
         _logger.debug("Entry updated: [%s]", normalized_entry)
 
         return normalized_entry
@@ -742,7 +757,7 @@ class _GdriveManager(object):
     @_marshall
     def rename(self, normalized_entry, new_filename):
 
-        result = split_path_nolookups(new_filename)
+        result = gdrivefs.gdfs.fsutility.split_path_nolookups(new_filename)
         (path, filename_stripped, mime_type, is_hidden) = result
 
         _logger.debug("Renaming entry [%s] to [%s]. IS_HIDDEN=[%s]",
