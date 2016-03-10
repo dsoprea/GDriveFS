@@ -711,7 +711,7 @@ class _GdriveManager(object):
                     data_filepath is not None)
 
         normalized_entry = NormalEntry('update_entry', result)
-        _logger.debug("Entry updated: [%s]", str(normalized_entry))
+        _logger.debug("Entry updated: [%s]", normalized_entry)
 
         return normalized_entry
 
