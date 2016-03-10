@@ -68,7 +68,17 @@ it automatically.
 Installation
 ------------
 
-Run::
+In order to install his, we're going to use PIP (to access PyPI). Under Ubuntu, 
+this is done via::
+
+    $ sudo apt-get install python-pip
+
+You'll also need to equip your system to perform builds in order to install 
+some of the dependencies. Under Ubuntu, this is done via::
+
+    $ sudo apt-get install build-essential python-dev
+
+Now, to install GDriveFS::
 
     $ sudo pip install gdrivefs
 
