@@ -5,6 +5,8 @@ echo "PYTHONDONTWRITEBYTECODE=1" >> /etc/environment
 # Setup the package-cache.
 
 mount --bind /vagrant/.packages /var/cache/apt/archives
+apt-get update
+
 apt-get install -y python-pip build-essential python-dev
 
 # Install dependencies.
