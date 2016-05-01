@@ -272,10 +272,11 @@ class _GdriveManager(object):
 
         client = self.__auth.get_client()
 
-        if query_contains_string and query_is_string:
-            _logger.exception("The query_contains_string and query_is_string "
-                              "parameters are mutually exclusive.")
-            raise
+        assert \
+            (query_contains_string is not None and 
+             query_is_string is not None) is False,
+            "The query_contains_string and query_is_string parameters are "\
+            "mutually exclusive."
 
         if query_is_string:
             query = ("title='%s'" % 
@@ -302,14 +303,7 @@ class _GdriveManager(object):
     def get_entries(self, entry_ids):
         retrieved = { }
         for entry_id in entry_ids:
-            try:
-                entry = self.get_entry(entry_id)
-            except:
-                _logger.exception("Could not retrieve entry with ID [%s].",
-                                  entry_id)
-                raise
-
-            retrieved[entry_id] = entry
+            retrieved[entry_id] = self.get_entry(entry_id)
 
         _logger.debug("(%d) entries were retrieved.", len(retrieved))
 
@@ -381,15 +375,10 @@ class _GdriveManager(object):
                           "(%d).", len(result[u'items']), page_num)
 
             for entry_raw in result[u'items']:
-                try:
-                    entry = \
-                        gdrivefs.gdtool.normal_entry.NormalEntry(
-                            'list_files', 
-                            entry_raw)
-                except:
-                    _logger.exception("Could not normalize raw-data for entry "
-                                      "with ID [%s].", entry_raw[u'id'])
-                    raise
+                entry = \
+                    gdrivefs.gdtool.normal_entry.NormalEntry(
+                        'list_files', 
+                        entry_raw)
 
                 entries.append(entry)
 
@@ -434,13 +423,7 @@ class _GdriveManager(object):
         use_cache = False
         if allow_cache and os.path.isfile(output_file_path):
             # Determine if a local copy already exists that we can use.
-            try:
-                stat_info = os.stat(output_file_path)
-            except:
-                _logger.exception("Could not retrieve stat() information "
-                                  "for temp download file [%s].",
-                                  output_file_path)
-                raise
+            stat_info = os.stat(output_file_path)
 
             if gd_mtime_epoch == stat_info.st_mtime:
                 use_cache = True
@@ -777,7 +760,7 @@ class _GdriveManager(object):
 
         try:
             result = client.files().delete(**args).execute()
-        except (Exception) as e:
+        except Exception as e:
             if e.__class__.__name__ == 'HttpError' and \
                str(e).find('File not found') != -1:
                 raise NameError(normalized_entry.id)
