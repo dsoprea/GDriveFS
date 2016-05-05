@@ -57,9 +57,8 @@ class _OauthAuthorize(object):
 
         try:
             self.credentials.refresh(http)
-        except (Exception) as e:
-            message = "Could not refresh credentials."
-            raise AuthorizationFailureError(message)
+        except:
+            raise AuthorizationFailureError("Could not refresh credentials.")
 
         self.__update_cache(self.credentials)
             
@@ -136,9 +135,10 @@ class _OauthAuthorize(object):
         try:
             credentials = self.flow.step2_exchange(auth_code)
         except Exception as e:
-            message = ("Could not do auth-exchange (this was either a "\
-                       "legitimate error, or the auth-exchange was attempted "\
-                       "when not necessary): %s" % (e))
+            message = \
+                "Could not do auth-exchange (this was either a legitimate "\
+                "error, or the auth-exchange was attempted when not "\
+                "necessary): {}".format(e)
 
             raise AuthorizationFailureError(message)
         

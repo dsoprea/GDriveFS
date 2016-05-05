@@ -12,28 +12,13 @@ class LiveReaderBase(object):
     def __getitem__(self, key):
         child_name = self.__class__.__name__
 
-#        _logger.debug("Key [%s] requested on LiveReaderBase type [%s].",
-#                      key, child_name)
-
         try:
             return self.__data[key]
         except:
             pass
 
-        try:
-            self.__data = self.get_data()
-        except:
-            _logger.exception("Could not retrieve data for live-updater "
-                              "wrapping [%s].", child_name)
-            raise
-
-        try:
-            return self.__data[key]
-        except:
-            _logger.exception("We just updated live-updater wrapping [%s], "
-                              "but we must've not been able to find entry "
-                              "[%s].", child_name, key)
-            raise
+        self.__data = self.get_data()
+        return self.__data[key]
 
     def get_data(self):
         raise NotImplementedError("get_data() method must be implemented in "
@@ -50,7 +35,7 @@ class LiveReaderBase(object):
         try:
             LiveReaderBase.__instances
         except:
-            LiveReaderBase.__instances = { }
+            LiveReaderBase.__instances = {}
 
         try:
             return LiveReaderBase.__instances[class_name]

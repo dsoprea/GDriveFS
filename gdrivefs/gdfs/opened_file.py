@@ -19,7 +19,7 @@ from gdrivefs.cache.volume import PathRelations, EntryCache, path_resolver, \
 from gdrivefs.gdtool.drive import get_gdrive
 from gdrivefs.general.buffer_segments import BufferSegments
 
-_logger = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 # TODO(dustin): LCM runs in a greenlet pool. When we open a file that needs the
 #               existing data for a file (read, append), a switch is done to an
@@ -36,9 +36,10 @@ class _OpenedManager(object):
     def __init__(self):
         self.__opened = {}
         self.__opened_byfile = {}
+        self.__counter = 0
 
         self.__temp_path = tempfile.mkdtemp()
-        _logger.debug("Opened-file working directory: [%s]", self.__temp_path)
+        _LOGGER.debug("Opened-file working directory: [%s]", self.__temp_path)
 
     def __del__(self):
         shutil.rmtree(self.__temp_path)
@@ -55,6 +56,8 @@ class _OpenedManager(object):
         cls = self.__class__
         max_handles = self.__get_max_handles()
 
+        self.__counter += 1
+
         with cls.__opened_lock:
             if len(self.__opened) >= (max_handles + 1):
                 raise fuse.FuseOSError(EMFILE)
@@ -67,13 +70,13 @@ class _OpenedManager(object):
                     cls.__fh_counter = 1
 
                 if cls.__fh_counter not in self.__opened:
-                    _logger.debug("Assigning file-handle (%d).",
+                    _LOGGER.debug("Assigning file-handle (%d).",
                                   cls.__fh_counter)
 
                     return cls.__fh_counter
                 
         message = "Could not allocate new file handle. Safety breach."
-        _logger.error(message)
+        _LOGGER.error(message)
         raise Exception(message)
 
     def add(self, opened_file, fh=None):
@@ -92,7 +95,7 @@ class _OpenedManager(object):
                 message = ("Opened-file with file-handle (%d) has already been"
                            " registered." % (opened_file.fh))
 
-                _logger.error(message)
+                _LOGGER.error(message)
                 raise Exception(message)
 
             self.__opened[fh] = opened_file
@@ -111,7 +114,7 @@ class _OpenedManager(object):
         cls = self.__class__
 
         with cls.__opened_lock:
-            _logger.debug("Closing opened-file with handle (%d).", fh)
+            _LOGGER.debug("Closing opened-file with handle (%d).", fh)
 
             file_path = self.__opened[fh].file_path
             del self.__opened[fh]
@@ -131,7 +134,7 @@ class _OpenedManager(object):
 
         cls = self.__class__
 
-        _logger.debug("Removing all open handles for file-path [%s].",
+        _LOGGER.debug("Removing all open handles for file-path [%s].",
                       file_path)
 
         count = 0
@@ -144,7 +147,7 @@ class _OpenedManager(object):
             except KeyError:
                 pass
 
-        _logger.debug("(%d) file-handles removed for file-path [%s].",
+        _LOGGER.debug("(%d) file-handles removed for file-path [%s].",
                       count, file_path)
 
     def get_by_fh(self, fh):
@@ -157,10 +160,14 @@ class _OpenedManager(object):
                 message = ("Opened-file with file-handle (%d) is not "
                           "registered (get_by_fh)." % (fh))
 
-                _logger.error(message)
+                _LOGGER.error(message)
                 raise Exception(message)
 
             return self.__opened[fh]
+
+    @property
+    def opened_count(self):
+        return self.__counter
 
     @property
     def temp_path(self):
@@ -183,7 +190,7 @@ class OpenedFile(object):
 
             _OPENED_ENTRIES.add(entry_id)
 
-        _logger.info("Opened-file object created for entry-ID [%s] and path "
+        _LOGGER.info("Opened-file object created for entry-ID [%s] and path "
                      "(%s).", entry_id, path)
 
         self.__entry_id = entry_id
@@ -197,9 +204,12 @@ class OpenedFile(object):
         self.__is_loaded = False
         self.__is_dirty = False
 
-        temp_filename = self.__entry_id.encode('ASCII')
+        # Use the monotonically incremented `opened_count` to produce a unique 
+        # temporary filepath.
+
         om = get_om()
-        self.__temp_filepath = os.path.join(om.temp_path, temp_filename)
+        self.__temp_filepath = \
+            os.path.join(om.temp_path, str(om.opened_count))
 
         self.__fh = None
 
@@ -219,7 +229,11 @@ class OpenedFile(object):
         """
 
         if self.__fh is not None:
+            _LOGGER.debug("Removing temporary file [%s] ([%s]).", 
+                          self.__temp_filepath, self.file_path)
+
             self.__fh.close()
+            os.unlink(self.__temp_filepath)
 
         with _OPENED_ENTRIES_LOCK:
             _OPENED_ENTRIES.remove(self.__entry_id)
@@ -251,7 +265,7 @@ class OpenedFile(object):
 
         # If it's loaded and not-changed, don't do anything.
         if self.__is_loaded is True and self.__is_dirty is False:
-            _logger.debug("Not syncing-down non-dirty file.")
+            _LOGGER.debug("Not syncing-down non-dirty file.")
             return
 
         if self.__fh is not None:
@@ -260,13 +274,13 @@ class OpenedFile(object):
 
         entry = self.__cache.get(self.__entry_id)
 
-        _logger.debug("Ensuring local availability of [%s]: [%s]", 
+        _LOGGER.debug("Ensuring local availability of [%s]: [%s]", 
                       entry, self.__temp_filepath)
 
         # Get the current version of the write-cache file, or note that we 
         # don't have it.
 
-        _logger.info("Attempting local cache update of file [%s] for entry "
+        _LOGGER.info("Attempting local cache update of file [%s] for entry "
                      "[%s] and mime-type [%s].",
                      self.__temp_filepath, entry, self.mime_type)
 
@@ -279,7 +293,7 @@ class OpenedFile(object):
             self.__fh = open(self.__temp_filepath, 'w+')
             self.__fh.write(stub_data)
         else:
-            _logger.debug("Executing the download: [%s] => [%s]", 
+            _LOGGER.debug("Executing the download: [%s] => [%s]", 
                           entry.id, self.__temp_filepath)
             
             try:
@@ -298,7 +312,7 @@ class OpenedFile(object):
 
                 (length, cache_fault) = result
             except ExportFormatError:
-                _logger.exception("There was an export-format error.")
+                _LOGGER.exception("There was an export-format error.")
                 raise fuse.FuseOSError(ENOENT)
 
             self.__fh = open(self.__temp_filepath, 'r+')
@@ -306,14 +320,14 @@ class OpenedFile(object):
             self.__is_dirty = False
             self.__is_loaded = True
 
-        _logger.debug("Established base file-data for [%s]: [%s]", 
+        _LOGGER.debug("Established base file-data for [%s]: [%s]", 
                       entry, self.__temp_filepath)
 
     @dec_hint(['offset', 'data'], ['data'], 'OF')
     def add_update(self, offset, data):
         """Queue an update to this file."""
 
-        _logger.debug("Applying update for offset (%d) and length (%d).",
+        _LOGGER.debug("Applying update for offset (%d) and length (%d).",
                       offset, len(data))
 
         self.__is_dirty = True
@@ -325,12 +339,12 @@ class OpenedFile(object):
     def flush(self):
         """The OS wants to effect any changes made to the file."""
 
-        _logger.debug("Flushing opened-file.")
+        _LOGGER.debug("Flushing opened-file.")
 
         entry = self.__cache.get(self.__entry_id)
 
         if self.__is_dirty is False:
-            _logger.debug("Flush will be skipped for [%s] because there "
+            _LOGGER.debug("Flush will be skipped for [%s] because there "
                           "are no changes: [%s] IS_LOADED=[%s] "
                           "IS_DIRTY=[%d]", 
                           entry.id, self.file_path, self.__is_loaded, 
@@ -339,7 +353,7 @@ class OpenedFile(object):
         else:
             st = os.stat(self.__temp_filepath)
 
-            _logger.debug("Pushing (%d) bytes for entry with ID from [%s] to "
+            _LOGGER.debug("Pushing (%d) bytes for entry with ID from [%s] to "
                           "GD for file-path [%s].",
                           st.st_size, entry.id, self.__temp_filepath)
 
@@ -360,17 +374,17 @@ class OpenedFile(object):
 
             # Immediately update our current cached entry.
 
-            _logger.debug("Update successful. Updating local cache.")
+            _LOGGER.debug("Update successful. Updating local cache.")
 
             path_relations = PathRelations.get_instance()
             path_relations.register_entry(entry)
 
-            _logger.info("Update complete on entry with ID [%s].", entry.id)
+            _LOGGER.info("Update complete on entry with ID [%s].", entry.id)
 
     @dec_hint(['offset', 'length'], prefix='OF')
     def read(self, offset, length):
         
-        _logger.debug("Reading (%d) bytes at offset (%d).", length, offset)
+        _LOGGER.debug("Reading (%d) bytes at offset (%d).", length, offset)
 
         # We don't care if the cache file is dirty (not on this system, at 
         # least).
@@ -382,11 +396,11 @@ class OpenedFile(object):
 
         len_ = len(data)
 
-        _logger.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d).",
+        _LOGGER.debug("(%d) bytes retrieved from slice (%d):(%d)/(%d).",
                       len_, offset, length, st.st_size)
 
         if len_ != length:
-            _logger.warning("Read request is only returning (%d) bytes when "
+            _LOGGER.warning("Read request is only returning (%d) bytes when "
                             "(%d) bytes were requested.", len_, length)
 
         return data
@@ -411,14 +425,14 @@ def create_for_existing_filepath(filepath):
     the information.
     """
 
-    _logger.debug("Creating OpenedFile for [%s].", filepath)
+    _LOGGER.debug("Creating OpenedFile for [%s].", filepath)
 
     # Process/distill the requested file-path.
 
     try:
         result = split_path(filepath, path_resolver)
     except GdNotFoundError:
-        _logger.exception("Could not process [%s] (create_for_requested).",
+        _LOGGER.exception("Could not process [%s] (create_for_requested).",
                           filepath)
 
         raise fuse.FuseOSError(ENOENT)
@@ -434,13 +448,13 @@ def create_for_existing_filepath(filepath):
         entry_clause = path_relations.get_clause_from_path(
                         distilled_filepath)
     except:
-        _logger.exception("Could not try to get clause from path [%s] "
+        _LOGGER.exception("Could not try to get clause from path [%s] "
                           "(OpenedFile).", distilled_filepath)
 
         raise fuse.FuseOSError(EIO)
 
     if not entry_clause:
-        _logger.debug("Path [%s] does not exist for stat().", path)
+        _LOGGER.debug("Path [%s] does not exist for stat().", path)
         raise fuse.FuseOSError(ENOENT)
 
     entry = entry_clause[CLAUSE_ENTRY]
@@ -453,18 +467,18 @@ def create_for_existing_filepath(filepath):
     try:
         final_mimetype = entry.normalize_download_mimetype(mime_type)
     except ExportFormatError:
-        _logger.exception("There was an export-format error "
+        _LOGGER.exception("There was an export-format error "
                           "(create_for_requested_filesystem).")
 
         raise fuse.FuseOSError(ENOENT)
     except:
-        _logger.exception("Could not normalize mime-type [%s] for entry"
+        _LOGGER.exception("Could not normalize mime-type [%s] for entry"
                           "[%s].", mime_type, entry)
 
         raise fuse.FuseOSError(EIO)
 
     if final_mimetype != mime_type:
-        _logger.info("Entry being opened will be opened as [%s] rather "
+        _LOGGER.info("Entry being opened will be opened as [%s] rather "
                      "than [%s].", final_mimetype, mime_type)
 
     # Build the object.

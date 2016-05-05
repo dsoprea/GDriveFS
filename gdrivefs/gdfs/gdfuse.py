@@ -100,32 +100,19 @@ class _GdfsMixin(object):
     """The main filesystem class."""
 
     def __register_open_file(self, fh, path, entry_id):
-
         with self.fh_lock:
             self.open_files[fh] = (entry_id, path)
 
     def __deregister_open_file(self, fh):
-
         with self.fh_lock:
-            try:
-                file_info = self.open_files[fh]
-            except:
-                _logger.exception("Could not deregister invalid file-handle "
-                                  "(%d).", fh)
-                raise
+            file_info = self.open_files[fh]
 
             del self.open_files[fh]
             return file_info
 
     def __get_open_file(self, fh):
-
         with self.fh_lock:
-            try:
-                return self.open_files[fh]
-            except:
-                _logger.exception("Could not retrieve on invalid file-handle "
-                                  "(%d).", fh)
-                raise
+            return self.open_files[fh]
 
     def __build_stat_from_entry(self, entry):
         (uid, gid, pid) = fuse_get_context()
@@ -656,13 +643,7 @@ class _GdfsMixin(object):
 
             entry_id = opened_file.entry_id
             cache = EntryCache.get_instance().cache
-
-            try:
-                entry = cache.get(entry_id)
-            except:
-                _logger.exception("Could not fetch normalized entry with ID "
-                                  "[%s] for truncate with FH.", entry_id)
-                raise
+            entry = cache.get(entry_id)
 
             opened_file.truncate(length)
         else:
@@ -724,7 +705,7 @@ class _GdfsMixin(object):
 
         try:
             gd.remove_entry(normalized_entry)
-        except (NameError):
+        except NameError:
             raise FuseOSError(ENOENT)
         except:
             _logger.exception("Could not remove file [%s] with ID [%s].",
@@ -733,13 +714,7 @@ class _GdfsMixin(object):
             raise FuseOSError(EIO)
 
         # Remove from cache. Will no longer be able to be found, locally.
-
-        try:
-            PathRelations.get_instance().remove_entry_all(entry_id)
-        except:
-            _logger.exception("There was a problem removing entry [%s] "
-                              "from the caches.", normalized_entry)
-            raise
+        PathRelations.get_instance().remove_entry_all(entry_id)
 
         # Remove from among opened-files.
 
@@ -859,15 +834,11 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
 
             try:
                 Conf.set(k, v)
-            except (KeyError) as e:
+            except KeyError as e:
                 _logger.debug("Forwarding option [%s] with value [%s] to "
                               "FUSE.", k, v)
 
                 fuse_opts[k] = v
-            except:
-                _logger.exception("Could not set option [%s]. It is probably "
-                                  "invalid.", k)
-                raise
 
     if gdrivefs.config.IS_DEBUG is True:
         _logger.debug("FUSE options:\n%s", pprint.pformat(fuse_opts))

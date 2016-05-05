@@ -54,13 +54,13 @@ class CacheRegistry(object):
                       (resource_name, key, type(cleanup_pretrigger)))
 
         with CacheRegistry.__rlock:
-            try:
-                old_tuple = self.__cache[resource_name][key]
-            except:
-                raise
+            old_tuple = self.__cache[resource_name][key]
 
-            self.__cleanup_entry(resource_name, key, True, 
-                                 cleanup_pretrigger=cleanup_pretrigger)
+            self.__cleanup_entry(
+                resource_name, 
+                key, 
+                True, 
+                cleanup_pretrigger=cleanup_pretrigger)
 
         return old_tuple[0]
 

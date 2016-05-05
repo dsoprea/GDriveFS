@@ -50,12 +50,7 @@ class Conf(object):
 
     @staticmethod
     def get(key):
-        try:
-            return Conf.__dict__[key]
-        except:
-            _logger.exception("Could not retrieve config value with key [%s].", 
-                              key)
-            raise
+        return Conf.__dict__[key]
 
     @staticmethod
     def set(key, value):

@@ -48,43 +48,38 @@ class NormalEntry(object):
         # can get a file-size up-front, or we have to decide on a specific 
         # mime-type in order to do so.
 
-        try:
-            requires_mimetype = u'fileSize' not in self.__raw_data and \
-                                raw_data[u'mimeType'] != self.__directory_mimetype
+        requires_mimetype = u'fileSize' not in self.__raw_data and \
+                            raw_data[u'mimeType'] != self.__directory_mimetype
 
-            self.__info['requires_mimetype'] = \
-                requires_mimetype
-            
-            self.__info['title'] = \
-                raw_data[u'title']
-            
-            self.__info['mime_type'] = \
-                raw_data[u'mimeType']
-            
-            self.__info['labels'] = \
-                raw_data[u'labels']
-            
-            self.__info['id'] = \
-                raw_data[u'id']
-            
-            self.__info['last_modifying_user_name'] = \
-                raw_data[u'lastModifyingUserName']
-            
-            self.__info['writers_can_share'] = \
-                raw_data[u'writersCanShare']
+        self.__info['requires_mimetype'] = \
+            requires_mimetype
+        
+        self.__info['title'] = \
+            raw_data[u'title']
+        
+        self.__info['mime_type'] = \
+            raw_data[u'mimeType']
+        
+        self.__info['labels'] = \
+            raw_data[u'labels']
+        
+        self.__info['id'] = \
+            raw_data[u'id']
+        
+        self.__info['last_modifying_user_name'] = \
+            raw_data[u'lastModifyingUserName']
+        
+        self.__info['writers_can_share'] = \
+            raw_data[u'writersCanShare']
 
-            self.__info['owner_names'] = \
-                raw_data[u'ownerNames']
-            
-            self.__info['editable'] = \
-                raw_data[u'editable']
-            
-            self.__info['user_permission'] = \
-                raw_data[u'userPermission']
-        except KeyError:
-            _logger.exception("Could not normalize with missing key.\nRAW:\n"
-                              "%s", pprint.pformat(raw_data))
-            raise
+        self.__info['owner_names'] = \
+            raw_data[u'ownerNames']
+        
+        self.__info['editable'] = \
+            raw_data[u'editable']
+        
+        self.__info['user_permission'] = \
+            raw_data[u'userPermission']
 
         self.__info['link'] = \
             raw_data.get(u'embedLink')

@@ -117,19 +117,9 @@ def split_path(filepath_original, pathresolver_cb):
     """
 
     # Remove any export-type that this file-path might've been tagged with.
-
-    try:
-        (filepath, mime_type) = strip_export_type(filepath_original)
-    except:
-        _logger.exception("Could not process path [%s] for export-type.",
-                          filepath_original)
-        raise
-
-#    log.debug("File-path [%s] split into filepath [%s] and mime_type "
-#              "[%s]." % (filepath_original, filepath, mime_type))
+    (filepath, mime_type) = strip_export_type(filepath_original)
 
     # Split the file-path into a path and a filename.
-
     (path, filename) = split(filepath)
 
     # Lookup the file, as it was listed, in our cache.
@@ -144,17 +134,11 @@ def split_path(filepath_original, pathresolver_cb):
         raise GdNotFoundError()
 
     if not path_resolution:
-#        log.debug("Path [%s] does not exist for split." % (path))
         raise GdNotFoundError()
 
     (parent_entry, parent_clause) = path_resolution
 
     is_hidden = (filename[0] == '.') if filename else False
-
-#    log.debug("File-path [%s] split into parent with ID [%s], path [%s], "
-#              "unverified filename [%s], mime-type [%s], and is_hidden [%s]." % 
-#              (filepath_original, parent_entry.id, path, filename, 
-#               mime_type, is_hidden))
 
     return (parent_clause, path, filename, mime_type, is_hidden)
 
@@ -164,16 +148,9 @@ def split_path_nolookups(filepath_original):
     """
 
     # Remove any export-type that this file-path might've been tagged with.
-
-    try:
-        (filepath, mime_type) = strip_export_type(filepath_original)
-    except:
-        _logger.exception("Could not process path [%s] for export-type.",
-                          filepath_original)
-        raise
+    (filepath, mime_type) = strip_export_type(filepath_original)
 
     # Split the file-path into a path and a filename.
-
     (path, filename) = split(filepath)
 
     # We don't remove the period, if we will mark it as hidden, as appropriate.

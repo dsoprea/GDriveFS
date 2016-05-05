@@ -35,26 +35,17 @@ class DisplacedFile(object):
 
         gd = get_gdrive()
 
-        try:
-            result = gd.download_to_local(
-                        self.__filepath, 
-                        self.__normalized_entry,
-                        mime_type)
-            (length, cache_fault) = result
-        except:
-            _logger.exception("Could not localize displaced file with entry"
-                              "having ID [%s].", self.__normalized_entry.id)
-            raise
+        result = gd.download_to_local(
+                    self.__filepath, 
+                    self.__normalized_entry,
+                    mime_type)
+
+        (length, cache_fault) = result
 
         _logger.debug("Displaced entry [%s] deposited to [%s] with length "
                       "(%d).", self.__normalized_entry, self.__filepath, length)
 
-        try:
-            return self.get_stub(mime_type, length, self.__filepath)
-        except:
-            _logger.exception("Could not build stub for [%s].",
-                              self.__normalized_entry)
-            raise
+        return self.get_stub(mime_type, length, self.__filepath)
 
     def get_stub(self, mime_type, file_size=0, file_path=None):
         """Return the content for an info ("stub") file."""

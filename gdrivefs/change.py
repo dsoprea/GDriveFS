@@ -137,12 +137,7 @@ class _ChangeManager(object):
         _logger.debug("Removing all trace of entry with ID [%s] "
                       "(apply_change).", entry_id)
 
-        try:
-            PathRelations.get_instance().remove_entry_all(entry_id)
-        except:
-            _logger.exception("There was a problem remove entry with ID "
-                              "[%s] from the caches.", entry_id)
-            raise
+        PathRelations.get_instance().remove_entry_all(entry_id)
 
         # If it wasn't deleted, add it back.
 
@@ -150,14 +145,7 @@ class _ChangeManager(object):
 
         if is_visible:
             path_relations = PathRelations.get_instance()
-
-            try:
-                path_relations.register_entry(entry)
-            except:
-                _logger.exception("Could not register changed entry with "
-                                  "ID [%s] with path-relations cache.",
-                                  entry_id)
-                raise
+            path_relations.register_entry(entry)
 
 _instance = None
 def get_change_manager():
