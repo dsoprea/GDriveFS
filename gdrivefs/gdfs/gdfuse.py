@@ -22,6 +22,7 @@ import gdrivefs.gdfs.fsutility
 import gdrivefs.gdfs.opened_file
 import gdrivefs.config
 import gdrivefs.config.changes
+import gdrivefs.config.fs
 
 from gdrivefs.utility import utility
 from gdrivefs.change import get_change_manager
@@ -117,6 +118,8 @@ class _GdfsMixin(object):
     def __build_stat_from_entry(self, entry):
         (uid, gid, pid) = fuse_get_context()
 
+        block_size_b = gdrivefs.config.fs.CALCULATION_BLOCK_SIZE
+
         if entry.is_directory:
             effective_permission = int(Conf.get('default_perm_folder'), 
                                        8)
@@ -149,7 +152,8 @@ class _GdfsMixin(object):
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
 
-        stat_result["st_blocks"]   = int(math.ceil(float(stat_result["st_size"]) / 512.0))
+        stat_result["st_blocks"] = \
+            int(math.ceil(float(stat_result["st_size"]) / block_size_b))
   
         return stat_result
 
@@ -553,7 +557,7 @@ class _GdfsMixin(object):
         REF: http://stackoverflow.com/questions/4965355/converting-statvfs-to-percentage-free-correctly
         """
 
-        block_size = 512
+        block_size_b = gdrivefs.config.fs.CALCULATION_BLOCK_SIZE
 
         try:
             account_info = AccountInfo.get_instance()
