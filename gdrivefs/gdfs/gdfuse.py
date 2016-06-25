@@ -561,8 +561,8 @@ class _GdfsMixin(object):
 
         try:
             account_info = AccountInfo.get_instance()
-            total = account_info.quota_bytes_total / block_size
-            used = account_info.quota_bytes_used / block_size
+            total = account_info.quota_bytes_total / block_size_b
+            used = account_info.quota_bytes_used / block_size_b
             free = total - used
         except:
             _logger.exception("Could not get account-info.")
@@ -570,13 +570,13 @@ class _GdfsMixin(object):
 
         return {
             # Optimal transfer block size.
-            'f_bsize': block_size,
+            'f_bsize': block_size_b,
 
             # Total data blocks in file system.
             'f_blocks': total,
 
             # Fragment size.
-            'f_frsize': block_size,
+            'f_frsize': block_size_b,
 
             # Free blocks in filesystem.
             'f_bfree': free,
