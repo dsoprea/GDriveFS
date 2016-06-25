@@ -458,13 +458,16 @@ class _GdriveManager(object):
                 _logger.debug("Read chunk: STATUS=[%s] DONE=[%s] "
                               "TOTAL_SIZE=[%s]", status, done, total_size)
 
-                p = status.progress()
+                if status.total_size > 0:
+                    percent = status.progress()
+                else:
+                    percent = 100.0
 
                 _logger.debug("Chunk: PROGRESS=[%s] TOTAL-SIZE=[%s] "
                               "RESUMABLE-PROGRESS=[%s]",
-                              p, status.total_size, status.resumable_progress)
+                              percent, status.total_size, 
+                              status.resumable_progress)
 
-                percent = p if status.total_size > 0 else 100.0
 # TODO(dustin): This just places an arbitrary limit on the number of empty 
 #               chunks we can receive. Can we drop this to 1?
                 if len(progresses) >= _MAX_EMPTY_CHUNKS:
