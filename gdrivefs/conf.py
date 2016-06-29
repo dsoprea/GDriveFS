@@ -19,7 +19,7 @@ class Conf(object):
                }}
     
     auth_cache_filepath                 = None
-    gd_to_normal_mapping_filepath       = '/etc/gdfs/mime_mapping.json'
+#    gd_to_normal_mapping_filepath       = '/etc/gdfs/mime_mapping.json'
     extension_mapping_filepath          = '/etc/gdfs/extension_mapping.json'
     query_decay_intermed_prefix_length  = 7
     file_jobthread_max_idle_time        = 60
