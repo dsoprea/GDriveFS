@@ -13,25 +13,27 @@ _logger = logging.getLogger(__name__)
 class _DriveUtility(object):
     """General utility functions loosely related to GD."""
 
-    # Mime-types to translate to, if they appear within the "exportLinks" list.
-    gd_to_normal_mime_mappings = {
-            'application/vnd.google-apps.document':        
-                'text/plain',
-            'application/vnd.google-apps.spreadsheet':     
-                'application/vnd.ms-excel',
-            'application/vnd.google-apps.presentation':    
-                'application/vnd.ms-powerpoint',
-            'application/vnd.google-apps.drawing':         
-                'application/pdf',
-            'application/vnd.google-apps.audio':           
-                'audio/mpeg',
-            'application/vnd.google-apps.photo':           
-                'image/png',
-            'application/vnd.google-apps.video':           
-                'video/x-flv'
-        }
+#    # Mime-types to translate to, if they appear within the "exportLinks" list.
+#    gd_to_normal_mime_mappings = {
+#            'application/vnd.google-apps.document':        
+#                'text/plain',
+#            'application/vnd.google-apps.spreadsheet':     
+#                'application/vnd.ms-excel',
+#            'application/vnd.google-apps.presentation':    
+#/gd_to_normal_mime_mappings
+#                'application/vnd.ms-powerpoint',
+#            'application/vnd.google-apps.drawing':         
+#                'application/pdf',
+#            'application/vnd.google-apps.audio':           
+#                'audio/mpeg',
+#            'application/vnd.google-apps.photo':           
+#                'image/png',
+#            'application/vnd.google-apps.video':           
+#                'video/x-flv'
+#        }
 
     # Default extensions for mime-types.
+# TODO(dustin): !! Move this to the config directory.
     default_extensions = { 
             'text/plain':                       'txt',
             'application/vnd.ms-excel':         'xls',
@@ -50,14 +52,15 @@ class _DriveUtility(object):
     def __load_mappings(self):
         # Allow someone to override our default mappings of the GD types.
 
-        gd_to_normal_mapping_filepath = \
-            gdrivefs.conf.Conf.get('gd_to_normal_mapping_filepath')
-
-        try:
-            with open(gd_to_normal_mapping_filepath, 'r') as f:
-                self.gd_to_normal_mime_mappings.extend(json.load(f))
-        except IOError:
-            _logger.info("No mime-mapping was found.")
+# TODO(dustin): Isn't actually used, so commenting.
+#        gd_to_normal_mapping_filepath = \
+#            gdrivefs.conf.Conf.get('gd_to_normal_mapping_filepath')
+#
+#        try:
+#            with open(gd_to_normal_mapping_filepath, 'r') as f:
+#                self.gd_to_normal_mime_mappings.extend(json.load(f))
+#        except IOError:
+#            _logger.info("No mime-mapping was found.")
 
         # Allow someone to set file-extensions for mime-types, and not rely on 
         # Python's educated guesses.
