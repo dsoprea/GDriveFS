@@ -18,6 +18,7 @@ import apiclient.discovery
 import apiclient.http
 import apiclient.errors
 
+import gdrivefs.constants
 import gdrivefs.config
 import gdrivefs.conf
 import gdrivefs.gdtool.chunked_download
@@ -395,8 +396,8 @@ class _GdriveManager(object):
         return entries
 
     @_marshall
-    def download_to_local(self, output_file_path, normalized_entry, mime_type, 
-                          allow_cache=True):
+    def download_to_local(self, output_file_path, normalized_entry, 
+                          mime_type=None, allow_cache=True):
         """Download the given file. If we've cached a previous download and the 
         mtime hasn't changed, re-use. The third item returned reflects whether 
         the data has changed since any prior attempts.
@@ -404,6 +405,22 @@ class _GdriveManager(object):
 
         _logger.info("Downloading entry with ID [%s] and mime-type [%s] to "
                      "[%s].", normalized_entry.id, mime_type, output_file_path)
+
+        if mime_type is None:
+            if normalized_entry.mime_type in normalized_entry.download_links:
+                mime_type = normalized_entry.mime_type
+
+                _logger.debug("Electing file mime-type for download: [%s]", 
+                              normalized_entry.mime_type)
+            elif gdrivefs.constants.OCTET_STREAM_MIMETYPE \
+                    in normalized_entry.download_links:
+                mime_type = gdrivefs.constants.OCTET_STREAM_MIMETYPE
+
+                _logger.debug("Electing octet-stream for download.")
+            else:
+                raise ValueError("Could not determine what to fallback to for "
+                                 "the mimetype: {}".format(
+                                 normalized_entry.mime_type))
 
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
@@ -507,13 +524,6 @@ class _GdriveManager(object):
         # Even though we're supposed to provide an extension, we can get away 
         # without having one. We don't want to impose this when acting like a 
         # normal FS.
-
-        # If no data and no mime-type was given, default it.
-        if mime_type == None:
-            mime_type = gdrivefs.conf.Conf.get('file_default_mime_type')
-            _logger.debug("No mime-type was presented for file "
-                          "create/update. Defaulting to [%s].",
-                          mime_type)
 
         return self.__insert_entry(
                 True,
@@ -646,10 +656,10 @@ class _GdriveManager(object):
         
         body = {}
 
-        if mime_type is not None:
-            body['mimeType'] = mime_type 
-        else:
-            body['mimeType'] = normalized_entry.mime_type
+        if mime_type is None:
+            mime_type = normalized_entry.mime_type
+
+        body['mimeType'] = mime_type 
 
         if filename is not None:
             body['title'] = filename

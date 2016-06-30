@@ -14,7 +14,6 @@ from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
                  LoggingMixIn
 from time import mktime, time
 from sys import argv, exit, excepthook
-from mimetypes import guess_type
 from datetime import datetime
 from os.path import split
 
@@ -299,16 +298,14 @@ class _GdfsMixin(object):
                               filepath)
             raise FuseOSError(EIO)
 
-        distilled_filepath = build_filepath(path, filename)
-
-        # Try to guess at a mime-type, if not otherwise given.
         if mime_type is None:
-            (mimetype_guess, _) = guess_type(filename, True)
-            
-            if mimetype_guess is not None:
-                mime_type = mimetype_guess
-            else:
-                mime_type = Conf.get('default_mimetype')
+            _, ext = os.path.splitext(filename)
+            if ext != '':
+                ext = ext[1:]
+
+            mime_type = utility.get_first_mime_type_by_extension(ext)
+
+        distilled_filepath = build_filepath(path, filename)
 
         gd = get_gdrive()
 

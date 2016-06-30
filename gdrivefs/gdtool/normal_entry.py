@@ -19,7 +19,6 @@ _logger = logging.getLogger(__name__)
 
 
 class NormalEntry(object):
-    __default_general_mime_type = Conf.get('default_mimetype')
     __directory_mimetype = Conf.get('directory_mimetype')
 
     __properties_extra = [
@@ -166,9 +165,6 @@ class NormalEntry(object):
             if mimetype_candidate is not None and \
                mimetype_candidate in self.download_links:
                 mime_type = mimetype_candidate
-
-            elif NormalEntry.__default_general_mime_type in self.download_links:
-                mime_type = NormalEntry.__default_general_mime_type
 
             # If there's only one download link, resort to using it (perhaps it was 
             # an uploaded file, assigned only one type).

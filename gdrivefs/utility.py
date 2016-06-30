@@ -73,10 +73,12 @@ class _DriveUtility(object):
 
     def get_first_mime_type_by_extension(self, extension):
 
-        found = [ mime_type 
-                    for mime_type, temp_extension 
-                    in self.default_extensions.iteritems()
-                    if temp_extension == extension ]
+        found = [ 
+            mime_type 
+            for mime_type, temp_extension 
+            in self.default_extensions.iteritems()
+            if temp_extension == extension
+        ]
 
         if not found:
             return None
@@ -110,4 +112,3 @@ class _DriveUtility(object):
         return re.sub('[^a-z0-9\-_\.]+', '', text)
 
 utility = _DriveUtility()
-

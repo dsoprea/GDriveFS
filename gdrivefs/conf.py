@@ -25,7 +25,6 @@ class Conf(object):
     file_jobthread_max_idle_time        = 60
     file_chunk_size_kb                  = 1024
     file_download_temp_max_age_s        = 86400
-    file_default_mime_type              = 'application/octet-stream'
     change_check_frequency_s            = 3
     hidden_flags_list_local             = [u'trashed', u'restricted']
     hidden_flags_list_remote            = [u'trashed']
@@ -38,7 +37,6 @@ class Conf(object):
 
     google_discovery_service_url        = DISCOVERY_URI
     default_buffer_read_blocksize       = 65536
-    default_mimetype                    = 'application/octet-stream'
     directory_mimetype                  = u'application/vnd.google-apps.folder'
     default_perm_folder                 = '777'
     default_perm_file_editable          = '666'
@@ -58,4 +56,3 @@ class Conf(object):
             raise KeyError(key)
 
         setattr(Conf, key, value)
-
