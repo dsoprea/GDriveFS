@@ -204,21 +204,26 @@ class NormalEntry(object):
             return data
 
     def get_data(self):
-            original = dict([(key.encode('ASCII'), value) 
-                                for key, value 
-                                in self.__raw_data.iteritems()])
+        original = {
+            key.encode('utf8'): value 
+            for key, value 
+            in self.__raw_data.iteritems()
+        }
 
-            distilled = self.__info
+        distilled = self.__info
 
-            extra = dict([(key, getattr(self, key)) 
-                                for key 
-                                in self.__properties_extra])
+        extra = {
+            key: getattr(self, key)
+            for key 
+            in self.__properties_extra
+        }
 
-            data_dict = {'original': original,
-                         #'distilled': distilled,
-                         'extra': extra}
+        data_dict = {
+            'original': original,
+            'extra': extra,
+        }
 
-            return data_dict
+        return data_dict
 
     @property
     def xattr_data(self):
@@ -227,7 +232,6 @@ class NormalEntry(object):
             
             attrs = {}
             for a_type, a_dict in data_dict.iteritems():
-#                self.__log.debug("Setting [%s]." % (a_type))
                 for key, value in a_dict.iteritems():
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)
