@@ -44,7 +44,7 @@ of files.
 
 To install using *Mercurial*, do the following::
 
-    $ hg clone https://code.google.com/p/google-api-python-client
+    $ git clone https://github.com/google/google-api-python-client
 
     $ cd google-api-python-client
     $ sudo python setup.py install
