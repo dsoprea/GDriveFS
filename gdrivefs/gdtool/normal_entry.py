@@ -22,9 +22,9 @@ class NormalEntry(object):
     __directory_mimetype = Conf.get('directory_mimetype')
 
     __properties_extra = [
-        'is_directory', 
-        'is_visible', 
-        'parents', 
+        'is_directory',
+        'is_visible',
+        'parents',
         'download_types',
         'modified_date',
         'modified_date_epoch',
@@ -42,9 +42,9 @@ class NormalEntry(object):
         self.__cache_mimetypes = None
         self.__cache_dict = {}
 
-        # Return True if reading from this file should return info and deposit 
-        # the data elsewhere. This is predominantly determined by whether we 
-        # can get a file-size up-front, or we have to decide on a specific 
+        # Return True if reading from this file should return info and deposit
+        # the data elsewhere. This is predominantly determined by whether we
+        # can get a file-size up-front, or we have to decide on a specific
         # mime-type in order to do so.
 
         requires_mimetype = u'fileSize' not in self.__raw_data and \
@@ -52,46 +52,46 @@ class NormalEntry(object):
 
         self.__info['requires_mimetype'] = \
             requires_mimetype
-        
+
         self.__info['title'] = \
             raw_data[u'title']
-        
+
         self.__info['mime_type'] = \
             raw_data[u'mimeType']
-        
+
         self.__info['labels'] = \
             raw_data[u'labels']
-        
+
         self.__info['id'] = \
             raw_data[u'id']
-        
+
         self.__info['last_modifying_user_name'] = \
-            raw_data[u'lastModifyingUserName']
-        
+            raw_data.get(u'lastModifyingUserName')
+
         self.__info['writers_can_share'] = \
             raw_data[u'writersCanShare']
 
         self.__info['owner_names'] = \
             raw_data[u'ownerNames']
-        
+
         self.__info['editable'] = \
             raw_data[u'editable']
-        
+
         self.__info['user_permission'] = \
             raw_data[u'userPermission']
 
         self.__info['link'] = \
             raw_data.get(u'embedLink')
-        
+
         self.__info['file_size'] = \
             int(raw_data.get(u'fileSize', 0))
-        
+
         self.__info['file_extension'] = \
             raw_data.get(u'fileExtension')
-        
+
         self.__info['md5_checksum'] = \
             raw_data.get(u'md5Checksum')
-        
+
         self.__info['image_media_metadata'] = \
             raw_data.get(u'imageMediaMetadata')
 
@@ -113,8 +113,8 @@ class NormalEntry(object):
         return self.__info[key]
 
     def __str__(self):
-        return ("<NORMAL ID= [%s] MIME= [%s] NAME= [%s] URIS= (%d)>" % 
-                (self.id, self.mime_type, self.title, 
+        return ("<NORMAL ID= [%s] MIME= [%s] NAME= [%s] URIS= (%d)>" %
+                (self.id, self.mime_type, self.title,
                  len(self.download_links)))
 
     def __repr__(self):
@@ -125,33 +125,33 @@ class NormalEntry(object):
         self.__info['title_fs'] = utility.translate_filename_charset(self.__info['title'])
 
     def temp_rename(self, new_filename):
-        """Set the name to something else, here, while we, most likely, wait 
+        """Set the name to something else, here, while we, most likely, wait
         for the change at the server to propogate.
         """
-    
+
         self.__info['title'] = new_filename
         self.__update_display_name()
 
     def normalize_download_mimetype(self, specific_mimetype=None):
-        """If a mimetype is given, return it if there is a download-URL 
-        available for it, or fail. Else, determine if a copy can downloaded 
-        with the default mime-type (application/octet-stream, or something 
-        similar), or return the only mime-type in the event that there's only 
+        """If a mimetype is given, return it if there is a download-URL
+        available for it, or fail. Else, determine if a copy can downloaded
+        with the default mime-type (application/octet-stream, or something
+        similar), or return the only mime-type in the event that there's only
         one download format.
         """
 
         if self.__cache_mimetypes is None:
             self.__cache_mimetypes = [[], None]
-        
+
         if specific_mimetype is not None:
             if specific_mimetype not in self.__cache_mimetypes[0]:
                 _logger.debug("Normalizing mime-type [%s] for download.  "
-                              "Options: %s", 
+                              "Options: %s",
                               specific_mimetype, self.download_types)
 
                 if specific_mimetype not in self.download_links:
                     raise ExportFormatError("Mime-type [%s] is not available for "
-                                            "download. Options: %s" % 
+                                            "download. Options: %s" %
                                             (self.download_types))
 
                 self.__cache_mimetypes[0].append(specific_mimetype)
@@ -166,14 +166,14 @@ class NormalEntry(object):
                mimetype_candidate in self.download_links:
                 mime_type = mimetype_candidate
 
-            # If there's only one download link, resort to using it (perhaps it was 
+            # If there's only one download link, resort to using it (perhaps it was
             # an uploaded file, assigned only one type).
             elif len(self.download_links) == 1:
                 mime_type = self.download_links.keys()[0]
 
             else:
                 raise ExportFormatError("A correct mime-type needs to be "
-                                        "specified. Options: %s" % 
+                                        "specified. Options: %s" %
                                         (self.download_types))
 
             self.__cache_mimetypes[1] = mime_type
@@ -182,7 +182,7 @@ class NormalEntry(object):
 
     def __convert(self, data):
         if isinstance(data, dict):
-            list_ = [("K(%s)=V(%s)" % (self.__convert(key), 
+            list_ = [("K(%s)=V(%s)" % (self.__convert(key),
                                   self.__convert(value))) \
                      for key, value \
                      in data.iteritems()]
@@ -205,8 +205,8 @@ class NormalEntry(object):
 
     def get_data(self):
         original = {
-            key.encode('utf8'): value 
-            for key, value 
+            key.encode('utf8'): value
+            for key, value
             in self.__raw_data.iteritems()
         }
 
@@ -214,7 +214,7 @@ class NormalEntry(object):
 
         extra = {
             key: getattr(self, key)
-            for key 
+            for key
             in self.__properties_extra
         }
 
@@ -229,13 +229,13 @@ class NormalEntry(object):
     def xattr_data(self):
         if self.__cache_data is None:
             data_dict = self.get_data()
-            
+
             attrs = {}
             for a_type, a_dict in data_dict.iteritems():
                 for key, value in a_dict.iteritems():
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)
- 
+
             self.__cache_data = attrs
 
         return self.__cache_data
@@ -247,9 +247,9 @@ class NormalEntry(object):
 
     @property
     def is_visible(self):
-        if [ flag 
-             for flag, value 
-             in self.labels.items() 
+        if [ flag
+             for flag, value
+             in self.labels.items()
              if flag in Conf.get('hidden_flags_list_local') and value ]:
             return False
         else:
@@ -273,11 +273,11 @@ class NormalEntry(object):
 
     @property
     def modified_date_epoch(self):
-        # mktime() only works in terms of the local timezone, so compensate 
+        # mktime() only works in terms of the local timezone, so compensate
         # (this works with DST, too).
         return mktime(self.modified_date.timetuple()) - time.timezone
-        
-    @property  
+
+    @property
     def mtime_byme_date(self):
         if 'modified_byme_date' not in self.__cache_dict:
             self.__cache_dict['modified_byme_date'] = \
