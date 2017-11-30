@@ -1,9 +1,8 @@
-google-api-python-client>=1.2
-six>=1.7.3
-
 fusepy==2.0.2
 #gevent==1.0
 #gipc==0.4.0
+google-api-python-client==1.2
 greenlet==0.4.2
 httplib2==0.8
 python-dateutil==2.2
+six==1.7.3

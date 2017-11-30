@@ -36,7 +36,7 @@ setuptools.setup(
     author_email='myselfasunder@gmail.com',
     url='https://github.com/dsoprea/GDriveFS',
     license='GPL 2',
-    packages=setuptools.find_packages(exclude=['dev', 'dev.*', 'tests', 'tests.*']),
+    packages=setuptools.find_packages(exclude=['tests']),
     include_package_data=True,
     package_data={
         'gdrivefs': [
