@@ -5,5 +5,5 @@ fusepy==2.0.2
 #gevent==1.0
 #gipc==0.4.0
 greenlet==0.4.2
-httplib2==0.8
+httplib2>=0.8
 python-dateutil==2.2
