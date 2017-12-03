@@ -485,10 +485,13 @@ own quotes/etc.., it was more difficult to make sense of the values.
 Misc Notes
 ----------
 
-A file will be marked as hidden on *Google Drive* if it has a prefixing dot.
+- A file will be marked as hidden on *Google Drive* if it has a prefixing dot.
 However, Linux/Unix doesn't care about the "hidden" attribute. If you create a
 file on *Google Drive*, somewhere else, and want it to truly be hidden via this
 software, make sure you add the prefixing dot.
+
+- If you have a need to do a developer install, use "pip install -e" rather than "python setup.py develop". The latter will [now] break because of the dependencies that are eggs.
+
 
 .. |donate| image:: https://pledgie.com/campaigns/27265.png?skin_name=chrome
    :alt: Click here to lend your support to: Fund GDriveFS, the Open Source Google Drive FUSE Adapter and make a donation at pledgie.com !
