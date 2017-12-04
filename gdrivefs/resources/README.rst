@@ -5,30 +5,15 @@
 GDriveFS is an innovative *FUSE* wrapper for *Google Drive*.
 
 
-------------
-Design goals
-------------
+--------------
+Latest Changes
+--------------
 
-+-------------------------------------------------------------------+-------+
-| Goal                                                              | Done  |
-+===================================================================+=======+
-| Thread for monitoring changes via "changes" functionality of API. |   X   |
-+-------------------------------------------------------------------+-------+
-| Complete stat() implementation.                                   |   X   |
-+-------------------------------------------------------------------+-------+
-| Seamlessly work around duplicate-file allowances in *Google       |   X   |
-| Drive*.                                                           |       |
-+-------------------------------------------------------------------+-------+
-| Seamlessly manage file-type versatility in *Google Drive*         |   X   |
-| (*Google Doc* files do not have a particular format).             |       |
-+-------------------------------------------------------------------+-------+
-| Allow for the same file at multiple paths.                        |   X   |
-+-------------------------------------------------------------------+-------+
+- Though you can still use the previous authorization flow, there is now a very simple authorization flow that may be used instead by using the 'auth_automatic' subcommand on the 'gdfstool'. Whe you run this command, the browser will automatically be opened, you may or may not be prompted for authorization by Google, a redirection will occur, and we will then automatically record the authorization code. GDFS will temporarily open a small webserver on a random port in order to receive the response. **This effectively makes authorization a one-step process for the user.** See below for more details.
 
-Also, a design choice of other implementations is to make the user get API keys
-for *Google Drive*, and this doesn't make sense. Our implementation is built
-against *OAuth 2.0* as a native application. You should just have to visit the
-authorization URL once, plug-in the auth-code, and be done with it.
+- There is now a default file-path for the credentials ("auth storage file"). Just use "default" and "$HOME/.gdfs/creds" will be the file-path used. See below for more details.
+
+- The 'auth' subcommand on the 'gdfstool' command is now obsolete. Though you may continue to use this subcommand, please start using the 'auth_get_url' and 'auth_write' subcommands as this subcommand will be removed in the future.
 
 
 ---------
@@ -79,18 +64,50 @@ The versions of a couple of dependencies are relaxed during a normal installatio
 Usage
 -----
 
+Overview
+========
+
 Before you can mount the account, you must authorize *GDriveFS* to access it.
 *GDriveFS* works by producing a URL that you must visit in a browser. Google
 will ask for your log-in information and authorization, and then give you an
 authorization code. You then pass this code back to the *GDriveFS* utility
 along with a file-path of where you want it to store the authorization
-information ("auth storage file"). Then, you can mount it whenever you'd like.
+information ("auth storage file" or "credentials file"). Then, you can mount it
+whenever you'd like.
 
 Since this is *FUSE*, you must be running as root to mount.
 
+
+Credentials File
+================
+
+Also referred to as the "auth storage" file.
+
+In previous versions, you were required to provide a file-path to write and read the authorization code to. There is now a default ($HOME/.gdfs/creds). Just literally use the string "default" whereever the credentials file-path is required in order to use this default file-path.
+
+
+Automatic Authorization Flow
+----------------------------
+
+There is now a simplified flow that will automatically open the system Web browser, do any authentication necessary, and automatically write the authorization-code to disk::
+
+    $ gdfstool auth_automatic
+    Authorization code recorded.
+
+    $ gdfs default /mnt/gdrivefs
+
+This automatic flow will require GDFS to temporarily start a small, internal webserver on the first available port.
+
+
+Manual Authorization Flow
+-------------------------
+
+
+If you need to manually get the URL, browse to it, get the authorization code, and then call the 'auth_write' subcommand to store it:
+
 1. To get an authorization URL::
 
-    $ gdfstool auth -u
+    $ gdfstool auth_get_url
     To authorize FUSE to use your Google Drive account, visit the following URL to produce an authorization code:
 
     https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=code&client_id=626378760250.apps.googleusercontent.com&access_type=offline
@@ -99,38 +116,22 @@ Since this is *FUSE*, you must be running as root to mount.
    that you would like to save it as. The name and location of this file is
    arbitrary::
 
-    $ gdfstool auth -a /var/cache/gdfs.creds "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
-    Authorization code recorded.
+   $ gdfstool auth_write "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
+   Authorization code recorded.
 
-3. There are three ways to mount the account:
 
-   - Via script::
+Mounting
+========
 
-        Mount::
+Once you're ready to mount::
 
-            $ gdfs -o allow_other /var/cache/gdfs.creds /mnt/gdrivefs
+    $ gdfs -o allow_other default /mnt/gdrivefs
 
-        Unmount::
+Or, if you would like to register it in /etc/fstab::
 
-            $ umount /mnt/gdrivefs
-
-   - Via */etc/fstab*::
-
-        Make the symlink::
-
-            $ sudo ln -s `which gdfs` /sbin/mount.gdfs
-
-        Add the entry to /etc/fstab::
-
-            /var/cache/gdfs.creds /mnt/gdrivefs gdfs allow_other 0 0
-
-        Mount::
-
-            $ mount /mnt/gdrivefs
-
-        Unmount::
-
-            $ umount /mnt/gdrivefs
+    $ ln -s `which gdfs` /sbin/mount.gdfs
+    $ echo "default /mnt/gdrivefs gdfs allow_other 0 0" >> /etc/fstab
+    $ mount /mnt/gdrivefs
 
 
 Optimization
@@ -140,13 +141,13 @@ By default, FUSE uses a very conservative block-size. On systems that support it
 
 To use this, pass "big_writes" in the "-o" option-string::
 
-    $ sudo gdfs -o big_writes /var/cache/gdfs.creds /mnt/gd
+    $ sudo gdfs -o big_writes /home/user/.gdfs/creds /mnt/gdrivefs
 
 
 Vagrant
 =======
 
-A Vagrantfile has been made available in the event that you'd like to mount your account from a system that isn't FUSE compatible (like Mac), or you're having issues installing GDriveFS somewhere else and would like to debug.
+A Vagrantfile has been made available in the event that you would like to mount your account from a system that isn't FUSE compatible (like a Mac) or you are having issues installing GDriveFS somewhere else and would like to debug.
 
 To install Vagrant::
 
@@ -177,7 +178,7 @@ To start and provision the instance::
     ==> default:
     ==> default: Once you have retrieved your authorization string, run:
     ==> default:
-    ==> default: sudo gdfstool auth -a /var/cache/gdfs.creds <auth string>
+    ==> default: sudo gdfstool auth_write <authcode>
     ==> default:
 
 This may take a few more minutes the first time, as it might need to acquire the Ubuntu 14.04 image if not already available.
@@ -198,10 +199,10 @@ Mounting GDFS in debugging-mode will run GDFS in the foreground, and enable debu
 
 Just set the `GD_DEBUG` environment variable to "1"::
 
-    root@vagrant-ubuntu-trusty-64:/home/vagrant# GD_DEBUG=1 gdfs /var/cache/gdfs.creds /mnt/g
+    root@vagrant-ubuntu-trusty-64:/home/vagrant# GD_DEBUG=1 gdfs /home/user/.gdfs/creds /mnt/g
     2014-12-09 04:09:17,204 [gdrivefs.utility INFO] No mime-mapping was found.
     2014-12-09 04:09:17,204 [gdrivefs.utility INFO] No extension-mapping was found.
-    2014-12-09 04:09:17,258 [__main__ DEBUG] Mounting GD with creds at [/var/cache/gdfs.creds]: /mnt/g
+    2014-12-09 04:09:17,258 [__main__ DEBUG] Mounting GD with creds at [/home/user/.gdfs/creds]: /mnt/g
     2014-12-09 04:09:17,259 [root DEBUG] Debug: True
     2014-12-09 04:09:17,260 [root DEBUG] PERMS: F=777 E=666 NE=444
     2014-12-09 04:09:17,262 [gdrivefs.drive DEBUG] Getting authorized HTTP tunnel.
@@ -481,10 +482,7 @@ own quotes/etc.., it was more difficult to make sense of the values.
 Misc Notes
 ----------
 
-- A file will be marked as hidden on *Google Drive* if it has a prefixing dot.
-However, Linux/Unix doesn't care about the "hidden" attribute. If you create a
-file on *Google Drive*, somewhere else, and want it to truly be hidden via this
-software, make sure you add the prefixing dot.
+- A file will be marked as hidden on *Google Drive* if it has a prefixing dot. However, Linux/Unix doesn't care about the "hidden" attribute. If you create a file on *Google Drive*, somewhere else, and want it to truly be hidden via this software, make sure you add the prefixing dot.
 
 - If you have a need to do a developer install, use "pip install -e" rather than "python setup.py develop". The latter will [now] break because of the dependencies that are eggs.
 
