@@ -14,46 +14,43 @@ import gdrivefs.config
 import gdrivefs.config.log
 import gdrivefs.gdfuse
 import gdrivefs.oauth_authorize
+import gdrivefs.auto_auth
 
 _logger = logging.getLogger(__name__)
 
 def _get_url():
-    authorize = gdrivefs.oauth_authorize.get_auth()
-    return authorize.step1_get_auth_url()
+    # This won't actually be needed so set it to the default.
+    gdrivefs.gdfuse.set_auth_cache_filepath(
+        gdrivefs.config.DEFAULT_CREDENTIALS_FILEPATH)
+
+    oa = gdrivefs.oauth_authorize.OauthAuthorize()
+    return oa.step1_get_auth_url()
 
 def _handle_auth_url():
     url = _get_url()
 
     print("To authorize FUSE to use your Google Drive account, visit the "
-          "following URL to produce an authorization code:\n\n%s\n" % 
+          "following URL to produce an authorization code:\n\n%s\n" %
           (url,))
 
 def _handle_auth_open():
     url = _get_url()
     webbrowser.open(url)
 
-def _handle_auth_store(auth_storage_filepath, authcode):
-    if os.path.exists(auth_storage_filepath) is False:
-        auth_storage_path = os.path.dirname(auth_storage_filepath)
-
-        if os.path.exists(auth_storage_path) is False:
-            raise EnvironmentError("The path for the credentials file "
-                                   "does not exist: [%s]" % 
-                                   (auth_storage_path))
-
-        with open(auth_storage_filepath, 'w'):
-            pass
+def _auth_write(auth_storage_filepath, authcode):
+    if auth_storage_filepath is None:
+        auth_storage_filepath = gdrivefs.config.DEFAULT_CREDENTIALS_FILEPATH
 
     gdrivefs.gdfuse.set_auth_cache_filepath(auth_storage_filepath)
+    oa = gdrivefs.oauth_authorize.OauthAuthorize()
 
-    authorize = gdrivefs.oauth_authorize.get_auth()
-    authorize.step2_doexchange(authcode)
+    oa.step2_doexchange(authcode)
 
     print("Authorization code recorded.")
 
 def _handle_auth(args):
     if args.auth is not None:
-        _handle_auth_store(*args.auth)
+        _auth_write(*args.auth)
     elif args.url is True:
         _handle_auth_url()
     elif args.open is True:
@@ -61,65 +58,137 @@ def _handle_auth(args):
     else:
         raise Exception("Invalid auth option.")
 
+def _handle_auth_automatic(args):
+    gdrivefs.gdfuse.set_auth_cache_filepath(
+        gdrivefs.config.DEFAULT_CREDENTIALS_FILEPATH)
+
+    aa = gdrivefs.auto_auth.AutoAuth()
+    aa.get_and_write_creds()
+
+    print("Authorization code recorded.")
+
 def _handle_mountpoint(args):
     option_string = args.opt[0] if args.opt else None
 
     gdrivefs.gdfuse.mount(
-        auth_storage_filepath=args.auth_storage_file, 
-        mountpoint=args.mountpoint, 
-        debug=gdrivefs.config.IS_DEBUG, 
-        nothreads=gdrivefs.config.IS_DEBUG, 
+        auth_storage_filepath=args.auth_storage_file,
+        mountpoint=args.mountpoint,
+        debug=gdrivefs.config.IS_DEBUG,
+        nothreads=gdrivefs.config.IS_DEBUG,
         option_string=option_string)
 
-def main():
-    parser = argparse.ArgumentParser()
-
-    subparsers = parser.add_subparsers(
-                    help='Subcommand help', 
-                    dest='command')
-
+def _parser_auth(subparsers):
     parser_auth = subparsers.add_parser(
-                    'auth', 
+                    'auth',
                     help="Authorization commands")
 
     auth_xor = parser_auth.add_mutually_exclusive_group(required=True)
 
-    auth_xor.add_argument('-u', '--url', 
-                          help="Get an authorization URL.",
-                          action='store_true')
+    auth_xor.add_argument(
+        '-u', '--url',
+        help="Get an authorization URL.",
+        action='store_true')
 
-    auth_xor.add_argument('-o', '--open', 
-                          help="Open authorization page in default browser.",
-                          action='store_true')
+    auth_xor.add_argument(
+        '-o', '--open',
+        help="Open authorization page in default browser.",
+        action='store_true')
 
-    auth_xor.add_argument('-a', '--auth', nargs=2,
-                          metavar=('auth_storage_file', 'authcode'), 
-                          help="Register an authorization-code from Google Drive.")
+    auth_xor.add_argument(
+        '-a', '--auth',
+        nargs=2,
+        metavar=('auth_storage_file', 'authcode'),
+        help="Register an authorization-code from Google Drive.")
 
+def _parser_auth_get_url(subparsers):
+    s = subparsers.add_parser(
+            'auth_get_url',
+            help='Write authorization code')
+
+def _parser_auth_write(subparsers):
+    s = subparsers.add_parser(
+            'auth_write',
+            help='Write authorization code')
+
+    filepath = gdrivefs.config.DEFAULT_CREDENTIALS_FILEPATH
+
+    s.add_argument(
+        'authcode',
+        help="Authorize with the given code. Write to the default " \
+             "credentials file-path: [{}]".format(filepath))
+
+def _parser_auth_automatic(subparsers):
+    parser_auth = subparsers.add_parser(
+                    'auth_automatic',
+                    help="Authorize using a simpler workflow")
+
+def _parser_mount(subparsers):
     mount_auth = subparsers.add_parser(
-                    'mount', 
+                    'mount',
                     help='Mounting commands')
 
-    mount_auth.add_argument('auth_storage_file', 
+    mount_auth.add_argument('auth_storage_file',
                             help='Authorization storage file')
 
-    mount_auth.add_argument('mountpoint', 
+    mount_auth.add_argument('mountpoint',
                             help='Mount point')
 
-    mount_auth.add_argument('-o', '--opt', 
+    mount_auth.add_argument('-o', '--opt',
                             help='Mount options',
-                            action='store', 
+                            action='store',
                             required=False,
                             nargs=1)
 
-    args = parser.parse_args()
+def main():
+    p = argparse.ArgumentParser()
 
-    if args.command == 'auth':
-        _handle_auth(args)
+    s = p.add_subparsers(
+                    help='Subcommand help',
+                    dest='command')
+
+    p.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Print logging')
+
+    _parser_auth_get_url(s)
+    _parser_auth_write(s)
+    _parser_auth_automatic(s)
+
+# TODO(dustin): Obsolete.
+    _parser_mount(s)
+
+# TODO(dustin): Obsolete.
+    _parser_auth(s)
+
+    args = p.parse_args()
+
+    gdrivefs.config.log.configure(is_debug=args.verbose)
+
+    if args.command == 'auth_get_url':
+        _handle_auth_url()
+    elif args.command == 'auth_write':
+        _auth_write(None, args.authcode)
+    elif args.command == 'auth_automatic':
+        _handle_auth_automatic(args)
     elif args.command == 'mount':
+# TODO(dustin): Obsolete.
+        print("WARNING: This subcommand is obsolete. Use the 'gdfs' command "
+              "directly.")
+
+        print('')
+
         _handle_mountpoint(args)
+    elif args.command == 'auth':
+# TODO(dustin): Obsolete.
+        print("WARNING: This subcommand is obsolete. Use the auth_get_url, "
+              "auth_write, and auth_automatic subcommands.")
+
+        print('')
+
+        _handle_auth(args)
     else:
-        raise Exception("Invalid option.")
+        raise Exception("Invalid subcommand: [{}]".format(args.command))
 
 if __name__ == '__main__':
     main()

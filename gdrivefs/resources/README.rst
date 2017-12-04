@@ -132,10 +132,6 @@ Since this is *FUSE*, you must be running as root to mount.
 
             $ umount /mnt/gdrivefs
 
-   - Directly via *gdfstool*::
-
-        $ gdfstool mount /var/cache/gdfs.creds /mnt/gdrivefs
-
 
 Optimization
 ============

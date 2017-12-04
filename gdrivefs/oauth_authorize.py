@@ -1,82 +1,95 @@
+import os
 import logging
 import pickle
 import json
+import datetime
+import tempfile
 
-from oauth2client.client import flow_from_clientsecrets
-from oauth2client.client import OOB_CALLBACK_URN
+import oauth2client.client
 
-from datetime import datetime
-from httplib2 import Http
-from tempfile import NamedTemporaryFile
-from os import remove
+import httplib2
 
-from gdrivefs.errors import AuthorizationFailureError, AuthorizationFaultError
-from gdrivefs.conf import Conf
+import gdrivefs.conf
+import gdrivefs.errors
 
-_logger = logging.getLogger(__name__)
-_logger.setLevel(logging.INFO)
+_LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.INFO)
 
 
-class _OauthAuthorize(object):
+class OauthAuthorize(object):
     """Manages authorization process."""
 
-    def __init__(self):
-        cache_filepath  = Conf.get('auth_cache_filepath')
-        api_credentials = Conf.get('api_credentials')
+    def __init__(
+            self, redirect_uri=oauth2client.client.OOB_CALLBACK_URN):
+        creds_filepath  = gdrivefs.conf.Conf.get('auth_cache_filepath')
 
-        self.cache_filepath = cache_filepath
-        self.credentials = None
+        assert \
+            creds_filepath is not None, \
+            "Credentials file-path not set."
 
-        with NamedTemporaryFile() as f:
+        creds_path = os.path.dirname(creds_filepath)
+        if creds_path != '' and \
+           os.path.exists(creds_path) is False:
+            os.makedirs(creds_path)
+
+        self.__creds_filepath = creds_filepath
+        self.__credentials = None
+
+        api_credentials = gdrivefs.conf.Conf.get('api_credentials')
+
+        with tempfile.NamedTemporaryFile() as f:
             json.dump(api_credentials, f)
             f.flush()
 
             self.flow = \
-                flow_from_clientsecrets(
+                oauth2client.client.flow_from_clientsecrets(
                     f.name,
                     scope=self.__get_scopes(),
-                    redirect_uri=OOB_CALLBACK_URN)
+                    redirect_uri=redirect_uri)
 
     def __get_scopes(self):
-        scopes = "https://www.googleapis.com/auth/drive "\
-                 "https://www.googleapis.com/auth/drive.file"
-        return scopes
+        scopes = [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/drive.file",
+        ]
+
+        return ' '.join(scopes)
 
     def step1_get_auth_url(self):
         return self.flow.step1_get_authorize_url()
 
     def __clear_cache(self):
-        if self.cache_filepath is not None:
+        if self.__creds_filepath is not None:
             try:
-                remove(self.cache_filepath)
+                os.remove(self.__creds_filepath)
             except:
                 pass
 
     def __refresh_credentials(self):
-        _logger.info("Doing credentials refresh.")
+        _LOGGER.debug("Doing credentials refresh.")
 
-        http = Http()
+        http = httplib2.Http()
 
         try:
-            self.credentials.refresh(http)
+            self.__credentials.refresh(http)
         except:
-            raise AuthorizationFailureError("Could not refresh credentials.")
+            raise gdrivefs.errors.AuthorizationFailureError("Could not refresh credentials.")
 
-        self.__update_cache(self.credentials)
+        self.__update_cache(self.__credentials)
 
-        _logger.debug("Credentials have been refreshed.")
+        _LOGGER.debug("Credentials have been refreshed.")
 
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
 
-        if self.cache_filepath is None:
+        if self.__creds_filepath is None:
             raise ValueError("Credentials file-path is not set.")
 
-        if self.credentials is None:
-            _logger.debug("Checking for cached credentials: %s",
-                          self.cache_filepath)
+        if self.__credentials is None:
+            _LOGGER.debug("Checking for cached credentials: %s",
+                          self.__creds_filepath)
 
-            with open(self.cache_filepath) as cache:
+            with open(self.__creds_filepath) as cache:
                 credentials_serialized = cache.read()
 
             # If we're here, we have serialized credentials information.
@@ -88,36 +101,36 @@ class _OauthAuthorize(object):
                 self.__clear_cache()
                 raise
 
-            self.credentials = credentials
+            self.__credentials = credentials
 
             # Credentials restored. Check expiration date.
 
-            expiry_phrase = self.credentials.token_expiry.strftime(
+            expiry_phrase = self.__credentials.token_expiry.strftime(
                                 '%Y%m%d-%H%M%S')
 
-            _logger.debug("Cached credentials found with expire-date [%s].",
+            _LOGGER.debug("Cached credentials found with expire-date [%s].",
                           expiry_phrase)
 
             self.check_credential_state()
 
-        return self.credentials
+        return self.__credentials
 
     def check_credential_state(self):
         """Do all of the regular checks necessary to keep our access going,
         such as refreshing when we expire.
         """
-        if(datetime.today() >= self.credentials.token_expiry):
-            _logger.info("Credentials have expired. Attempting to refresh "
-                         "them.")
+        if(datetime.datetime.today() >= self.__credentials.token_expiry):
+            _LOGGER.debug("Credentials have expired. Attempting to refresh "
+                          "them.")
 
             self.__refresh_credentials()
-            return self.credentials
+            return self.__credentials
 
     def get_credentials(self):
         return self.__step2_check_auth_cache()
 
     def __update_cache(self, credentials):
-        if self.cache_filepath is None:
+        if self.__creds_filepath is None:
             raise ValueError("Credentials file-path is not set.")
 
         # Serialize credentials.
@@ -126,27 +139,28 @@ class _OauthAuthorize(object):
 
         # Write cache file.
 
-        with open(self.cache_filepath, 'w') as cache:
+        with open(self.__creds_filepath, 'w') as cache:
             cache.write(credentials_serialized)
 
     def step2_doexchange(self, auth_code):
         # Do exchange.
 
-        _logger.debug("Doing exchange.")
+        _LOGGER.debug("Doing exchange.")
 
         credentials = self.flow.step2_exchange(auth_code)
 
-        _logger.debug("Credentials established.")
+        _LOGGER.debug("Credentials established.")
 
         self.__update_cache(credentials)
-        self.credentials = credentials
+        self.__credentials = credentials
+
+# A singleton, for general use.
 
 oauth = None
 def get_auth():
     global oauth
     if oauth is None:
-        _logger.debug("Creating OauthAuthorize.")
-        oauth = _OauthAuthorize()
+        _LOGGER.debug("Creating OauthAuthorize.")
+        oauth = OauthAuthorize()
 
     return oauth
-
