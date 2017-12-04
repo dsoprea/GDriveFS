@@ -21,12 +21,12 @@ import apiclient.errors
 import gdrivefs.constants
 import gdrivefs.config
 import gdrivefs.conf
-import gdrivefs.gdtool.chunked_download
+import gdrivefs.chunked_download
 import gdrivefs.errors
-import gdrivefs.gdtool.oauth_authorize
-import gdrivefs.gdtool.normal_entry
+import gdrivefs.oauth_authorize
+import gdrivefs.normal_entry
 import gdrivefs.time_support
-import gdrivefs.gdfs.fsutility
+import gdrivefs.fsutility
 
 _CONF_SERVICE_NAME = 'drive'
 _CONF_SERVICE_VERSION = 'v2'
@@ -96,7 +96,7 @@ def _marshall(f):
                 _logger.info("There was an authorization fault under "
                              "action [%s]. Attempting refresh.", action)
                 
-                authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+                authorize = gdrivefs.oauth_authorize.get_auth()
                 authorize.check_credential_state()
 
                 # Re-attempt the action.
@@ -110,7 +110,7 @@ def _marshall(f):
 class GdriveAuth(object):
     def __init__(self):
         self.__client = None
-        self.__authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+        self.__authorize = gdrivefs.oauth_authorize.get_auth()
         self.__check_authorization()
         self.__http = None
 
@@ -239,7 +239,7 @@ class _GdriveManager(object):
                 normalized_entry = None
             else:
                 normalized_entry = \
-                    gdrivefs.gdtool.normal_entry.NormalEntry(
+                    gdrivefs.normal_entry.NormalEntry(
                         'list_changes', 
                         entry)
 
@@ -281,10 +281,10 @@ class _GdriveManager(object):
 
         if query_is_string:
             query = ("title='%s'" % 
-                     (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_is_string)))
+                     (gdrivefs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query = ("title contains '%s'" % 
-                     (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_contains_string)))
+                     (gdrivefs.fsutility.escape_filename_for_query(query_contains_string)))
         else:
             query = None
 
@@ -318,7 +318,7 @@ class _GdriveManager(object):
         self.__assert_response_kind(response, 'drive#file')
 
         return \
-            gdrivefs.gdtool.normal_entry.NormalEntry('direct_read', response)
+            gdrivefs.normal_entry.NormalEntry('direct_read', response)
 
     @_marshall
     def list_files(self, query_contains_string=None, query_is_string=None, 
@@ -345,10 +345,10 @@ class _GdriveManager(object):
 
         if query_is_string:
             query_components.append("title='%s'" % 
-                                    (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_is_string)))
+                                    (gdrivefs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
             query_components.append("title contains '%s'" % 
-                                    (gdrivefs.gdfs.fsutility.escape_filename_for_query(query_contains_string)))
+                                    (gdrivefs.fsutility.escape_filename_for_query(query_contains_string)))
 
         # Make sure that we don't get any entries that we would have to ignore.
 
@@ -377,7 +377,7 @@ class _GdriveManager(object):
 
             for entry_raw in result[u'items']:
                 entry = \
-                    gdrivefs.gdtool.normal_entry.NormalEntry(
+                    gdrivefs.normal_entry.NormalEntry(
                         'list_files', 
                         entry_raw)
 
@@ -460,7 +460,7 @@ class _GdriveManager(object):
         url = normalized_entry.download_links[mime_type]
 
         with open(output_file_path, 'wb') as f:
-            downloader = gdrivefs.gdtool.chunked_download.ChunkedDownload(
+            downloader = gdrivefs.chunked_download.ChunkedDownload(
                             f, 
                             authed_http, 
                             url)
@@ -608,7 +608,7 @@ class _GdriveManager(object):
         self.__assert_response_kind(response, 'drive#file')
 
         normalized_entry = \
-            gdrivefs.gdtool.normal_entry.NormalEntry(
+            gdrivefs.normal_entry.NormalEntry(
                 'insert_entry', 
                 response)
 
@@ -721,7 +721,7 @@ class _GdriveManager(object):
                     data_filepath is not None)
 
         normalized_entry = \
-            gdrivefs.gdtool.normal_entry.NormalEntry('update_entry', result)
+            gdrivefs.normal_entry.NormalEntry('update_entry', result)
 
         _logger.debug("Entry updated: [%s]", normalized_entry)
 
@@ -754,7 +754,7 @@ class _GdriveManager(object):
     @_marshall
     def rename(self, normalized_entry, new_filename):
 
-        result = gdrivefs.gdfs.fsutility.split_path_nolookups(new_filename)
+        result = gdrivefs.fsutility.split_path_nolookups(new_filename)
         (path, filename_stripped, mime_type, is_hidden) = result
 
         _logger.debug("Renaming entry [%s] to [%s]. IS_HIDDEN=[%s]",

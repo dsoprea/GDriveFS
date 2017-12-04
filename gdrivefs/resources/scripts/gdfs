@@ -10,7 +10,7 @@ import argparse
 
 import gdrivefs.config
 import gdrivefs.config.log
-import gdrivefs.gdfs.gdfuse
+import gdrivefs.gdfuse
 
 _logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def main():
     _logger.debug("Mounting GD with creds at [%s]: %s", 
                   args.auth_storage_file, args.mountpoint)
 
-    gdrivefs.gdfs.gdfuse.mount(
+    gdrivefs.gdfuse.mount(
         auth_storage_filepath=args.auth_storage_file, 
         mountpoint=args.mountpoint, 
         debug=gdrivefs.config.IS_DEBUG, 

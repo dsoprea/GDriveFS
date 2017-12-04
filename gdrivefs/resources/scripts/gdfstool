@@ -12,13 +12,13 @@ import argparse
 
 import gdrivefs.config
 import gdrivefs.config.log
-import gdrivefs.gdfs.gdfuse
-import gdrivefs.gdtool.oauth_authorize
+import gdrivefs.gdfuse
+import gdrivefs.oauth_authorize
 
 _logger = logging.getLogger(__name__)
 
 def _get_url():
-    authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+    authorize = gdrivefs.oauth_authorize.get_auth()
     return authorize.step1_get_auth_url()
 
 def _handle_auth_url():
@@ -44,9 +44,9 @@ def _handle_auth_store(auth_storage_filepath, authcode):
         with open(auth_storage_filepath, 'w'):
             pass
 
-    gdrivefs.gdfs.gdfuse.set_auth_cache_filepath(auth_storage_filepath)
+    gdrivefs.gdfuse.set_auth_cache_filepath(auth_storage_filepath)
 
-    authorize = gdrivefs.gdtool.oauth_authorize.get_auth()
+    authorize = gdrivefs.oauth_authorize.get_auth()
     authorize.step2_doexchange(authcode)
 
     print("Authorization code recorded.")
@@ -64,7 +64,7 @@ def _handle_auth(args):
 def _handle_mountpoint(args):
     option_string = args.opt[0] if args.opt else None
 
-    gdrivefs.gdfs.gdfuse.mount(
+    gdrivefs.gdfuse.mount(
         auth_storage_filepath=args.auth_storage_file, 
         mountpoint=args.mountpoint, 
         debug=gdrivefs.config.IS_DEBUG, 

@@ -9,25 +9,25 @@ import logging
 import argparse
 
 import gdrivefs.config.log
-import gdrivefs.cache.volume
-import gdrivefs.gdfs.fsutility
-import gdrivefs.gdfs.gdfuse
+import gdrivefs.volume
+import gdrivefs.fsutility
+import gdrivefs.gdfuse
 import gdrivefs.errors
 
 _logger = logging.getLogger(__name__)
 
 def _get_by_path(raw_path):
-    result = gdrivefs.gdfs.fsutility.split_path(raw_path, gdrivefs.cache.volume.path_resolver)
+    result = gdrivefs.fsutility.split_path(raw_path, gdrivefs.volume.path_resolver)
     (parent_clause, path, filename, mime_type, is_hidden) = result
 
-    filepath = gdrivefs.gdfs.fsutility.build_filepath(path, filename)
-    path_relations = gdrivefs.cache.volume.PathRelations.get_instance()
+    filepath = gdrivefs.fsutility.build_filepath(path, filename)
+    path_relations = gdrivefs.volume.PathRelations.get_instance()
     entry_clause = path_relations.get_clause_from_path(filepath)
 
-    return entry_clause[gdrivefs.cache.volume.CLAUSE_ENTRY]
+    return entry_clause[gdrivefs.volume.CLAUSE_ENTRY]
 
 def _get_by_id(_id):
-    cache = gdrivefs.cache.volume.EntryCache.get_instance().cache
+    cache = gdrivefs.volume.EntryCache.get_instance().cache
 
     return cache.get(_id)
 
@@ -43,7 +43,7 @@ def main():
 
     args = parser.parse_args()
 
-    gdrivefs.gdfs.gdfuse.set_auth_cache_filepath(args.cred_filepath)
+    gdrivefs.gdfuse.set_auth_cache_filepath(args.cred_filepath)
 
     if 'id' in args:
         entry = _get_by_id(args.id)

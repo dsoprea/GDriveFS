@@ -6,11 +6,11 @@ from datetime       import datetime
 
 from gdrivefs.utility import utility
 from gdrivefs.conf import Conf
-from gdrivefs.gdtool.drive import get_gdrive
-from gdrivefs.gdtool.account_info import AccountInfo
-from gdrivefs.gdtool.normal_entry import NormalEntry
-from gdrivefs.cache.cache_registry import CacheRegistry, CacheFault
-from gdrivefs.cache.cacheclient_base import CacheClientBase
+from gdrivefs.drive import get_gdrive
+from gdrivefs.account_info import AccountInfo
+from gdrivefs.normal_entry import NormalEntry
+from gdrivefs.cache_registry import CacheRegistry, CacheFault
+from gdrivefs.cacheclient_base import CacheClientBase
 from gdrivefs.errors import GdNotFoundError
 
 CLAUSE_ENTRY            = 0 # Normalized entry.

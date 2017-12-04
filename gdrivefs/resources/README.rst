@@ -208,8 +208,8 @@ Just set the `GD_DEBUG` environment variable to "1"::
     2014-12-09 04:09:17,258 [__main__ DEBUG] Mounting GD with creds at [/var/cache/gdfs.creds]: /mnt/g
     2014-12-09 04:09:17,259 [root DEBUG] Debug: True
     2014-12-09 04:09:17,260 [root DEBUG] PERMS: F=777 E=666 NE=444
-    2014-12-09 04:09:17,262 [gdrivefs.gdtool.drive DEBUG] Getting authorized HTTP tunnel.
-    2014-12-09 04:09:17,262 [gdrivefs.gdtool.drive DEBUG] Got authorized tunnel.
+    2014-12-09 04:09:17,262 [gdrivefs.drive DEBUG] Getting authorized HTTP tunnel.
+    2014-12-09 04:09:17,262 [gdrivefs.drive DEBUG] Got authorized tunnel.
     FUSE library version: 2.9.2
     nullpath_ok: 0
     nopath: 0
@@ -218,11 +218,11 @@ Just set the `GD_DEBUG` environment variable to "1"::
     INIT: 7.22
     flags=0x0000f7fb
     max_readahead=0x00020000
-    2014-12-09 04:09:22,839 [gdrivefs.gdfs.fsutility DEBUG] --------------------------------------------------
-    2014-12-09 04:09:22,841 [gdrivefs.gdfs.fsutility DEBUG] >>>>>>>>>> init(23) >>>>>>>>>> (0)
-    2014-12-09 04:09:22,841 [gdrivefs.gdfs.fsutility DEBUG] DATA: path= [/]
-    2014-12-09 04:09:22,842 [gdrivefs.gdfs.gdfuse INFO] Activating change-monitor.
-    2014-12-09 04:09:23,002 [gdrivefs.gdfs.fsutility DEBUG] <<<<<<<<<< init(23) (0)
+    2014-12-09 04:09:22,839 [gdrivefs.fsutility DEBUG] --------------------------------------------------
+    2014-12-09 04:09:22,841 [gdrivefs.fsutility DEBUG] >>>>>>>>>> init(23) >>>>>>>>>> (0)
+    2014-12-09 04:09:22,841 [gdrivefs.fsutility DEBUG] DATA: path= [/]
+    2014-12-09 04:09:22,842 [gdrivefs.gdfuse INFO] Activating change-monitor.
+    2014-12-09 04:09:23,002 [gdrivefs.fsutility DEBUG] <<<<<<<<<< init(23) (0)
        INIT: 7.19
        flags=0x00000011
 

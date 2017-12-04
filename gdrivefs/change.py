@@ -5,9 +5,9 @@ import time
 import gdrivefs.state
 
 from gdrivefs.conf import Conf
-from gdrivefs.gdtool.account_info import AccountInfo
-from gdrivefs.gdtool.drive import get_gdrive
-from gdrivefs.cache.volume import PathRelations, EntryCache
+from gdrivefs.account_info import AccountInfo
+from gdrivefs.drive import get_gdrive
+from gdrivefs.volume import PathRelations, EntryCache
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.WARNING)

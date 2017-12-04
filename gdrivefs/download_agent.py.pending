@@ -24,8 +24,8 @@ import gipc
 
 from gdrivefs.config import download_agent
 from gdrivefs.utility import utility
-from gdrivefs.gdtool.chunked_download import ChunkedDownload
-from gdrivefs.gdtool.drive import GdriveAuth
+from gdrivefs.chunked_download import ChunkedDownload
+from gdrivefs.drive import GdriveAuth
 
 _RT_PROGRESS = 'p'
 _RT_ERROR = 'e'

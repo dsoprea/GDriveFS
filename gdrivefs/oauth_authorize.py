@@ -31,10 +31,12 @@ class _OauthAuthorize(object):
             json.dump(api_credentials, f)
             f.flush()
 
-            self.flow = flow_from_clientsecrets(f.name, 
-                                                scope=self.__get_scopes(), 
-                                                redirect_uri=OOB_CALLBACK_URN)
-        
+            self.flow = \
+                flow_from_clientsecrets(
+                    f.name,
+                    scope=self.__get_scopes(),
+                    redirect_uri=OOB_CALLBACK_URN)
+
     def __get_scopes(self):
         scopes = "https://www.googleapis.com/auth/drive "\
                  "https://www.googleapis.com/auth/drive.file"
@@ -49,7 +51,7 @@ class _OauthAuthorize(object):
                 remove(self.cache_filepath)
             except:
                 pass
-    
+
     def __refresh_credentials(self):
         _logger.info("Doing credentials refresh.")
 
@@ -61,9 +63,9 @@ class _OauthAuthorize(object):
             raise AuthorizationFailureError("Could not refresh credentials.")
 
         self.__update_cache(self.credentials)
-            
+
         _logger.debug("Credentials have been refreshed.")
-            
+
     def __step2_check_auth_cache(self):
         # Attempt to read cached credentials.
 
@@ -78,7 +80,7 @@ class _OauthAuthorize(object):
                 credentials_serialized = cache.read()
 
             # If we're here, we have serialized credentials information.
-            
+
             try:
                 credentials = pickle.loads(credentials_serialized)
             except:
@@ -87,33 +89,33 @@ class _OauthAuthorize(object):
                 raise
 
             self.credentials = credentials
-                
+
             # Credentials restored. Check expiration date.
 
             expiry_phrase = self.credentials.token_expiry.strftime(
                                 '%Y%m%d-%H%M%S')
-                
+
             _logger.debug("Cached credentials found with expire-date [%s].",
                           expiry_phrase)
-            
+
             self.check_credential_state()
 
         return self.credentials
 
     def check_credential_state(self):
-        """Do all of the regular checks necessary to keep our access going, 
+        """Do all of the regular checks necessary to keep our access going,
         such as refreshing when we expire.
         """
         if(datetime.today() >= self.credentials.token_expiry):
             _logger.info("Credentials have expired. Attempting to refresh "
                          "them.")
-            
+
             self.__refresh_credentials()
             return self.credentials
 
     def get_credentials(self):
         return self.__step2_check_auth_cache()
-    
+
     def __update_cache(self, credentials):
         if self.cache_filepath is None:
             raise ValueError("Credentials file-path is not set.")
@@ -131,17 +133,9 @@ class _OauthAuthorize(object):
         # Do exchange.
 
         _logger.debug("Doing exchange.")
-        
-        try:
-            credentials = self.flow.step2_exchange(auth_code)
-        except Exception as e:
-            message = \
-                "Could not do auth-exchange (this was either a legitimate "\
-                "error, or the auth-exchange was attempted when not "\
-                "necessary): {}".format(e)
 
-            raise AuthorizationFailureError(message)
-        
+        credentials = self.flow.step2_exchange(auth_code)
+
         _logger.debug("Credentials established.")
 
         self.__update_cache(credentials)
@@ -153,6 +147,6 @@ def get_auth():
     if oauth is None:
         _logger.debug("Creating OauthAuthorize.")
         oauth = _OauthAuthorize()
-    
+
     return oauth
 
