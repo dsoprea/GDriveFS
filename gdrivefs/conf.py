@@ -26,8 +26,8 @@ class Conf(object):
     file_chunk_size_kb                  = 1024
     file_download_temp_max_age_s        = 86400
     change_check_frequency_s            = 3
-    hidden_flags_list_local             = [u'trashed', u'restricted']
-    hidden_flags_list_remote            = [u'trashed']
+    hidden_flags_list_local             = ['trashed', 'restricted']
+    hidden_flags_list_remote            = ['trashed']
     cache_cleanup_check_frequency_s     = 60
     cache_entries_max_age               = 8 * 60 * 60
     cache_status_post_frequency_s       = 10
@@ -37,7 +37,7 @@ class Conf(object):
 
     google_discovery_service_url        = DISCOVERY_URI
     default_buffer_read_blocksize       = 65536
-    directory_mimetype                  = u'application/vnd.google-apps.folder'
+    directory_mimetype                  = 'application/vnd.google-apps.folder'
     default_perm_folder                 = '777'
     default_perm_file_editable          = '666'
     default_perm_file_noneditable       = '444'

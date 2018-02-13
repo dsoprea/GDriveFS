@@ -79,7 +79,7 @@ class _DriveUtility(object):
         found = [ 
             mime_type 
             for mime_type, temp_extension 
-            in self.default_extensions.iteritems()
+            in self.default_extensions.items()
             if temp_extension == extension
         ]
 

@@ -71,7 +71,7 @@ class ChunkedDownload(object):
                 self._progress, self._progress + self._chunksize)
             }
 
-        for retry_num in xrange(num_retries + 1):
+        for retry_num in range(num_retries + 1):
             _logger.debug("Attempting to read chunk. ATTEMPT=(%d)/(%d)", 
                           retry_num + 1, num_retries + 1)
 

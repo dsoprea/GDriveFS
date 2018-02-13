@@ -39,7 +39,7 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
         
             if args or kwargs:
                 condensed = {}
-                for i in xrange(len(args)):
+                for i in range(len(args)):
                     # Skip the 'self' argument.
                     if i == 0:
                         continue
@@ -49,16 +49,16 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
 
                     condensed[argument_names[i - 1]] = args[i]
 
-                for k, v in kwargs.iteritems():
+                for k, v in kwargs.items():
                     condensed[k] = v
 
                 values_nice = [("%s= [%s]" % (k, v)) for k, v \
-                                                     in condensed.iteritems() \
+                                                     in condensed.items() \
                                                      if k not in excluded]
                 
                 if otherdata_cb:
                     data = otherdata_cb(*args, **kwargs)
-                    for k, v in data.iteritems():
+                    for k, v in data.items():
                         values_nice[k] = v
                 
                 if values_nice:

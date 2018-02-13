@@ -47,67 +47,67 @@ class NormalEntry(object):
         # can get a file-size up-front, or we have to decide on a specific
         # mime-type in order to do so.
 
-        requires_mimetype = u'fileSize' not in self.__raw_data and \
-                            raw_data[u'mimeType'] != self.__directory_mimetype
+        requires_mimetype = 'fileSize' not in self.__raw_data and \
+                            raw_data['mimeType'] != self.__directory_mimetype
 
         self.__info['requires_mimetype'] = \
             requires_mimetype
 
         self.__info['title'] = \
-            raw_data[u'title']
+            raw_data['title']
 
         self.__info['mime_type'] = \
-            raw_data[u'mimeType']
+            raw_data['mimeType']
 
         self.__info['labels'] = \
-            raw_data[u'labels']
+            raw_data['labels']
 
         self.__info['id'] = \
-            raw_data[u'id']
+            raw_data['id']
 
         self.__info['last_modifying_user_name'] = \
-            raw_data.get(u'lastModifyingUserName')
+            raw_data.get('lastModifyingUserName')
 
         self.__info['writers_can_share'] = \
-            raw_data[u'writersCanShare']
+            raw_data['writersCanShare']
 
         self.__info['owner_names'] = \
-            raw_data[u'ownerNames']
+            raw_data['ownerNames']
 
         self.__info['editable'] = \
-            raw_data[u'editable']
+            raw_data['editable']
 
         self.__info['user_permission'] = \
-            raw_data[u'userPermission']
+            raw_data['userPermission']
 
         self.__info['link'] = \
-            raw_data.get(u'embedLink')
+            raw_data.get('embedLink')
 
         self.__info['file_size'] = \
-            int(raw_data.get(u'fileSize', 0))
+            int(raw_data.get('fileSize', 0))
 
         self.__info['file_extension'] = \
-            raw_data.get(u'fileExtension')
+            raw_data.get('fileExtension')
 
         self.__info['md5_checksum'] = \
-            raw_data.get(u'md5Checksum')
+            raw_data.get('md5Checksum')
 
         self.__info['image_media_metadata'] = \
-            raw_data.get(u'imageMediaMetadata')
+            raw_data.get('imageMediaMetadata')
 
         self.__info['download_links'] = \
-            raw_data.get(u'exportLinks', {})
+            raw_data.get('exportLinks', {})
 
         try:
             self.__info['download_links'][self.__info['mime_type']] = \
-                raw_data[u'downloadUrl']
+                raw_data['downloadUrl']
         except KeyError:
             pass
 
         self.__update_display_name()
 
-        for parent in raw_data[u'parents']:
-            self.__parents.append(parent[u'id'])
+        for parent in raw_data['parents']:
+            self.__parents.append(parent['id'])
 
     def __getattr__(self, key):
         return self.__info[key]
@@ -169,7 +169,7 @@ class NormalEntry(object):
             # If there's only one download link, resort to using it (perhaps it was
             # an uploaded file, assigned only one type).
             elif len(self.download_links) == 1:
-                mime_type = self.download_links.keys()[0]
+                mime_type = list(self.download_links.keys())[0]
 
             else:
                 raise ExportFormatError("A correct mime-type needs to be "
@@ -185,7 +185,7 @@ class NormalEntry(object):
             list_ = [("K(%s)=V(%s)" % (self.__convert(key),
                                   self.__convert(value))) \
                      for key, value \
-                     in data.iteritems()]
+                     in data.items()]
 
             final = '; '.join(list_)
             return final
@@ -194,7 +194,7 @@ class NormalEntry(object):
                                for element \
                                in data])
             return final
-        elif isinstance(data, unicode):
+        elif isinstance(data, str):
             return utility.translate_filename_charset(data)
         elif isinstance(data, Number):
             return str(data)
@@ -207,7 +207,7 @@ class NormalEntry(object):
         original = {
             key.encode('utf8'): value
             for key, value
-            in self.__raw_data.iteritems()
+            in self.__raw_data.items()
         }
 
         distilled = self.__info
@@ -231,8 +231,8 @@ class NormalEntry(object):
             data_dict = self.get_data()
 
             attrs = {}
-            for a_type, a_dict in data_dict.iteritems():
-                for key, value in a_dict.iteritems():
+            for a_type, a_dict in data_dict.items():
+                for key, value in a_dict.items():
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)
 
@@ -249,7 +249,7 @@ class NormalEntry(object):
     def is_visible(self):
         if [ flag
              for flag, value
-             in self.labels.items()
+             in list(self.labels.items())
              if flag in Conf.get('hidden_flags_list_local') and value ]:
             return False
         else:
@@ -261,13 +261,13 @@ class NormalEntry(object):
 
     @property
     def download_types(self):
-        return self.download_links.keys()
+        return list(self.download_links.keys())
 
     @property
     def modified_date(self):
         if 'modified_date' not in self.__cache_dict:
             self.__cache_dict['modified_date'] = \
-                dateutil.parser.parse(self.__raw_data[u'modifiedDate'])
+                dateutil.parser.parse(self.__raw_data['modifiedDate'])
 
         return self.__cache_dict['modified_date']
 
@@ -281,7 +281,7 @@ class NormalEntry(object):
     def mtime_byme_date(self):
         if 'modified_byme_date' not in self.__cache_dict:
             self.__cache_dict['modified_byme_date'] = \
-                dateutil.parser.parse(self.__raw_data[u'modifiedByMeDate'])
+                dateutil.parser.parse(self.__raw_data['modifiedByMeDate'])
 
         return self.__cache_dict['modified_byme_date']
 
@@ -293,8 +293,8 @@ class NormalEntry(object):
     def atime_byme_date(self):
         if 'viewed_byme_date' not in self.__cache_dict:
             self.__cache_dict['viewed_byme_date'] = \
-                dateutil.parser.parse(self.__raw_data[u'lastViewedByMeDate']) \
-                if u'lastViewedByMeDate' in self.__raw_data \
+                dateutil.parser.parse(self.__raw_data['lastViewedByMeDate']) \
+                if 'lastViewedByMeDate' in self.__raw_data \
                 else None
 
         return self.__cache_dict['viewed_byme_date']

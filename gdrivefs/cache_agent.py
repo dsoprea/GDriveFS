@@ -96,10 +96,10 @@ class CacheAgent(object):
             cache_dict = self.registry.list_raw(self.resource_name)
 
             total_keys = [ (key, value_tuple[1]) for key, value_tuple \
-                                in cache_dict.iteritems() ]
+                                in cache_dict.items() ]
 
             cleanup_keys = [ key for key, value_tuple \
-                                in cache_dict.iteritems() \
+                                in cache_dict.items() \
                                 if (datetime.datetime.now() - value_tuple[1]).seconds > \
                                         self.max_age ]
 

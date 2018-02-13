@@ -9,10 +9,10 @@ _logger = logging.getLogger(__name__)
 class AccountInfo(LiveReaderBase):
     """Encapsulates our account info."""
 
-    __map = {'root_id': u'rootFolderId',
-             'largest_change_id': (u'largestChangeId', int),
-             'quota_bytes_total': (u'quotaBytesTotal', int),
-             'quota_bytes_used': (u'quotaBytesUsed', int)}
+    __map = {'root_id': 'rootFolderId',
+             'largest_change_id': ('largestChangeId', int),
+             'quota_bytes_total': ('quotaBytesTotal', int),
+             'quota_bytes_used': ('quotaBytesUsed', int)}
 
     def get_data(self):
         gd = get_gdrive()
@@ -33,5 +33,5 @@ class AccountInfo(LiveReaderBase):
 
     @property
     def keys(self):
-        return AccountInfo.__map.keys()
+        return list(AccountInfo.__map.keys())
 

@@ -784,7 +784,7 @@ class _GdfsMixin(object):
     def listxattr(self, raw_path):
         (entry, path, filename) = get_entry_or_raise(raw_path)
 
-        return entry.xattr_data.keys()
+        return list(entry.xattr_data.keys())
 
     @dec_hint(['path', 'name', 'position'])
     def getxattr(self, raw_path, name, position=0):

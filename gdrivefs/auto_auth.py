@@ -2,11 +2,11 @@ import logging
 import threading
 import webbrowser
 import time
-import urlparse
-import io
+import urllib.parse
 
-import SocketServer
-import BaseHTTPServer
+import socketserver
+import http.server
+import io
 
 import gdrivefs.oauth_authorize
 import gdrivefs.conf
@@ -14,9 +14,9 @@ import gdrivefs.conf
 _LOGGER = logging.getLogger(__name__)
 
 
-class _HTTPRequest(BaseHTTPServer.BaseHTTPRequestHandler):
+class _HTTPRequest(http.server.BaseHTTPRequestHandler):
     def __init__(self, request_text):
-        self.rfile = io.StringIO(unicode(request_text))
+        self.rfile = io.StringIO(request_text)
         self.raw_requestline = self.rfile.readline()
         self.error_code = self.error_message = None
         self.parse_request()
@@ -77,7 +77,7 @@ class _WebserverMonitor(object):
         monitor = self
 
         # Embedding this because it's so trivial.
-        class Handler(BaseHTTPServer.BaseHTTPRequestHandler):
+        class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
 
                 # We have the first line of the response with the authorization code
@@ -92,8 +92,8 @@ class _WebserverMonitor(object):
                 # line and another for a subsequent blank line to terminate the block
                 # and conform with the RFC.
                 hr = _HTTPRequest(self.requestline + "\n\n")
-                u = urlparse.urlparse(hr.path)
-                arguments = urlparse.parse_qs(u.query)
+                u = urllib.parse.urlparse(hr.path)
+                arguments = urllib.parse.parse_qs(u.query)
 
                 # It's not an authorization response. Bail with the same error
                 # the library would normally send for unhandled requests.
@@ -130,9 +130,9 @@ GDFS authorization recorded.
                 pass
 
 
-        class Server(SocketServer.TCPServer):
+        class Server(socketserver.TCPServer):
             def server_activate(self, *args, **kwargs):
-                r = SocketServer.TCPServer.server_activate(self, *args, **kwargs)
+                r = socketserver.TCPServer.server_activate(self, *args, **kwargs)
 
                 # Sniff the port, now that we're running.
                 monitor._port = self.server_address[1]

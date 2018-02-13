@@ -98,7 +98,7 @@ class PathRelations(object):
             to_remove.extend(current_orphan_ids)
             to_remove.extend(children_ids_to_remove)
 
-        return (removed.keys(), (stat_folders + stat_files))
+        return (list(removed.keys()), (stat_folders + stat_files))
 
     def __remove_entry(self, entry_id, is_update=False):
         """Remove an entry. Updates references from linked entries, but does 
@@ -653,7 +653,7 @@ class EntryCache(CacheClientBase):
 
         path_relations = PathRelations.get_instance()
 
-        for entry_id, entry in retrieved.iteritems():
+        for entry_id, entry in retrieved.items():
             path_relations.register_entry(entry)
 
         return retrieved
