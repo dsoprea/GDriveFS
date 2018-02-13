@@ -37,7 +37,7 @@ class OauthAuthorize(object):
 
         api_credentials = gdrivefs.conf.Conf.get('api_credentials')
 
-        with tempfile.NamedTemporaryFile() as f:
+        with tempfile.NamedTemporaryFile(mode='w+') as f:
             json.dump(api_credentials, f)
             f.flush()
 
@@ -89,7 +89,7 @@ class OauthAuthorize(object):
             _LOGGER.debug("Checking for cached credentials: %s",
                           self.__creds_filepath)
 
-            with open(self.__creds_filepath) as cache:
+            with open(self.__creds_filepath,'rb') as cache:
                 credentials_serialized = cache.read()
 
             # If we're here, we have serialized credentials information.
@@ -139,7 +139,7 @@ class OauthAuthorize(object):
 
         # Write cache file.
 
-        with open(self.__creds_filepath, 'w') as cache:
+        with open(self.__creds_filepath, 'wb') as cache:
             cache.write(credentials_serialized)
 
     def step2_doexchange(self, auth_code):

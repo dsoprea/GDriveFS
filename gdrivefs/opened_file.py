@@ -290,7 +290,7 @@ class OpenedFile(object):
             d = DisplacedFile(entry)
             stub_data = d.deposit_file(self.mime_type)
 
-            self.__fh = open(self.__temp_filepath, 'w+')
+            self.__fh = open(self.__temp_filepath, 'w+b')
             self.__fh.write(stub_data)
         else:
             _LOGGER.debug("Executing the download: [%s] => [%s]", 
@@ -315,7 +315,7 @@ class OpenedFile(object):
                 _LOGGER.exception("There was an export-format error.")
                 raise fuse.FuseOSError(ENOENT)
 
-            self.__fh = open(self.__temp_filepath, 'r+')
+            self.__fh = open(self.__temp_filepath, 'r+b')
 
             self.__is_dirty = False
             self.__is_loaded = True

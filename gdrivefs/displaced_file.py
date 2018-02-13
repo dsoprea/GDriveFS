@@ -22,7 +22,7 @@ class DisplacedFile(object):
                "DisplacedFile can not wrap a non-NormalEntry object."
 
         self.__normalized_entry = normalized_entry
-        self.__filepath = tempfile.NamedTemporaryFile(delete=False)
+        self.__filepath = tempfile.NamedTemporaryFile(delete=False).name
 
     def __del__(self):
         os.unlink(self.__filepath)

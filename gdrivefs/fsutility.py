@@ -91,7 +91,7 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
 def strip_export_type(path):
 
     matched = re.search(
-                r'#([a-zA-Z0-9\-]+\\+[a-zA-Z0-9\-]+)?$', 
+                r'#([a-zA-Z0-9\-]+\\+[a-zA-Z0-9\-]+)?$'.encode('utf-8'), 
                 path.encode('utf-8'))
 
     mime_type = None

@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class _HTTPRequest(http.server.BaseHTTPRequestHandler):
     def __init__(self, request_text):
-        self.rfile = io.StringIO(request_text)
+        self.rfile = io.BytesIO(request_text)
         self.raw_requestline = self.rfile.readline()
         self.error_code = self.error_message = None
         self.parse_request()
@@ -91,7 +91,7 @@ class _WebserverMonitor(object):
                 # Use Python to parse the request. We need to add one newline for the
                 # line and another for a subsequent blank line to terminate the block
                 # and conform with the RFC.
-                hr = _HTTPRequest(self.requestline + "\n\n")
+                hr = _HTTPRequest(self.requestline.encode() + b"\n\n")
                 u = urllib.parse.urlparse(hr.path)
                 arguments = urllib.parse.parse_qs(u.query)
 
@@ -117,7 +117,7 @@ class _WebserverMonitor(object):
                 self.send_header("Content-type", 'text/html')
                 self.end_headers()
 
-                self.wfile.write("""\
+                self.wfile.write(b"""\
 <html>
 <head></head>
 <body>
