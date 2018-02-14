@@ -288,7 +288,7 @@ class OpenedFile(object):
             length = DisplacedFile.file_size
 
             d = DisplacedFile(entry)
-            stub_data = d.deposit_file(self.mime_type)
+            stub_data = d.deposit_file(self.mime_type).encode('utf-8')
 
             self.__fh = open(self.__temp_filepath, 'w+b')
             self.__fh.write(stub_data)
