@@ -46,11 +46,11 @@ def _marshall(f):
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        # Now, try to invoke the mechanism. If we succeed, return 
-        # immediately. If we get an authorization-fault (a resolvable 
-        # authorization problem), fall through and attempt to fix it. Allow 
+        # Now, try to invoke the mechanism. If we succeed, return
+        # immediately. If we get an authorization-fault (a resolvable
+        # authorization problem), fall through and attempt to fix it. Allow
         # any other error to bubble up.
-        
+
         for n in range(0, 5):
             try:
                 return f(*args, **kwargs)
@@ -69,7 +69,7 @@ def _marshall(f):
                     error = json.loads(e.content)
                 except ValueError:
                     _logger.error("Non-JSON error while doing chunked "
-                                  "download: [%s]", e.content) 
+                                  "download: [%s]", e.content)
                     raise e
 
                 if error.get('code') == 403 and \
@@ -95,7 +95,7 @@ def _marshall(f):
 
                 _logger.info("There was an authorization fault under "
                              "action [%s]. Attempting refresh.", action)
-                
+
                 authorize = gdrivefs.oauth_authorize.get_auth()
                 authorize.check_credential_state()
 
@@ -121,7 +121,7 @@ class GdriveAuth(object):
         if self.__http is None:
             self.__check_authorization()
             _logger.debug("Getting authorized HTTP tunnel.")
-                
+
             http = httplib2.Http()
             self.__credentials.authorize(http)
 
@@ -134,28 +134,28 @@ class GdriveAuth(object):
     def get_client(self):
         if self.__client is None:
             authed_http = self.get_authed_http()
-        
+
             # Build a client from the passed discovery document path
-            
+
             discoveryUrl = \
                 gdrivefs.conf.Conf.get('google_discovery_service_url')
-# TODO: We should cache this, since we have, so often, had a problem 
+# TODO: We should cache this, since we have, so often, had a problem
 #       retrieving it. If there's no other way, grab it directly, and then pass
 #       via a file:// URI.
-        
+
             try:
                 client = \
                     apiclient.discovery.build(
-                        _CONF_SERVICE_NAME, 
-                        _CONF_SERVICE_VERSION, 
-                        http=authed_http, 
+                        _CONF_SERVICE_NAME,
+                        _CONF_SERVICE_VERSION,
+                        http=authed_http,
                         discoveryServiceUrl=discoveryUrl)
             except apiclient.errors.HttpError as e:
                 # We've seen situations where the discovery URL's server is down,
                 # with an alternate one to be used.
                 #
-                # An error here shouldn't leave GDFS in an unstable state (the 
-                # current command should just fail). Hoepfully, the failure is 
+                # An error here shouldn't leave GDFS in an unstable state (the
+                # current command should just fail). Hoepfully, the failure is
                 # momentary, and the next command succeeds.
 
                 _logger.exception("There was an HTTP response-code of (%d) while "
@@ -170,7 +170,7 @@ class GdriveAuth(object):
 
 class _GdriveManager(object):
     """Handles all basic communication with Google Drive. All methods should
-    try to invoke only one call, or make sure they handle authentication 
+    try to invoke only one call, or make sure they handle authentication
     refreshing when necessary.
     """
 
@@ -195,16 +195,16 @@ class _GdriveManager(object):
 
     @_marshall
     def list_changes(self, start_change_id=None, page_token=None):
-        """Get a list of the most recent changes from GD, with the earliest 
-        changes first. This only returns one page at a time. start_change_id 
-        doesn't have to be valid.. It's just the lower limit to what you want 
+        """Get a list of the most recent changes from GD, with the earliest
+        changes first. This only returns one page at a time. start_change_id
+        doesn't have to be valid.. It's just the lower limit to what you want
         back. Change-IDs are integers, but are not necessarily sequential.
         """
 
         client = self.__auth.get_client()
 
         response = client.changes().list(
-                    pageToken=page_token, 
+                    pageToken=page_token,
                     startChangeId=start_change_id).execute()
 
         self.__assert_response_kind(response, 'drive#changeList')
@@ -232,7 +232,7 @@ class _GdriveManager(object):
                 was_deleted = False
                 entry = item[u'file']
 
-                _logger.debug("CHANGE: [%s] [%s] (UPDATED)", 
+                _logger.debug("CHANGE: [%s] [%s] (UPDATED)",
                               entry_id, entry[u'title'])
 
             if was_deleted:
@@ -240,7 +240,7 @@ class _GdriveManager(object):
             else:
                 normalized_entry = \
                     gdrivefs.normal_entry.NormalEntry(
-                        'list_changes', 
+                        'list_changes',
                         entry)
 
             changes.append((change_id, (entry_id, was_deleted, normalized_entry)))
@@ -250,7 +250,7 @@ class _GdriveManager(object):
 
     @_marshall
     def get_parents_containing_id(self, child_id, max_results=None):
-        
+
         _logger.info("Getting client for parent-listing.")
 
         client = self.__auth.get_client()
@@ -280,10 +280,10 @@ class _GdriveManager(object):
             "mutually exclusive."
 
         if query_is_string:
-            query = ("title='%s'" % 
+            query = ("title='%s'" %
                      (gdrivefs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
-            query = ("title contains '%s'" % 
+            query = ("title contains '%s'" %
                      (gdrivefs.fsutility.escape_filename_for_query(query_contains_string)))
         else:
             query = None
@@ -292,7 +292,7 @@ class _GdriveManager(object):
                      "[%s]", parent_id, query)
 
         response = client.children().list(
-                    q=query, 
+                    q=query,
                     folderId=parent_id,
                     maxResults=max_results).execute()
 
@@ -321,19 +321,19 @@ class _GdriveManager(object):
             gdrivefs.normal_entry.NormalEntry('direct_read', response)
 
     @_marshall
-    def list_files(self, query_contains_string=None, query_is_string=None, 
+    def list_files(self, query_contains_string=None, query_is_string=None,
                    parent_id=None):
-        
+
         _logger.info("Listing all files. CONTAINS=[%s] IS=[%s] "
                      "PARENT_ID=[%s]",
-                     query_contains_string 
-                        if query_contains_string is not None 
-                        else '<none>', 
-                     query_is_string 
-                        if query_is_string is not None 
-                        else '<none>', 
-                     parent_id 
-                        if parent_id is not None 
+                     query_contains_string
+                        if query_contains_string is not None
+                        else '<none>',
+                     query_is_string
+                        if query_is_string is not None
+                        else '<none>',
+                     parent_id
+                        if parent_id is not None
                         else '<none>')
 
         client = self.__auth.get_client()
@@ -344,10 +344,10 @@ class _GdriveManager(object):
             query_components.append("'%s' in parents" % (parent_id))
 
         if query_is_string:
-            query_components.append("title='%s'" % 
+            query_components.append("title='%s'" %
                                     (gdrivefs.fsutility.escape_filename_for_query(query_is_string)))
         elif query_contains_string:
-            query_components.append("title contains '%s'" % 
+            query_components.append("title contains '%s'" %
                                     (gdrivefs.fsutility.escape_filename_for_query(query_contains_string)))
 
         # Make sure that we don't get any entries that we would have to ignore.
@@ -378,7 +378,7 @@ class _GdriveManager(object):
             for entry_raw in result[u'items']:
                 entry = \
                     gdrivefs.normal_entry.NormalEntry(
-                        'list_files', 
+                        'list_files',
                         entry_raw)
 
                 entries.append(entry)
@@ -387,7 +387,7 @@ class _GdriveManager(object):
                 _logger.debug("No more pages in file listing.")
                 break
 
-            _logger.debug("Next page-token in file-listing is [%s].", 
+            _logger.debug("Next page-token in file-listing is [%s].",
                           result[u'nextPageToken'])
 
             page_token = result[u'nextPageToken']
@@ -396,10 +396,10 @@ class _GdriveManager(object):
         return entries
 
     @_marshall
-    def download_to_local(self, output_file_path, normalized_entry, 
+    def download_to_local(self, output_file_path, normalized_entry,
                           mime_type=None, allow_cache=True):
-        """Download the given file. If we've cached a previous download and the 
-        mtime hasn't changed, re-use. The third item returned reflects whether 
+        """Download the given file. If we've cached a previous download and the
+        mtime hasn't changed, re-use. The third item returned reflects whether
         the data has changed since any prior attempts.
         """
 
@@ -410,7 +410,7 @@ class _GdriveManager(object):
             if normalized_entry.mime_type in normalized_entry.download_links:
                 mime_type = normalized_entry.mime_type
 
-                _logger.debug("Electing file mime-type for download: [%s]", 
+                _logger.debug("Electing file mime-type for download: [%s]",
                               normalized_entry.mime_type)
             elif gdrivefs.constants.OCTET_STREAM_MIMETYPE \
                     in normalized_entry.download_links:
@@ -425,8 +425,8 @@ class _GdriveManager(object):
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
             message = ("Entry with ID [%s] can not be exported to type [%s]. "
-                       "The available types are: %s" % 
-                       (normalized_entry.id, mime_type, 
+                       "The available types are: %s" %
+                       (normalized_entry.id, mime_type,
                         ', '.join(normalized_entry.download_links.keys())))
 
             _logger.warning(message)
@@ -461,8 +461,8 @@ class _GdriveManager(object):
 
         with open(output_file_path, 'wb') as f:
             downloader = gdrivefs.chunked_download.ChunkedDownload(
-                            f, 
-                            authed_http, 
+                            f,
+                            authed_http,
                             url)
 
             progresses = []
@@ -482,10 +482,10 @@ class _GdriveManager(object):
 
                 _logger.debug("Chunk: PROGRESS=[%s] TOTAL-SIZE=[%s] "
                               "RESUMABLE-PROGRESS=[%s]",
-                              percent, status.total_size, 
+                              percent, status.total_size,
                               status.resumable_progress)
 
-# TODO(dustin): This just places an arbitrary limit on the number of empty 
+# TODO(dustin): This just places an arbitrary limit on the number of empty
 #               chunks we can receive. Can we drop this to 1?
                 if len(progresses) >= _MAX_EMPTY_CHUNKS:
                     assert percent > progresses[0], \
@@ -512,17 +512,17 @@ class _GdriveManager(object):
         mimetype_directory = gdrivefs.conf.Conf.get('directory_mimetype')
         return self.__insert_entry(
                 False,
-                filename, 
+                filename,
                 parents,
-                mimetype_directory, 
+                mimetype_directory,
                 **kwargs)
 
     @_marshall
-    def create_file(self, filename, parents, mime_type, data_filepath=None, 
+    def create_file(self, filename, parents, mime_type, data_filepath=None,
                     **kwargs):
 # TODO: It doesn't seem as if the created file is being registered.
-        # Even though we're supposed to provide an extension, we can get away 
-        # without having one. We don't want to impose this when acting like a 
+        # Even though we're supposed to provide an extension, we can get away
+        # without having one. We don't want to impose this when acting like a
         # normal FS.
 
         return self.__insert_entry(
@@ -534,9 +534,9 @@ class _GdriveManager(object):
                 **kwargs)
 
     @_marshall
-    def __insert_entry(self, is_file, filename, parents, mime_type, 
-                       data_filepath=None, modified_datetime=None, 
-                       accessed_datetime=None, is_hidden=False, 
+    def __insert_entry(self, is_file, filename, parents, mime_type,
+                       data_filepath=None, modified_datetime=None,
+                       accessed_datetime=None, is_hidden=False,
                        description=None):
 
         if parents is None:
@@ -545,25 +545,25 @@ class _GdriveManager(object):
         now_phrase = gdrivefs.time_support.get_flat_normal_fs_time_from_dt()
 
         if modified_datetime is None:
-            modified_datetime = now_phrase 
-    
+            modified_datetime = now_phrase
+
         if accessed_datetime is None:
-            accessed_datetime = now_phrase 
+            accessed_datetime = now_phrase
 
         _logger.info("Creating entry with filename [%s] under parent(s) "
                      "[%s] with mime-type [%s]. MTIME=[%s] ATIME=[%s] "
                      "DATA_FILEPATH=[%s]",
-                     filename, ', '.join(parents), mime_type, 
+                     filename, ', '.join(parents), mime_type,
                      modified_datetime, accessed_datetime, data_filepath)
 
         client = self.__auth.get_client()
 
         ## Create request-body.
 
-        body = { 
-                'title': filename, 
-                'parents': [dict(id=parent) for parent in parents], 
-                'labels': { "hidden": is_hidden }, 
+        body = {
+                'title': filename,
+                'parents': [dict(id=parent) for parent in parents],
+                'labels': { "hidden": is_hidden },
                 'mimeType': mime_type,
             }
 
@@ -584,10 +584,10 @@ class _GdriveManager(object):
 
         if data_filepath:
             args.update({
-                'media_body': 
+                'media_body':
                     apiclient.http.MediaFileUpload(
-                        data_filepath, 
-                        mimetype=mime_type, 
+                        data_filepath,
+                        mimetype=mime_type,
                         resumable=True,
                         chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
@@ -595,7 +595,7 @@ class _GdriveManager(object):
             })
 
         if gdrivefs.config.IS_DEBUG is True:
-            _logger.debug("Doing file-insert with:\n%s", 
+            _logger.debug("Doing file-insert with:\n%s",
                           pprint.pformat(args))
 
         request = client.files().insert(**args)
@@ -609,7 +609,7 @@ class _GdriveManager(object):
 
         normalized_entry = \
             gdrivefs.normal_entry.NormalEntry(
-                'insert_entry', 
+                'insert_entry',
                 response)
 
         _logger.info("New entry created with ID [%s].", normalized_entry.id)
@@ -628,10 +628,10 @@ class _GdriveManager(object):
                 '/dev/null',
                 mimetype=normalized_entry.mime_type)
 
-        args = { 
-            'fileId': normalized_entry.id, 
+        args = {
+            'fileId': normalized_entry.id,
 # TODO(dustin): Can we omit 'body'?
-            'body': {}, 
+            'body': {},
             'media_body': file_,
         }
 
@@ -643,9 +643,9 @@ class _GdriveManager(object):
         return response
 
     @_marshall
-    def update_entry(self, normalized_entry, filename=None, data_filepath=None, 
-                     mime_type=None, parents=None, modified_datetime=None, 
-                     accessed_datetime=None, is_hidden=False, 
+    def update_entry(self, normalized_entry, filename=None, data_filepath=None,
+                     mime_type=None, parents=None, modified_datetime=None,
+                     accessed_datetime=None, is_hidden=False,
                      description=None):
 
         _logger.info("Updating entry [%s].", normalized_entry)
@@ -653,17 +653,17 @@ class _GdriveManager(object):
         client = self.__auth.get_client()
 
         # Build request-body.
-        
+
         body = {}
 
         if mime_type is None:
             mime_type = normalized_entry.mime_type
 
-        body['mimeType'] = mime_type 
+        body['mimeType'] = mime_type
 
         if filename is not None:
             body['title'] = filename
-        
+
         if parents is not None:
             body['parents'] = parents
 
@@ -688,23 +688,23 @@ class _GdriveManager(object):
 
         # Build request-arguments.
 
-        args = { 
-            'fileId': normalized_entry.id, 
-            'body': body, 
-            'setModifiedDate': set_mtime, 
+        args = {
+            'fileId': normalized_entry.id,
+            'body': body,
+            'setModifiedDate': set_mtime,
             'updateViewedDate': set_atime,
         }
 
         if data_filepath is not None:
-            _logger.debug("We'll be sending a file in the update: [%s] [%s]", 
+            _logger.debug("We'll be sending a file in the update: [%s] [%s]",
                           normalized_entry.id, data_filepath)
 
             # We can only upload large files using resumable-uploads.
             args.update({
-                'media_body': 
+                'media_body':
                     apiclient.http.MediaFileUpload(
-                        data_filepath, 
-                        mimetype=mime_type, 
+                        data_filepath,
+                        mimetype=mime_type,
                         resumable=True,
                         chunksize=_DEFAULT_UPLOAD_CHUNK_SIZE_B),
 # TODO(dustin): Documented, but does not exist.
@@ -728,14 +728,14 @@ class _GdriveManager(object):
         return normalized_entry
 
     def __finish_upload(self, filename, request, has_file):
-        """Finish a resumable-upload is a file was given, or just execute the 
+        """Finish a resumable-upload is a file was given, or just execute the
         request if not.
         """
 
         if has_file is False:
             return request.execute()
 
-        _logger.debug("We need to finish updating the entry's data: [%s]", 
+        _logger.debug("We need to finish updating the entry's data: [%s]",
                       filename)
 
         result = None
@@ -746,7 +746,7 @@ class _GdriveManager(object):
                 if status.total_size == 0:
                     _logger.debug("Uploaded (zero-length): [%s]", filename)
                 else:
-                    _logger.debug("Uploaded [%s]: %.2f%%", 
+                    _logger.debug("Uploaded [%s]: %.2f%%",
                                   filename, status.progress() * 100)
 
         return result
@@ -760,7 +760,7 @@ class _GdriveManager(object):
         _logger.debug("Renaming entry [%s] to [%s]. IS_HIDDEN=[%s]",
                       normalized_entry, filename_stripped, is_hidden)
 
-        return self.update_entry(normalized_entry, filename=filename_stripped, 
+        return self.update_entry(normalized_entry, filename=filename_stripped,
                                  is_hidden=is_hidden)
 
     @_marshall
@@ -787,7 +787,7 @@ class _GdriveManager(object):
 
 _THREAD_STORAGE = None
 def get_gdrive():
-    """Return an instance of _GdriveManager unique to each thread (we can't 
+    """Return an instance of _GdriveManager unique to each thread (we can't
     reuse sockets between threads).
     """
 
