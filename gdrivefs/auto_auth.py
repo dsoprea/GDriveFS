@@ -3,10 +3,10 @@ import threading
 import webbrowser
 import time
 import urlparse
+import io
 
 import SocketServer
 import BaseHTTPServer
-import cStringIO
 
 import gdrivefs.oauth_authorize
 import gdrivefs.conf
@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class _HTTPRequest(BaseHTTPServer.BaseHTTPRequestHandler):
     def __init__(self, request_text):
-        self.rfile = cStringIO.StringIO(request_text)
+        self.rfile = io.StringIO(unicode(request_text))
         self.raw_requestline = self.rfile.readline()
         self.error_code = self.error_message = None
         self.parse_request()
