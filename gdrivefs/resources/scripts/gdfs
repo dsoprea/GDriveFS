@@ -19,7 +19,7 @@ def _main():
 
     p.add_argument(
         'auth_storage_filepath',
-        help='Authorization storage file')
+        help="Authorization storage file ('default' for default location in home)")
 
     p.add_argument(
         'mountpoint',
