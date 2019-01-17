@@ -116,8 +116,8 @@ If you need to manually get the URL, browse to it, get the authorization code, a
    that you would like to save it as. The name and location of this file is
    arbitrary::
 
-   $ gdfstool auth_write "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
-   Authorization code recorded.
+    $ gdfstool auth_write "4/WUsOa-Sm2RhgQtf9_NFAMMbRC.cj4LQYdXfshQV0ieZDAqA-C7ecwI"
+    Authorization code recorded.
 
 
 Mounting
