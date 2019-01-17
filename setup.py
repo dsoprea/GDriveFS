@@ -18,6 +18,7 @@ setuptools.setup(
     version=gdrivefs.__version__,
     description="A complete FUSE adapter for Google Drive.",
     long_description=long_description,
+    long_description_content_type='text/x-rst',
     classifiers=[
         'Topic :: System :: Filesystems',
         'Development Status :: 4 - Beta',
