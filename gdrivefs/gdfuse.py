@@ -12,6 +12,9 @@ import math
 from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
                  LoggingMixIn
+
+import oauth2client
+
 from time import mktime, time
 from sys import argv, exit, excepthook
 from datetime import datetime
@@ -805,6 +808,12 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
     if os.path.exists(auth_storage_filepath) is False:
         raise ValueError("Credential path is not valid: [%s]" %
                          (auth_storage_filepath,))
+
+    # If we don't check this here, it'll just cause a headache when things fail
+    # during the communication.
+    oauth2_version = tuple([int(c) for c in oauth2client.__version__.split('.')])
+    if oauth2_version >= (4, 0, 0):
+        raise Exception("Google does not like oauth2client >=4.0.0 .")
 
     fuse_opts = {}
     
