@@ -1,6 +1,5 @@
 import logging
-
-from threading import Lock
+import threading
 
 _logger = logging.getLogger(__name__)
 
@@ -11,7 +10,7 @@ class BufferSegments(object):
     the be copied as updates are applied to the file.
     """
 
-    __locker = Lock()
+    __locker = threading.Lock()
 
     def __init__(self, data, block_size):
         # An array of 2-tuples: (offset, string). We should allow data to be 

@@ -1,17 +1,14 @@
 import logging
+import threading
+import collections
 
-from collections    import deque
-from threading      import RLock
-from datetime       import datetime
-
-from gdrivefs.utility import utility
-from gdrivefs.conf import Conf
-from gdrivefs.drive import get_gdrive
-from gdrivefs.account_info import AccountInfo
-from gdrivefs.normal_entry import NormalEntry
-from gdrivefs.cache_registry import CacheRegistry, CacheFault
-from gdrivefs.cacheclient_base import CacheClientBase
-from gdrivefs.errors import GdNotFoundError
+import gdrivefs.utility
+import gdrivefs.drive
+import gdrivefs.account_info
+import gdrivefs.normal_entry
+import gdrivefs.cache_registry
+import gdrivefs.cacheclient_base
+import gdrivefs.errors
 
 CLAUSE_ENTRY            = 0 # Normalized entry.
 CLAUSE_PARENT           = 1 # List of parent clauses.
@@ -27,7 +24,7 @@ def path_resolver(path):
     parent_clause = path_relations.get_clause_from_path(path)
     if not parent_clause:
 #        logging.debug("Path [%s] does not exist for split.", path)
-        raise GdNotFoundError()
+        raise gdrivefs.errors.GdNotFoundError()
 
     return (parent_clause[CLAUSE_ENTRY], parent_clause)
 
@@ -37,7 +34,7 @@ class PathRelations(object):
     account.
     """
 
-    rlock = RLock()
+    rlock = threading.RLock()
 
     entry_ll = { }
     path_cache = { }
@@ -48,19 +45,19 @@ class PathRelations(object):
 
         with PathRelations.rlock:
             try:
-                return CacheRegistry.__instance;
+                return gdrivefs.cache_registry.CacheRegistry.__instance;
             except:
                 pass
 
-            CacheRegistry.__instance = PathRelations()
-            return CacheRegistry.__instance
+            gdrivefs.cache_registry.CacheRegistry.__instance = PathRelations()
+            return gdrivefs.cache_registry.CacheRegistry.__instance
 
     def remove_entry_recursive(self, entry_id, is_update=False):
         """Remove an entry, all children, and any newly orphaned parents."""
 
         _logger.debug("Recursively pruning entry with ID [%s].", entry_id)
 
-        to_remove = deque([ entry_id ])
+        to_remove = collections.deque([ entry_id ])
         stat_placeholders = 0
         stat_folders = 0
         stat_files = 0
@@ -270,7 +267,7 @@ class PathRelations(object):
             if not normalized_entry.is_visible:
                 return None
 
-            if normalized_entry.__class__ is not NormalEntry:
+            if normalized_entry.__class__ is not gdrivefs.normal_entry.NormalEntry:
                 raise Exception("PathRelations expects to register an object "
                                 "of type NormalEntry, not [%s]." % 
                                 (type(normalized_entry)))
@@ -340,9 +337,10 @@ class PathRelations(object):
                         break
                         
                     i += 1
-                    current_variation = filename_base + \
-                                        utility.translate_filename_charset(
-                                            ' (%d)' % (i))
+                    current_variation = \
+                        filename_base + \
+                        gdrivefs.utility.utility.translate_filename_charset(
+                        ' (%d)' % (i,))
 
                 if elected_variation == None:
                     _logger.error("Could not register entry with ID [%s]. "
@@ -357,7 +355,9 @@ class PathRelations(object):
         return entry_clause
 
     def __load_all_children(self, parent_id):
-        gd = get_gdrive()
+        _logger.debug("__load_all_children: [START] parent_id=[{}]".format(parent_id))
+
+        gd = gdrivefs.drive.get_gdrive()
 
         with PathRelations.rlock:
             children = gd.list_files(parent_id=parent_id)
@@ -372,6 +372,8 @@ class PathRelations(object):
                 parent_clause[4] = True
 
         return children
+
+        _logger.debug("__load_all_children: [STOP] parent_id=[{}]".format(parent_id))
 
     def get_children_from_entry_id(self, entry_id):
         """Return the filenames contained in the folder with the given 
@@ -437,7 +439,9 @@ class PathRelations(object):
         among the children of the previous path component, and then try again.
         """
 
-        gd = get_gdrive()
+        _logger.debug("find_path_components_goandget: [START] path=[{}]".format(path))
+
+        gd = gdrivefs.drive.get_gdrive()
 
         with PathRelations.rlock:
             previous_results = []
@@ -472,9 +476,10 @@ class PathRelations(object):
 #        first result. We should rewrite this to be recursive in order to make 
 #        it easier to keep track of a list of results.
                 # The parent is the last one found, or the root if none.
-                parent_id = result[0][num_results - 1] \
-                                if num_results \
-                                else AccountInfo.get_instance().root_id
+                if num_results:
+                    parent_id = result[0][num_results - 1]
+                else:   
+                    parent_id = gdrivefs.account_info.AccountInfo.get_instance().root_id
 
                 # The child will be the first part that was not found.
                 child_name = result[1][num_results]
@@ -492,6 +497,8 @@ class PathRelations(object):
 #                                 len(children), filenames_phrase)
 
                 i += 1
+
+        _logger.debug("find_path_components_goandget: [STOP] path=[{}]".format(path))
 
     def __find_path_components(self, path):
         """Given a path, return a list of all Google Drive entries that 
@@ -512,7 +519,7 @@ class PathRelations(object):
         with PathRelations.rlock:
 #            self.__log.debug("Locating entry information for path [%s].", path)
 
-            root_id = AccountInfo.get_instance().root_id
+            root_id = gdrivefs.account_info.AccountInfo.get_instance().root_id
 
             # Ensure that the root node is loaded.
             self.__get_entry_clause_by_id(root_id)
@@ -525,8 +532,9 @@ class PathRelations(object):
             num_parts = len(path_parts)
             results = [ ]
             while i < num_parts:
-                child_filename_to_search_fs = utility. \
-                    translate_filename_charset(path_parts[i])
+                child_filename_to_search_fs = \
+                    gdrivefs.utility.utility.translate_filename_charset(
+                        path_parts[i])
 
 #                self.__log.debug("Checking for part (%d) [%s] under parent "
 #                                 "with ID [%s].",
@@ -587,7 +595,7 @@ class PathRelations(object):
         return (entry_id in self.entry_ll and (include_placeholders or \
                                                self.entry_ll[entry_id][0]))
 
-class EntryCache(CacheClientBase):
+class EntryCache(gdrivefs.cacheclient_base.CacheClientBase):
     """Manages our knowledge of file entries."""
 
     def __init__(self, *args, **kwargs):
@@ -595,8 +603,8 @@ class EntryCache(CacheClientBase):
 
 # TODO(dustin): This isn't used, and we don't think that it necessarily needs 
 #               to be instantiated, now.
-#        about = AccountInfo.get_instance()
-        self.__gd = get_gdrive()
+#        about = gdrivefs.account_info.AccountInfo.get_instance()
+        self.__gd = gdrivefs.drive.get_gdrive()
 
     def __get_entries_to_update(self, requested_entry_id):
         # Get more entries than just what was requested, while we're at it.
@@ -605,7 +613,7 @@ class EntryCache(CacheClientBase):
 
         affected_entries = [requested_entry_id]
         considered_entries = {}
-        max_readahead_entries = Conf.get('max_readahead_entries')
+        max_readahead_entries = gdrivefs.conf.Conf.get('max_readahead_entries')
         for parent_id in parent_ids:
             child_ids = self.__gd.get_children_under_parent_id(parent_id)
 
@@ -680,5 +688,5 @@ class EntryCache(CacheClientBase):
             path_relations.remove_entry_recursive(entry_id)
 
     def get_max_cache_age_seconds(self):
-        return Conf.get('cache_entries_max_age')
+        return gdrivefs.conf.Conf.get('cache_entries_max_age')
 
