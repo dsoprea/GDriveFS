@@ -164,8 +164,12 @@ class _GdfsMixin(object):
         """Return a stat() structure."""
 # TODO: Implement handle.
 
-        (entry, path, filename) = get_entry_or_raise(raw_path)
-        return self.__build_stat_from_entry(entry)
+        try:
+            (entry, path, filename) = get_entry_or_raise(raw_path)
+            return self.__build_stat_from_entry(entry)
+        except:
+            _logger.warning("getattr: Entry [{}] not found.".format(raw_path))
+            raise
 
     @dec_hint(['path', 'offset'])
     def readdir(self, path, offset):
@@ -766,19 +770,27 @@ class _GdfsMixin(object):
     def init(self, path):
         """Called on filesystem mount. Path is always /."""
 
+        _logger.info("Creating filesystem resource.")
+
         if gdrivefs.config.changes.MONITOR_CHANGES is True:
             _logger.info("Activating change-monitor.")
             get_change_manager().mount_init()
         else:
             _logger.warning("We were told not to monitor changes.")
 
+        _logger.info("Created filesystem resource.")
+
     @dec_hint(['path'])
     def destroy(self, path):
         """Called on filesystem destruction. Path is always /."""
 
+        _logger.info("Destroying filesystem resource.")
+
         if gdrivefs.config.changes.MONITOR_CHANGES is True:
             _logger.info("Stopping change-monitor.")
             get_change_manager().mount_destroy()
+
+        _logger.info("Destroyed filesystem resource.")
 
     @dec_hint(['path'])
     def listxattr(self, raw_path):
