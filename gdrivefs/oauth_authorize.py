@@ -89,13 +89,11 @@ class OauthAuthorize(object):
             _LOGGER.debug("Checking for cached credentials: %s",
                           self.__creds_filepath)
 
-            with open(self.__creds_filepath,'rb') as cache:
-                credentials_serialized = cache.read()
-
             # If we're here, we have serialized credentials information.
 
             try:
-                credentials = pickle.loads(credentials_serialized)
+                with open(self.__creds_filepath, 'rb') as f:
+                    credentials = pickle.load(f)
             except:
                 # We couldn't decode the credentials. Kill the cache.
                 self.__clear_cache()
@@ -133,14 +131,8 @@ class OauthAuthorize(object):
         if self.__creds_filepath is None:
             raise ValueError("Credentials file-path is not set.")
 
-        # Serialize credentials.
-
-        credentials_serialized = pickle.dumps(credentials)
-
-        # Write cache file.
-
-        with open(self.__creds_filepath, 'wb') as cache:
-            cache.write(credentials_serialized)
+        with open(self.__creds_filepath, 'wb') as f:
+            pickle.dump(credentials, f)
 
     def step2_doexchange(self, auth_code):
         # Do exchange.

@@ -4,7 +4,6 @@ import dateutil.parser
 import random
 import json
 import time
-import http.client
 import ssl
 import tempfile
 import pprint
@@ -27,6 +26,16 @@ import gdrivefs.oauth_authorize
 import gdrivefs.normal_entry
 import gdrivefs.time_support
 import gdrivefs.fsutility
+
+try:
+    # Python 3
+    import http.client
+except ImportError:
+    # Python 2.
+    import httplib
+    _BAD_STATUS_LINE_EXCEPTION = httplib.BadStatusLine
+else:
+    _BAD_STATUS_LINE_EXCEPTION = http.client.BadStatusLine
 
 _CONF_SERVICE_NAME = 'drive'
 _CONF_SERVICE_VERSION = 'v2'
@@ -54,7 +63,7 @@ def _marshall(f):
         for n in range(0, 5):
             try:
                 return f(*args, **kwargs)
-            except (ssl.SSLError, http.client.BadStatusLine) as e:
+            except (ssl.SSLError, _BAD_STATUS_LINE_EXCEPTION) as e:
                 # These happen sporadically. Use backoff.
                 _logger.exception("There was a transient connection "
                                   "error (%s). Trying again [%s]: %s",

@@ -2,19 +2,52 @@ import logging
 import threading
 import webbrowser
 import time
-import urllib.parse
 
-import socketserver
-import http.server
 import io
 
 import gdrivefs.oauth_authorize
 import gdrivefs.conf
 
+try:
+    # Python 3
+    import socketserver
+except ImportError:
+    # Python 2
+    import SocketServer as socketserver
+
+try:
+    # Python 3
+    import http.server
+except ImportError:
+    # Python 2
+    import BaseHTTPServer
+    _BaseHTTPRequestHandler = BaseHTTPServer.BaseHTTPRequestHandler
+else:
+    _BaseHTTPRequestHandler = http.server.BaseHTTPRequestHandler
+
+try:
+    # Python 3
+    import urllib.parse
+except ImportError:
+    # Python 2
+    import urlparse
+
+    def arguments_from_url(url):
+        u = urlparse.urlparse(url)
+        arguments = urlparse.parse_qs(u.query)
+        
+        return arguments
+else:
+    def arguments_from_url(url):
+        u = urllib.parse.urlparse(url)
+        arguments = urllib.parse.parse_qs(u.query)
+
+        return arguments
+
 _LOGGER = logging.getLogger(__name__)
 
 
-class _HTTPRequest(http.server.BaseHTTPRequestHandler):
+class _HTTPRequest(_BaseHTTPRequestHandler):
     def __init__(self, request_text):
         self.rfile = io.BytesIO(request_text)
         self.raw_requestline = self.rfile.readline()
@@ -77,7 +110,7 @@ class _WebserverMonitor(object):
         monitor = self
 
         # Embedding this because it's so trivial.
-        class Handler(http.server.BaseHTTPRequestHandler):
+        class Handler(_BaseHTTPRequestHandler):
             def do_GET(self):
 
                 # We have the first line of the response with the authorization code
@@ -92,8 +125,7 @@ class _WebserverMonitor(object):
                 # line and another for a subsequent blank line to terminate the block
                 # and conform with the RFC.
                 hr = _HTTPRequest(self.requestline.encode() + b"\n\n")
-                u = urllib.parse.urlparse(hr.path)
-                arguments = urllib.parse.parse_qs(u.query)
+                arguments = arguments_from_url(hr.path)
 
                 # It's not an authorization response. Bail with the same error
                 # the library would normally send for unhandled requests.

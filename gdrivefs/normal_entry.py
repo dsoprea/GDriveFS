@@ -185,7 +185,7 @@ class NormalEntry(object):
             list_ = [("K(%s)=V(%s)" % (self.__convert(key),
                                   self.__convert(value))) \
                      for key, value \
-                     in data.items()]
+                     in list(data.items())]
 
             final = '; '.join(list_)
             return final
@@ -207,7 +207,7 @@ class NormalEntry(object):
         original = {
             key.encode('utf8'): value
             for key, value
-            in self.__raw_data.items()
+            in list(self.__raw_data.items())
         }
 
         distilled = self.__info
@@ -231,8 +231,8 @@ class NormalEntry(object):
             data_dict = self.get_data()
 
             attrs = {}
-            for a_type, a_dict in data_dict.items():
-                for key, value in a_dict.items():
+            for a_type, a_dict in list(data_dict.items()):
+                for key, value in list(a_dict.items()):
                     fqkey = ('user.%s.%s' % (a_type, key))
                     attrs[fqkey] = self.__convert(value)
 

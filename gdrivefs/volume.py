@@ -653,7 +653,7 @@ class EntryCache(CacheClientBase):
 
         path_relations = PathRelations.get_instance()
 
-        for entry_id, entry in retrieved.items():
+        for entry_id, entry in list(retrieved.items()):
             path_relations.register_entry(entry)
 
         return retrieved
