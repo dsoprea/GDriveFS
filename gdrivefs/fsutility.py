@@ -1,11 +1,11 @@
 import logging
 import re
 import errno
+import os
 
-from os.path import split
-from fuse import FuseOSError, fuse_get_context
+import fuse
 
-from gdrivefs.errors import GdNotFoundError
+import gdrivefs.errors
 
 _logger = logging.getLogger(__name__)
 
@@ -19,13 +19,14 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
     sn = getattr(dec_hint, 'sn', 0) + 1
     dec_hint.sn = sn
 
-    prefix = ("%s: " % (prefix)) if prefix else ''
+    if prefix:
+        prefix = "{}: ".format(prefix)
 
     def real_decorator(f):
         def wrapper(*args, **kwargs):
         
             try:
-                pid = fuse_get_context()[2]
+                pid = fuse.fuse_get_context()[2]
             except:
                 # Just in case.
                 pid = 0
@@ -69,7 +70,7 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
 
             try:
                 result = f(*args, **kwargs)
-            except FuseOSError as e:
+            except fuse.FuseOSError as e:
                 if e.errno not in (errno.ENOENT,):
                     _logger.error("FUSE error [%s] (%s) will be forwarded "
                                   "back to GDFS from [%s]: %s", 
@@ -88,11 +89,12 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
         return wrapper
     return real_decorator
 
-def strip_export_type(path):
+def strip_export_type(filepath):
 
-    matched = re.search(
-                r'#([a-zA-Z0-9\-]+\\+[a-zA-Z0-9\-]+)?$'.encode('utf-8'), 
-                path.encode('utf-8'))
+    matched = \
+        re.search(
+            r'#([a-zA-Z0-9\-]+\+[a-zA-Z0-9\-]+)?$',
+            filepath)
 
     mime_type = None
 
@@ -103,9 +105,11 @@ def strip_export_type(path):
         if mime_type is not None:
             mime_type = mime_type.replace('+', '/')
 
-        path = path[:-len(fragment)]
+        filepath = filepath[:-len(fragment)]
+        _logger.debug("Filename has an export mime-type: MIMETYPE=[{}] "
+                      "FILENAME=[{}]".format(mime_type, filepath))
 
-    return (path, mime_type)
+    return (filepath, mime_type)
 
 def split_path(filepath_original, pathresolver_cb):
     """Completely process and distill the requested file-path. The filename can"
@@ -120,7 +124,7 @@ def split_path(filepath_original, pathresolver_cb):
     (filepath, mime_type) = strip_export_type(filepath_original)
 
     # Split the file-path into a path and a filename.
-    (path, filename) = split(filepath)
+    (path, filename) = os.path.split(filepath)
 
     # Lookup the file, as it was listed, in our cache.
 
@@ -131,10 +135,10 @@ def split_path(filepath_original, pathresolver_cb):
         _logger.exception("Exception while getting entry from path [%s].", 
                           path)
 
-        raise GdNotFoundError()
+        raise gdrivefs.errors.GdNotFoundError()
 
     if not path_resolution:
-        raise GdNotFoundError()
+        raise gdrivefs.errors.GdNotFoundError()
 
     (parent_entry, parent_clause) = path_resolution
 
@@ -151,7 +155,7 @@ def split_path_nolookups(filepath_original):
     (filepath, mime_type) = strip_export_type(filepath_original)
 
     # Split the file-path into a path and a filename.
-    (path, filename) = split(filepath)
+    (path, filename) = os.path.split(filepath)
 
     # We don't remove the period, if we will mark it as hidden, as appropriate.
     is_hidden = (filename[0] == '.') if filename else False

@@ -417,15 +417,18 @@ class _GdfsMixin(object):
 # TODO: Fail if does not exist and the mode/flags is read only.
 
         try:
-            opened_file = gdrivefs.opened_file.\
-                            create_for_existing_filepath(filepath)
+            opened_file = \
+                gdrivefs.opened_file.create_for_existing_filepath(
+                    filepath)
         except GdNotFoundError:
             _logger.exception("Could not create handle for requested [%s] "
-                              "(open)." % (filepath))
+                              "(open).", filepath)
+
             raise FuseOSError(ENOENT)
         except:
             _logger.exception("Could not create OpenedFile object for "
-                                 "opened filepath [%s].", filepath)
+                              "opened filepath [%s].", filepath)
+
             raise FuseOSError(EIO)
 
         om = gdrivefs.opened_file.get_om()
