@@ -182,10 +182,14 @@ class NormalEntry(object):
 
     def __convert(self, data):
         if isinstance(data, dict):
-            list_ = [("K(%s)=V(%s)" % (self.__convert(key),
-                                  self.__convert(value))) \
-                     for key, value \
-                     in list(data.items())]
+            list_ = []
+            for key, value in data.items():
+                phrase = \
+                    'K({})=V({})'.format(
+                    self.__convert(key),
+                    self.__convert(value))
+
+                list_.append(phrase)
 
             final = '; '.join(list_)
             return final

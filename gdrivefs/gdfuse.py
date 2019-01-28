@@ -803,9 +803,11 @@ class _GdfsMixin(object):
         (entry, path, filename) = get_entry_or_raise(raw_path)
 
         try:
-            return entry.xattr_data[name] + "\n"
-        except:
-            return ''
+            value = entry.xattr_data[name]
+        except KeyError:
+            value = ''
+
+        return value.encode('utf-8')
 
 if gdrivefs.config.DO_LOG_FUSE_MESSAGES is True:
     class GDriveFS(_GdfsMixin, LoggingMixIn, Operations):
