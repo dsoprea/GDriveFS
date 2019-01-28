@@ -16,24 +16,6 @@ Latest Changes
 - The 'auth' subcommand on the 'gdfstool' command is now obsolete. Though you may continue to use this subcommand, please start using the 'auth_get_url' and 'auth_write' subcommands as this subcommand will be removed in the future.
 
 
----------
-Important
----------
-
-Both *PyPI* and the Google Code downloads for *google_api_python_client* have an
-old version of their libraries, prior to when they fixed some Unicode problems
-that might cause failure when dealing with downloads/uploads of certain types
-of files.
-
-To install using *git*, do the following::
-
-    $ git clone https://github.com/google/google-api-python-client
-
-    $ cd google-api-python-client
-    $ sudo python setup.py install
-    $ sudo python setup.py install_egg_info
-
-
 ------------
 Installation
 ------------
@@ -53,16 +35,15 @@ Now, to install GDriveFS::
     $ sudo pip install gdrivefs
 
 
-------------
-Dependencies
-------------
-
-The versions of a couple of dependencies are relaxed during a normal installation. These dependencies are listed in *gdrivefs/resources/requirements.txt*. However, there is a concise listing of dependencies and their versions in *gdrivefs/resources/requirements_freeze.txt*. If you encounter any unexplainable phenomena that might be explained by dependency issues, the solution might be to do a "pip install -U -r <filepath>" using this alternate set of requirements.
-
-
 -----
 Usage
 -----
+
+Important
+=========
+
+If you wish to mount your Google Drive account at bootup, we recommend that you wrap it as a service. If you list it in /etc/fstab, you have bootup issues since your networking system may not be active when your filesystems are mounted unless you have deliberately configured the order in order to give you a guarantee.
+
 
 Overview
 ========
@@ -75,7 +56,7 @@ along with a file-path of where you want it to store the authorization
 information ("auth storage file" or "credentials file"). Then, you can mount it
 whenever you'd like.
 
-Since this is *FUSE*, you must be running as root to mount.
+Since this is *FUSE*, you must be running as root or under the right group to mount.
 
 
 Credentials File
@@ -126,12 +107,6 @@ Mounting
 Once you're ready to mount::
 
     $ gdfs -o allow_other default /mnt/gdrivefs
-
-Or, if you would like to register it in /etc/fstab::
-
-    $ ln -s `which gdfs` /sbin/mount.gdfs
-    $ echo "default /mnt/gdrivefs gdfs allow_other 0 0" >> /etc/fstab
-    $ mount /mnt/gdrivefs
 
 
 Optimization
