@@ -134,6 +134,8 @@ class OauthAuthorize(object):
         with open(self.__creds_filepath, 'wb') as f:
             pickle.dump(credentials, f)
 
+        os.chmod(self.__creds_filepath, 0o600)
+
     def step2_doexchange(self, auth_code):
         # Do exchange.
 
