@@ -33,6 +33,16 @@ def _main():
         nargs=1)
 
     p.add_argument(
+        '-f', '--fake',
+        action='store_true',
+        help="Don't mount (causes an early exit; required by 'mount' command)")
+
+    p.add_argument(
+        '-n', '--no-mtab',
+        action='store_true',
+        help="Don't write to /etc/mtab (a no-op since we do not usually write to it; required by 'mount' command)")
+
+    p.add_argument(
         '-v', '--verbose',
         action='store_true',
         help='Print logging')
@@ -50,6 +60,10 @@ def _main():
 
     _logger.debug("Mounting GD with creds at [%s]: %s",
                   args.auth_storage_filepath, args.mountpoint)
+
+    if args.fake is True:
+        _logger.warning("'Fake' mount. Exiting successfully.")
+        return
 
     gdrivefs.gdfuse.mount(
         auth_storage_filepath=auth_storage_filepath,
