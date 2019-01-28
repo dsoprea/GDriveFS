@@ -1,6 +1,6 @@
 import logging
 import re
-import fuse
+import errno
 
 from os.path import split
 from fuse import FuseOSError, fuse_get_context
@@ -70,7 +70,7 @@ def dec_hint(argument_names=[], excluded=[], prefix='', otherdata_cb=None):
             try:
                 result = f(*args, **kwargs)
             except FuseOSError as e:
-                if e.errno not in (fuse.ENOENT,):
+                if e.errno not in (errno.ENOENT,):
                     _logger.error("FUSE error [%s] (%s) will be forwarded "
                                   "back to GDFS from [%s]: %s", 
                                   e.__class__.__name__, e.errno, f.__name__, 
