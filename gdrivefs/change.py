@@ -12,12 +12,14 @@ from gdrivefs.volume import PathRelations, EntryCache
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.WARNING)
 
+logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
+
 
 class _ChangeManager(object):
     def __init__(self):
         self.at_change_id = AccountInfo.get_instance().largest_change_id
-        _logger.debug("Latest change-ID at startup is (%d)." % 
-                      (self.at_change_id))
+        _logger.debug("Latest change-ID at startup is (%d).",
+                      self.at_change_id)
 
         self.__t = None
         self.__t_quit_ev = threading.Event()
@@ -33,7 +35,7 @@ class _ChangeManager(object):
         self.__stop_check()
 
     def __check_changes(self):
-        _logger.info("Change-processing thread running.")
+        _logger.debug("Change-processing thread running.")
 
         interval_s = Conf.get('change_check_frequency_s')
         cm = get_change_manager()
@@ -60,16 +62,16 @@ class _ChangeManager(object):
                 _logger.debug("There are more changes to be applied. Cycling "
                               "immediately.")
 
-        _logger.info("Change-processing thread terminating.")
+        _logger.debug("Change-processing thread terminating.")
 
     def __start_check(self):
-        _logger.info("Starting change-processing thread.")
+        _logger.debug("Starting change-processing thread.")
 
         self.__t = threading.Thread(target=self.__check_changes)
         self.__t.start()
 
     def __stop_check(self):
-        _logger.info("Stopping change-processing thread.")
+        _logger.debug("Stopping change-processing thread.")
 
         self.__t_quit_ev.set()
         self.__t.join()
@@ -94,14 +96,14 @@ class _ChangeManager(object):
                       "currently at change-ID (%d).",
                       largest_change_id, self.at_change_id)
 
-        _logger.info("(%d) changes will now be applied." % (len(changes)))
+        _logger.debug("(%d) changes will now be applied.", len(changes))
 
         for change_id, change_tuple in changes:
             # Apply the changes. We expect to be running them from oldest to 
             # newest.
 
-            _logger.info("========== Change with ID (%d) will now be applied. ==========" %
-                            (change_id))
+            _logger.debug("========== Change with ID (%d) will now be applied. ==========",
+                          change_id)
 
             try:
                 self.__apply_change(change_id, change_tuple)
@@ -128,9 +130,9 @@ class _ChangeManager(object):
         
         is_visible = entry.is_visible if entry else None
 
-        _logger.info("Applying change with change-ID (%d), entry-ID [%s], "
-                     "and is-visible of [%s]",
-                     change_id, entry_id, is_visible)
+        _logger.debug("Applying change with change-ID (%d), entry-ID [%s], "
+                      "and is-visible of [%s]",
+                      change_id, entry_id, is_visible)
 
         # First, remove any current knowledge from the system.
 

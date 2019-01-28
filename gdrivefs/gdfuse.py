@@ -8,6 +8,7 @@ import atexit
 import resource
 import pprint
 import math
+import collections
 
 from errno import ENOENT, EIO, ENOTDIR, ENOTEMPTY, EPERM, EEXIST
 from fuse import FUSE, Operations, FuseOSError, c_statvfs, fuse_get_context, \
@@ -44,6 +45,14 @@ from gdrivefs.errors import GdNotFoundError
 from gdrivefs.time_support import get_flat_normal_fs_time_from_epoch
 
 _logger = logging.getLogger(__name__)
+
+_YIELDED_ENTRY = \
+    collections.namedtuple(
+        '_YIELDED_ENTRY', [
+            'filename',
+            'attrs',
+            'offset',
+        ])
 
 # TODO: make sure strip_extension and split_path are used when each are relevant
 # TODO: make sure create path reserves a file-handle, uploads the data, and then registers the open-file with the file-handle.
@@ -123,21 +132,22 @@ class _GdfsMixin(object):
         block_size_b = gdrivefs.config.fs.CALCULATION_BLOCK_SIZE
 
         if entry.is_directory:
-            effective_permission = int(Conf.get('default_perm_folder'), 
-                                       8)
+            effective_permission = \
+                int(Conf.get('default_perm_folder'), 8)
         elif entry.editable:
-            effective_permission = int(Conf.get('default_perm_file_editable'), 
-                                       8)
+            effective_permission = \
+                int(Conf.get('default_perm_file_editable'), 8)
         else:
-            effective_permission = int(Conf.get(
-                                            'default_perm_file_noneditable'), 
-                                       8)
+            effective_permission = \
+                int(Conf.get('default_perm_file_noneditable'), 8)
 
-        stat_result = { "st_mtime": entry.modified_date_epoch, # modified time.
-                        "st_ctime": entry.modified_date_epoch, # changed time.
-                        "st_atime": time(),
-                        "st_uid":   uid,
-                        "st_gid":   gid }
+        stat_result = {
+            "st_mtime": entry.modified_date_epoch, # modified time.
+            "st_ctime": entry.modified_date_epoch, # changed time.
+            "st_atime": time(),
+            "st_uid":   uid,
+            "st_gid":   gid,
+        }
         
         if entry.is_directory:
             # Per http://sourceforge.net/apps/mediawiki/fuse/index.php?title=SimpleFilesystemHowto, 
@@ -147,9 +157,10 @@ class _GdfsMixin(object):
             stat_result["st_mode"] = (stat.S_IFDIR | effective_permission)
             stat_result["st_nlink"] = 2
         else:
-            stat_result["st_size"] = DisplacedFile.file_size \
-                                        if entry.requires_mimetype \
-                                        else entry.file_size
+            if entry.requires_mimetype:
+                stat_result["st_size"] = DisplacedFile.file_size
+            else:
+                stat_result["st_size"] = entry.file_size
 
             stat_result["st_mode"] = (stat.S_IFREG | effective_permission)
             stat_result["st_nlink"] = 1
@@ -162,6 +173,7 @@ class _GdfsMixin(object):
     @dec_hint(['raw_path', 'fh'])
     def getattr(self, raw_path, fh=None):
         """Return a stat() structure."""
+
 # TODO: Implement handle.
 
         try:
@@ -208,19 +220,32 @@ class _GdfsMixin(object):
 
             raise FuseOSError(EIO)
 
+        # Yield filenames.
         yield utility.translate_filename_charset('.')
         yield utility.translate_filename_charset('..')
 
-        for (filename, entry) in entry_tuples:
+        # Yield filenames with stat information.
 
+        for (filename, entry) in entry_tuples:
             # Decorate any file that -requires- a mime-type (all files can 
             # merely accept a mime-type)
             if entry.requires_mimetype:
                 filename += utility.translate_filename_charset('#')
-        
-            yield (filename,
-                   self.__build_stat_from_entry(entry),
-                   0)
+
+# TODO(dustin): We get an "Input/output error" from the FUSE library when there's a slash in the name. We're not sure what we can do here. https://github.com/fusepy/fusepy/issues/133
+            if '/' in filename:
+                _logger.warning("Skipping entry with slash in the name: "
+                                "[{}]".format(path))
+                continue
+
+            attrs = self.__build_stat_from_entry(entry)
+
+            ye = _YIELDED_ENTRY(
+                    filename=filename,
+                    attrs=attrs,
+                    offset=0)
+
+            yield ye
 
     @dec_hint(['raw_path', 'length', 'offset', 'fh'])
     def read(self, raw_path, length, offset, fh):
@@ -880,13 +905,14 @@ def mount(auth_storage_filepath, mountpoint, debug=None, nothreads=None,
     set_auth_cache_filepath(auth_storage_filepath)
 
     # How we'll appear in diskfree, mtab, etc..
-    name = ("gdfs(%s)" % (auth_storage_filepath,))
+    name = "gdfs(%s)".format(auth_storage_filepath)
 
     # Make sure we can connect.
     gdrivefs.account_info.AccountInfo().get_data()
+    gdfs = GDriveFS()
 
     fuse = FUSE(
-            GDriveFS(), 
+            gdfs,
             mountpoint, 
             debug=debug, 
             foreground=debug, 
