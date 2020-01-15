@@ -146,6 +146,8 @@ def main():
                     help='Subcommand help',
                     dest='command')
 
+    s.required = True
+
     p.add_argument(
         '-v', '--verbose',
         action='store_true',
