@@ -1,5 +1,3 @@
-|donate|
-
 |Build\_Status|
 
 GDriveFS is an innovative *FUSE* wrapper for *Google Drive*. It is Python 2/3 compatible.
@@ -462,8 +460,5 @@ Misc Notes
 - If you have a need to do a developer install, use "pip install -e" rather than "python setup.py develop". The latter will [now] break because of the dependencies that are eggs.
 
 
-.. |donate| image:: https://pledgie.com/campaigns/27265.png?skin_name=chrome
-   :alt: Click here to lend your support to: Fund GDriveFS, the Open Source Google Drive FUSE Adapter and make a donation at pledgie.com !
-   :target: https://pledgie.com/campaigns/27265
 .. |Build_Status| image:: https://travis-ci.org/dsoprea/PySvn.svg?branch=master
    :target: https://travis-ci.org/dsoprea/PySvn
