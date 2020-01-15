@@ -1,0 +1,4 @@
+This is a client that is the run from a user's personal computer against a
+Google Drive account that they have been shown to have access to. No
+intermediate servers are contacted. No data is stored outside of the computer
+that hosts the client.
