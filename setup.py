@@ -21,7 +21,6 @@ setuptools.setup(
     long_description_content_type='text/x-rst',
     classifiers=[
         'Topic :: System :: Filesystems',
-        'Development Status :: 4 - Beta',
         'Environment :: Console',
         'Intended Audience :: End Users/Desktop',
         'Intended Audience :: System Administrators',
