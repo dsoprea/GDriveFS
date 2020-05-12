@@ -68,10 +68,15 @@ def _handle_auth_automatic(args):
     print("Authorization code recorded.")
 
 def _handle_mountpoint(args):
+    if args.auth_storage_file.lower() == 'default':
+        auth_storage_filepath = gdrivefs.config.DEFAULT_CREDENTIALS_FILEPATH
+    else:
+        auth_storage_filepath = args.auth_storage_file
+
     option_string = args.opt[0] if args.opt else None
 
     gdrivefs.gdfuse.mount(
-        auth_storage_filepath=args.auth_storage_file,
+        auth_storage_filepath=auth_storage_filepath,
         mountpoint=args.mountpoint,
         debug=gdrivefs.config.IS_DEBUG,
         nothreads=gdrivefs.config.IS_DEBUG,
