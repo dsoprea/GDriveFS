@@ -71,14 +71,16 @@ def _marshall(f):
 
                 time.sleep((2 ** n) + random.randint(0, 1000) / 1000)
             except apiclient.errors.HttpError as e:
-                if e.content == '':
+                decoded = e.content.decode('utf-8')
+
+                if decoded == '':
                     raise
 
                 try:
-                    error = json.loads(e.content)
+                    error = json.loads(decoded)
                 except ValueError:
                     _logger.error("Non-JSON error while doing chunked "
-                                  "download: [%s]", e.content)
+                                  "download: [%s]", decoded)
                     raise e
 
                 if error.get('code') == 403 and \
@@ -241,7 +243,7 @@ class _GdriveManager(object):
                 was_deleted = False
                 entry = item['file']
 
-                _logger.debug("CHANGE: [%s] [%s] (UPDATED)", 
+                _logger.debug("CHANGE: [%s] [%s] (UPDATED)",
                               entry_id, entry['title'])
 
             if was_deleted:
@@ -396,7 +398,7 @@ class _GdriveManager(object):
                 _logger.debug("No more pages in file listing.")
                 break
 
-            _logger.debug("Next page-token in file-listing is [%s].", 
+            _logger.debug("Next page-token in file-listing is [%s].",
                           result['nextPageToken'])
 
             page_token = result['nextPageToken']
@@ -434,8 +436,8 @@ class _GdriveManager(object):
         if mime_type != normalized_entry.mime_type and \
                 mime_type not in normalized_entry.download_links:
             message = ("Entry with ID [%s] can not be exported to type [%s]. "
-                       "The available types are: %s" % 
-                       (normalized_entry.id, mime_type, 
+                       "The available types are: %s" %
+                       (normalized_entry.id, mime_type,
                         ', '.join(list(normalized_entry.download_links.keys()))))
 
             _logger.warning(message)
