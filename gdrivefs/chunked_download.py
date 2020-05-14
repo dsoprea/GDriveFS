@@ -66,24 +66,83 @@ class ChunkedDownload(object):
           httplib2.HttpLib2Error if a transport error has occured.
         """
 
-        headers = {
-            'range': 'bytes=%d-%d' % (
-                self._progress, self._progress + self._chunksize)
+        retry_num = 0
+        while retry_num < num_retries + 1:
+            if self._total_size is None:
+                this_chunk_size = self._chunksize
+            else:
+                this_chunk_size = min(self._chunksize, self._total_size - self._progress)
+
+            headers = {
+                'range':
+                    'bytes=%d-%d' % (
+                        self._progress,
+                        self._progress + this_chunk_size)
             }
 
-        for retry_num in range(num_retries + 1):
-            _logger.debug("Attempting to read chunk. ATTEMPT=(%d)/(%d)", 
+            _logger.debug("Attempting to read chunk. ATTEMPT=(%d)/(%d)",
                           retry_num + 1, num_retries + 1)
 
             if retry_num > 0:
                 self._sleep(self._rand() * 2**retry_num)
                 _logger.warning("Retry #%d for media download: GET %s, "
-                                "following status: %d", 
+                                "following status: %d",
                                 retry_num, self._uri, resp.status)
 
             resp, content = self._http.request(self._uri, headers=headers)
-            if resp.status < 500:
+
+            # This seems to be the most correct method to get the filesize, but
+            # we've seen it not exist.
+            just_set_total_size = False
+            if 'content-range' in resp and self._total_size is None:
+                content_range = resp['content-range']
+                length = content_range.rsplit('/', 1)[1]
+                length = int(length)
+
+                self._total_size = length
+                just_set_total_size = True
+
+                _logger.debug("Received download size (content-range): "
+                              "(%d)", self._total_size)
+
+            if resp.status == 416 and just_set_total_size is True:
+                # If we get a 416 but we received a Content-Range and were able
+                # to set a total size, just loop and try again. The chunk-size
+                # we asked for in the initial request was bigger than what is
+                # available, but not we know our size and will limit it next
+                # time.
+                #
+                # This will specifically happen with small files since we
+                # schedule on the size coming in the response, since GD won't
+                # often provide a size for a specific format until we actually
+                # ask to download it.
+
+                if self._progress == self._total_size:
+                    # When we get a 416, it's usually on the very first
+                    # request. Therefore, it's a file smaller than the chunk-
+                    # amount, or even an empty one.
+
+                    self._done = True
+
+                    mdp = apiclient.http.MediaDownloadProgress(
+                            self._progress,
+                            self._total_size)
+
+                    return (mdp, self._done, self._total_size)
+
+                _logger.warning("The server rebuffed us for asking for too "
+                                "much in the initial request. We have a our "
+                                "size and will do better next time. Trying "
+                                "again.")
+
+                num_retries += 1
+            elif resp.status < 500:
                 break
+
+            # We'll get here if it's not a big error or if it was a 416 but we'
+            # ve taking steps.
+
+            retry_num += 1
 
         _logger.debug("Received chunk of size (%d).", len(content))
 
@@ -98,34 +157,21 @@ class ChunkedDownload(object):
             self._progress += received_size_b
             self._fd.write(content)
 
-            # This seems to be the most correct method to get the filesize, but 
-            # we've seen it not exist.
-            if 'content-range' in resp:
-                if self._total_size is None:
-                    content_range = resp['content-range']
-                    length = content_range.rsplit('/', 1)[1]
-                    length = int(length)
-
-                    self._total_size = length
-
-                    _logger.debug("Received download size (content-range): "
-                                  "(%d)", self._total_size)
-
             # There's a chance that "content-range" will be omitted for zero-
-            # length files (or maybe files that are complete within the first 
+            # length files (or maybe files that are complete within the first
             # chunk).
 
-            else:
+            if self._total_size is None:
 # TODO(dustin): Is this a valid assumption, or should it be an error?
                 _logger.warning("No 'content-range' found in response. "
                                 "Assuming that we've received all data.")
 
                 self._total_size = received_size_b
 
-# TODO(dustin): We were using this for a while, but it appears to be no larger 
+# TODO(dustin): We were using this for a while, but it appears to be no larger
 #               then a single chunk.
 #
-#            # This method doesn't seem documented, but we've seen cases where 
+#            # This method doesn't seem documented, but we've seen cases where
 #            # this is available, but "content-range" isn't.
 #            if 'content-length' in resp:
 #                self._total_size = int(resp['content-length'])
@@ -137,14 +183,14 @@ class ChunkedDownload(object):
             assert self._total_size is not None, \
                    "File-size was not provided."
 
-            _logger.debug("Checking if done. PROGRESS=(%d) TOTAL-SIZE=(%d)", 
+            _logger.debug("Checking if done. PROGRESS=(%d) TOTAL-SIZE=(%d)",
                           self._progress, self._total_size)
 
             if self._progress == self._total_size:
                 self._done = True
 
             return (apiclient.http.MediaDownloadProgress(
-                        self._progress, 
+                        self._progress,
                         self._total_size), \
                     self._done, \
                     self._total_size)
