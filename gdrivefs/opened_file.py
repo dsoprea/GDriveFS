@@ -42,14 +42,18 @@ class _OpenedManager(object):
         _LOGGER.debug("Opened-file working directory: [%s]", self.__temp_path)
 
     def __del__(self):
-        shutil.rmtree(self.__temp_path)
+        try:
+            shutil.rmtree(self.__temp_path)
+        except:
+            _LOGGER.exception("Could not cleanup temp path: [{}]".format(
+                              self.__temp_path))
 
     def __get_max_handles(self):
 
         return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
 
     def get_new_handle(self):
-        """Get a handle for a file that's about to be opened. Note that the 
+        """Get a handle for a file that's about to be opened. Note that the
         handles start at (1), so there are a lot of "+ 1" occurrences below.
         """
 
@@ -74,7 +78,7 @@ class _OpenedManager(object):
                                   cls.__fh_counter)
 
                     return cls.__fh_counter
-                
+
         message = "Could not allocate new file handle. Safety breach."
         _LOGGER.error(message)
         raise Exception(message)
@@ -118,13 +122,13 @@ class _OpenedManager(object):
 
             file_path = self.__opened[fh].file_path
             del self.__opened[fh]
-            
+
             try:
                 self.__opened_byfile[file_path].remove(fh)
             except ValueError:
                 raise ValueError("Could not remove handle (%d) from list of "
-                                 "open-handles for file-path [%s]: %s" % 
-                                 (fh, file_path, 
+                                 "open-handles for file-path [%s]: %s" %
+                                 (fh, file_path,
                                   self.__opened_byfile[file_path]))
 
             if not self.__opened_byfile[file_path]:
@@ -181,7 +185,7 @@ class OpenedFile(object):
     """This class describes a single open file, and manages changes."""
 
     def __init__(self, entry_id, path, filename, is_hidden, mime_type):
-# TODO(dustin): Until we can gracely orchestrate concurrent handles on the same 
+# TODO(dustin): Until we can gracely orchestrate concurrent handles on the same
 #               entry, we can't allow it. This is referenced, just below.
         with _OPENED_ENTRIES_LOCK:
             assert entry_id not in _OPENED_ENTRIES, \
@@ -197,14 +201,14 @@ class OpenedFile(object):
         self.__path = path
         self.__filename = filename
         self.__is_hidden = is_hidden
-        
+
         self.__mime_type = mime_type
         self.__cache = EntryCache.get_instance().cache
 
         self.__is_loaded = False
         self.__is_dirty = False
 
-        # Use the monotonically incremented `opened_count` to produce a unique 
+        # Use the monotonically incremented `opened_count` to produce a unique
         # temporary filepath.
 
         om = get_om()
@@ -213,23 +217,23 @@ class OpenedFile(object):
 
         self.__fh = None
 
-        # We need to load this up-front. Since we can't do partial updates, we 
-        # have to keep one whole, local copy, apply updates to it, and then 
+        # We need to load this up-front. Since we can't do partial updates, we
+        # have to keep one whole, local copy, apply updates to it, and then
         # post it on flush.
-# TODO(dustin): Until we finish working on the download-agent so that we can 
-#               have a way to orchestrate concurrent handles on the same file, 
-#               we'll just have to accept the fact that concurrent access will 
-#               require multiple downloads of the same file to multiple 
+# TODO(dustin): Until we finish working on the download-agent so that we can
+#               have a way to orchestrate concurrent handles on the same file,
+#               we'll just have to accept the fact that concurrent access will
+#               require multiple downloads of the same file to multiple
 #               temporary files (one for each).
         self.__load_base_from_remote()
 
     def __del__(self):
-        """This handle is being closed. Notice that we don't flush here because 
+        """This handle is being closed. Notice that we don't flush here because
         we expect that the VFS will.
         """
 
         if self.__fh is not None:
-            _LOGGER.debug("Removing temporary file [%s] ([%s]).", 
+            _LOGGER.debug("Removing temporary file [%s] ([%s]).",
                           self.__temp_filepath, self.file_path)
 
             self.__fh.close()
@@ -239,27 +243,27 @@ class OpenedFile(object):
             _OPENED_ENTRIES.remove(self.__entry_id)
 
     def __repr__(self):
-        replacements = { 
-            'entry_id': self.__entry_id, 
-            'filename': self.__filename, 
-            'mime_type': self.__mime_type, 
-            'is_loaded': self.__is_loaded, 
+        replacements = {
+            'entry_id': self.__entry_id,
+            'filename': self.__filename,
+            'mime_type': self.__mime_type,
+            'is_loaded': self.__is_loaded,
             'is_dirty': self.__is_dirty
         }
 
         return ("<OF [%(entry_id)s] F=[%(filename)s] MIME=[%(mime_type)s] "
                 "LOADED=[%(is_loaded)s] DIRTY= [%(is_dirty)s]>" % replacements)
 
-# TODO: We should be able to safely assume that we won't get a change event for 
-#       a file until its been entirely updated, online. Therefore, the change 
-#       processor should checkin, here, and make sure that any handles are 
+# TODO: We should be able to safely assume that we won't get a change event for
+#       a file until its been entirely updated, online. Therefore, the change
+#       processor should checkin, here, and make sure that any handles are
 #       closed for changed files.
 #
 #       We should also make sure to remove temporary file-paths in the OM temp-
 #       path (if one exists) if we get a "delete" change.
 
     def __load_base_from_remote(self):
-        """Download the data for the entry that we represent. This is probably 
+        """Download the data for the entry that we represent. This is probably
         a file, but could also be a stub for -any- entry.
         """
 
@@ -274,10 +278,10 @@ class OpenedFile(object):
 
         entry = self.__cache.get(self.__entry_id)
 
-        _LOGGER.debug("Ensuring local availability of [%s]: [%s]", 
+        _LOGGER.debug("Ensuring local availability of [%s]: [%s]",
                       entry, self.__temp_filepath)
 
-        # Get the current version of the write-cache file, or note that we 
+        # Get the current version of the write-cache file, or note that we
         # don't have it.
 
         _LOGGER.info("Attempting local cache update of file [%s] for entry "
@@ -293,16 +297,16 @@ class OpenedFile(object):
             self.__fh = open(self.__temp_filepath, 'w+b')
             self.__fh.write(stub_data)
         else:
-            _LOGGER.debug("Executing the download: [%s] => [%s]", 
+            _LOGGER.debug("Executing the download: [%s] => [%s]",
                           entry.id, self.__temp_filepath)
-            
+
             try:
-# TODO(dustin): We need to inherit a file that we might've already cached by 
+# TODO(dustin): We need to inherit a file that we might've already cached by
 #               opening.
-# TODO(dustin): Any call to download_to_local should use a local, temporarily 
-#               file is already established. We can't use it in the reverse 
-#               order though: It's one thing to already have a cache from 
-#               having opened it, and it's a another thing to maintain a cache 
+# TODO(dustin): Any call to download_to_local should use a local, temporarily
+#               file is already established. We can't use it in the reverse
+#               order though: It's one thing to already have a cache from
+#               having opened it, and it's a another thing to maintain a cache
 #               of every file that is copied.
                 gd = get_gdrive()
                 result = gd.download_to_local(
@@ -320,7 +324,7 @@ class OpenedFile(object):
             self.__is_dirty = False
             self.__is_loaded = True
 
-        _LOGGER.debug("Established base file-data for [%s]: [%s]", 
+        _LOGGER.debug("Established base file-data for [%s]: [%s]",
                       entry, self.__temp_filepath)
 
     @dec_hint(['offset', 'data'], ['data'], 'OF')
@@ -346,8 +350,8 @@ class OpenedFile(object):
         if self.__is_dirty is False:
             _LOGGER.debug("Flush will be skipped for [%s] because there "
                           "are no changes: [%s] IS_LOADED=[%s] "
-                          "IS_DIRTY=[%d]", 
-                          entry.id, self.file_path, self.__is_loaded, 
+                          "IS_DIRTY=[%d]",
+                          entry.id, self.file_path, self.__is_loaded,
                           self.__is_dirty)
             return
         else:
@@ -360,16 +364,16 @@ class OpenedFile(object):
 # TODO: Make sure we sync the mtime to remote.
             gd = get_gdrive()
             entry = gd.update_entry(
-                        entry, 
-                        filename=entry.title, 
-                        data_filepath=self.__temp_filepath, 
-                        mime_type=self.mime_type, 
-                        parents=entry.parents, 
+                        entry,
+                        filename=entry.title,
+                        data_filepath=self.__temp_filepath,
+                        mime_type=self.mime_type,
+                        parents=entry.parents,
                         is_hidden=self.__is_hidden)
 
             self.__is_dirty = False
 
-# TODO(dustin): For now, we don't cleanup the temporary file. We need to 
+# TODO(dustin): For now, we don't cleanup the temporary file. We need to
 #               schedule this using LRU-semantics.
 
             # Immediately update our current cached entry.
@@ -383,10 +387,10 @@ class OpenedFile(object):
 
     @dec_hint(['offset', 'length'], prefix='OF')
     def read(self, offset, length):
-        
+
         _LOGGER.debug("Reading (%d) bytes at offset (%d).", length, offset)
 
-        # We don't care if the cache file is dirty (not on this system, at 
+        # We don't care if the cache file is dirty (not on this system, at
         # least).
 
         st = os.stat(self.__temp_filepath)
@@ -420,8 +424,8 @@ class OpenedFile(object):
         return build_filepath(self.__path, self.__filename)
 
 def create_for_existing_filepath(filepath):
-    """Process the file/path that was requested (potential export-type 
-    directive, dot-prefix, etc..), and build an opened-file object using 
+    """Process the file/path that was requested (potential export-type
+    directive, dot-prefix, etc..), and build an opened-file object using
     the information.
     """
 
@@ -459,9 +463,9 @@ def create_for_existing_filepath(filepath):
 
     entry = entry_clause[CLAUSE_ENTRY]
 
-    # Normalize the mime-type by considering what's available for download. 
-    # We're going to let the requests that didn't provide a mime-type fail 
-    # right here. It will give us the opportunity to try a few options to 
+    # Normalize the mime-type by considering what's available for download.
+    # We're going to let the requests that didn't provide a mime-type fail
+    # right here. It will give us the opportunity to try a few options to
     # get the file.
 
     try:
@@ -484,10 +488,10 @@ def create_for_existing_filepath(filepath):
     # Build the object.
 
     return OpenedFile(
-            entry_clause[CLAUSE_ID], 
-            path, 
-            filename, 
-            is_hidden, 
+            entry_clause[CLAUSE_ID],
+            path,
+            filename,
+            is_hidden,
             final_mimetype)
 
 _management_instance = None
