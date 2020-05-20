@@ -48,12 +48,7 @@ class OauthAuthorize(object):
                     redirect_uri=redirect_uri)
 
     def __get_scopes(self):
-        scopes = [
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/drive.file",
-        ]
-
-        return ' '.join(scopes)
+        return ' '.join(gdrivefs.conf.Conf().scopes)
 
     def step1_get_auth_url(self):
         return self.flow.step1_get_authorize_url()

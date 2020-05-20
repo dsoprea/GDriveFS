@@ -58,3 +58,8 @@ class Conf(object):
             raise KeyError(key)
 
         setattr(Conf, key, value)
+
+    scopes = [
+        "https://www.googleapis.com/auth/drive",
+    ]
+
